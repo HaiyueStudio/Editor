@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*",
+    "../node_modules/@haiyue/engine/src/**/*",
+    "../node_modules/@haiyue/ui/src/**/*"
+  ],
+  "exclude": ["dist", "dist-test"]
+}

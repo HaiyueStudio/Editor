@@ -1,0 +1,242 @@
+{
+  "format": "haiyue-animation-editor-project@1",
+  "schemaVersion": 1,
+  "id": "multitrack-state-demo",
+  "name": "Multi-track State Demo",
+  "composition": {
+    "canvas": {
+      "width": 800,
+      "height": 500,
+      "coordinateSystem": "screen-y-down"
+    },
+    "duration": 2,
+    "frameRate": 60,
+    "endBehavior": "loop"
+  },
+  "assets": [],
+  "nodes": [
+    {
+      "id": "character-root",
+      "name": "Character Root",
+      "transform": {
+        "position": [300, 250],
+        "anchor": [0, 0],
+        "scale": [1, 1],
+        "rotation": 0,
+        "opacity": 1
+      },
+      "components": [],
+      "effects": [],
+      "compositeLayers": [],
+      "editor": {
+        "expanded": true,
+        "locked": false,
+        "hidden": false,
+        "color": "#58a6ff"
+      }
+    },
+    {
+      "id": "body",
+      "name": "Body",
+      "parent": "character-root",
+      "transform": {
+        "position": [0, 0],
+        "anchor": [40, 60],
+        "scale": [1, 1],
+        "rotation": 0,
+        "opacity": 1
+      },
+      "components": [
+        {
+          "id": "body-shape",
+          "name": "Body Shape",
+          "component": {
+            "type": "shape2d",
+            "shape": "rect",
+            "size": [80, 120],
+            "fill": [0.12, 0.55, 1, 1]
+          }
+        }
+      ],
+      "effects": [],
+      "compositeLayers": []
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "id": "root-position",
+        "name": "Root Position",
+        "target": {
+          "kind": "node-transform",
+          "nodeId": "character-root",
+          "property": "position"
+        },
+        "valueSize": 2,
+        "enabled": true,
+        "color": "#58a6ff",
+        "keyframes": [
+          {
+            "id": "root-position-0",
+            "time": 0,
+            "value": [300, 250],
+            "interpolation": "step"
+          },
+          {
+            "id": "root-position-1",
+            "time": 1,
+            "value": [300, 250],
+            "interpolation": "cubic-bezier",
+            "easing": [0.25, 0.1, 0.25, 1],
+            "spatialOut": [70, -50]
+          },
+          {
+            "id": "root-position-2",
+            "time": 2,
+            "value": [520, 250],
+            "interpolation": "linear",
+            "spatialIn": [-70, -50]
+          }
+        ]
+      },
+      {
+        "id": "body-opacity",
+        "name": "Body Opacity",
+        "target": {
+          "kind": "node-transform",
+          "nodeId": "body",
+          "property": "opacity"
+        },
+        "valueSize": 1,
+        "enabled": true,
+        "color": "#d2a8ff",
+        "keyframes": [
+          {
+            "id": "body-opacity-0",
+            "time": 0,
+            "value": [0.75],
+            "interpolation": "linear"
+          },
+          {
+            "id": "body-opacity-1",
+            "time": 0.5,
+            "value": [1],
+            "interpolation": "linear"
+          },
+          {
+            "id": "body-opacity-2",
+            "time": 1,
+            "value": [0.75],
+            "interpolation": "step"
+          },
+          {
+            "id": "body-opacity-3",
+            "time": 2,
+            "value": [1],
+            "interpolation": "linear"
+          }
+        ]
+      }
+    ],
+    "clips": [
+      {
+        "id": "idle",
+        "name": "Idle",
+        "start": 0,
+        "duration": 1,
+        "color": "#3fb950"
+      },
+      {
+        "id": "move",
+        "name": "Move",
+        "start": 1,
+        "duration": 1,
+        "color": "#58a6ff"
+      }
+    ]
+  },
+  "stateMachine": {
+    "format": "haiyue-animation-state-machine@1",
+    "id": "character-controller",
+    "name": "Character Controller",
+    "parameters": [
+      {
+        "name": "moving",
+        "type": "boolean",
+        "defaultValue": false
+      }
+    ],
+    "layers": [
+      {
+        "id": "base",
+        "name": "Base",
+        "initialStateId": "idle-state",
+        "blendMode": "override",
+        "weight": 1,
+        "states": [
+          {
+            "id": "idle-state",
+            "name": "Idle",
+            "motion": {
+              "kind": "clip",
+              "clipId": "idle"
+            },
+            "loop": "repeat",
+            "editorPosition": [80, 120]
+          },
+          {
+            "id": "move-state",
+            "name": "Move",
+            "motion": {
+              "kind": "clip",
+              "clipId": "move"
+            },
+            "loop": "repeat",
+            "editorPosition": [360, 120]
+          }
+        ],
+        "transitions": [
+          {
+            "id": "start-moving",
+            "from": "idle-state",
+            "to": "move-state",
+            "conditions": [
+              {
+                "parameter": "moving",
+                "operator": "is-true"
+              }
+            ],
+            "duration": 0.2,
+            "interruption": "source-then-destination"
+          },
+          {
+            "id": "stop-moving",
+            "from": "move-state",
+            "to": "idle-state",
+            "conditions": [
+              {
+                "parameter": "moving",
+                "operator": "is-false"
+              }
+            ],
+            "duration": 0.2,
+            "interruption": "source-then-destination"
+          }
+        ]
+      }
+    ]
+  },
+  "editor": {
+    "activePanel": "timeline",
+    "viewport": {
+      "zoom": 1,
+      "center": [400, 250],
+      "showGrid": true
+    },
+    "timeline": {
+      "playhead": 0,
+      "pixelsPerSecond": 240,
+      "scrollX": 0
+    }
+  }
+}

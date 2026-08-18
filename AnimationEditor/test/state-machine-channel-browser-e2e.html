@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G08 state-machine channel mixing fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.45 system-ui, sans-serif; background: #090d14; color: #d8e0ec; }
+      body { margin: 0; padding: 18px; }
+      main { display: grid; grid-template-columns: 520px 320px; gap: 16px; }
+      h1, #progress, #result { grid-column: 1 / -1; }
+      h1 { margin: 0; font-size: 18px; }
+      section { padding: 11px; border: 1px solid #29344a; border-radius: 8px; background: #0e1521; }
+      canvas { display: block; width: 500px; height: 500px; border: 1px solid #394864; background: #080c13; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="passed"] { color: #73dc9d; }
+      [data-status="failed"] { color: #ff7b86; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G08：共享状态机多通道、side effect 与事务清理</h1>
+      <section><canvas id="canvas" width="500" height="500"></canvas></section>
+      <section>
+        <p>验证 Sprite Step、Vector Morph、Particle 共享实例、cross-fade 中间帧、20 次快速 interruption 和销毁残留。</p>
+      </section>
+      <div id="progress">正在加载 G08 fixture…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.state-machine-channel-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G08 浏览器测试 bundle。');
+      }
+      const api = await import(`./${bundleDirectory}/state-machine-channel.js`);
+      const canvas = document.querySelector('#canvas');
+      const progress = document.querySelector('#progress');
+      const resultNode = document.querySelector('#result');
+      let engine = null;
+      let atlasUrl = null;
+
+      try {
+        assert('gpu' in navigator, '浏览器必须提供 WebGPU');
+        const atlas = await createAtlas();
+        atlasUrl = URL.createObjectURL(atlas);
+        const documentValue = createDocument(atlasUrl);
+        const parsed = api.parseAnimation(api.encodeAnimationBinary(documentValue));
+
+        engine = new api.HaiyueEngine({
+          canvas,
+          clearColor: { r: 0.012, g: 0.02, b: 0.04, a: 1 },
+          diagnostics: { enabled: true },
+        });
+        await engine.init();
+        const validationErrors = [];
+        engine.device.addEventListener('uncapturederror', event => validationErrors.push(event.error.message));
+        engine.device.pushErrorScope('validation');
+        const tracker = api.getEngineGPUResourceTracker(engine);
+        const cameraEntity = new api.Entity('G08 Camera').addComponent(new api.Camera2D({
+          width: 256, height: 256, designWidth: 256, designHeight: 256, viewportMode: 'fit',
+        }));
+        const scene = engine.createScene({
+          name: 'G08 channel mixing', camera: { type: '2d', entity: cameraEntity },
+          render3D: false, render2D: false, gui: false, pipelineLabel: 'G08.channels',
+        });
+        scene.addSystem(new api.Animation2DStateMachineSystem({ priority: -20, assetManager: engine.assetManager }), false);
+        scene.addSystem(new api.Particle2DSystem({ priority: -10 }), false);
+        const renderer = new api.Animation2DRenderSystem(engine, cameraEntity, { loadOp: 'clear' });
+        scene.addSystem(renderer);
+        const owner = new api.Entity('G08 owner').addComponent(new api.Transform2D());
+        const player = new api.Animation2DStateMachineComponent(parsed, { autoplay: true });
+        owner.addComponent(player);
+        scene.add(owner);
+        engine.switchScene(scene);
+        engine.run();
+        await frames(6);
+        assert(player._runtime, '状态机 runtime 已建立');
+        const runtime = player._runtime;
+        player.pause();
+        player._needsUpdate = false;
+
+        progress.textContent = '采样状态起点、中间和终点';
+        const samples = {};
+        samples.start = await canvasBitmapHash(canvas);
+        player.setBoolean('go', true);
+        runtime.update(0, true, 1);
+        runtime.update(0.25, true, 1);
+        player.pause(); player._needsUpdate = false;
+        await frames(4);
+        samples.middle = await canvasBitmapHash(canvas);
+        const middle = player.layerSnapshots[0];
+        assert(Math.abs(middle.transitionProgress - 0.5) < 1e-6, '中间帧 transition progress 为 0.5');
+        assert(runtime.liveActionCount === 2 && runtime.liveBindingCount === 3 && runtime.sideEffectOwnerCount === 2, '中间帧复用 binding/粒子实例并保留两个 action owner');
+        runtime.update(0.25, true, 1);
+        player.pause(); player._needsUpdate = false;
+        await frames(4);
+        samples.end = await canvasBitmapHash(canvas);
+        assert(new Set(Object.values(samples).map(sample => sample.hash)).size === 3, `起点/中间/终点像素必须不同：${JSON.stringify(samples)}`);
+        assert(Object.values(samples).every(sample => sample.painted > 200), '三个关键帧均有有效 WebGPU 像素');
+        assert(runtime.liveActionCount === 1 && runtime.liveBindingCount === 3 && runtime.sideEffectOwnerCount === 1, 'transition 完成后只保留目标 action/particle owner 和共享 binding');
+
+        progress.textContent = '快速 20 次 interruption：latest-wins';
+        for (let index = 0; index < 20; index++) {
+          player.setBoolean('go', index % 2 === 0);
+          runtime.update(0, true, 1);
+          player._needsUpdate = false;
+        }
+        runtime.update(0.5, true, 1);
+        player.pause(); player._needsUpdate = false;
+        const latest = player.layerSnapshots[0];
+        assert(latest.transitionId === null && latest.currentStateId === 'a', `最后一次 false 必须稳定回 A：${JSON.stringify(latest)}`);
+        assert(runtime.liveActionCount === 1 && runtime.liveBindingCount === 3 && runtime.sideEffectOwnerCount === 1, '快速 interruption 后 action/binding/side-effect owner 收敛');
+        const particle = runtime._visual._nodes[0].particles[0];
+        const beforeDestroy = {
+          actionCount: runtime.liveActionCount,
+          bindingCount: runtime.liveBindingCount,
+          sideEffectOwnerCount: runtime.sideEffectOwnerCount,
+          activeParticles: particle.activeParticles,
+          renderer: renderer.stats,
+          runtime: runtime.stats,
+        };
+        assert(beforeDestroy.runtime.particleCount === 1 && beforeDestroy.renderer.visualCount >= 2, '运行时统计覆盖 particle 与共享 visuals');
+
+        progress.textContent = '销毁 scene owner 并检查全部残留';
+        owner.destroy();
+        await frames(3);
+        const afterDestroy = {
+          actionCount: runtime.liveActionCount,
+          bindingCount: runtime.liveBindingCount,
+          sideEffectOwnerCount: runtime.sideEffectOwnerCount,
+          activeParticles: particle.activeParticles,
+          particlePlaying: particle.playing,
+          particleEmitting: particle.emitting,
+        };
+        assert(afterDestroy.actionCount === 0 && afterDestroy.bindingCount === 0 && afterDestroy.sideEffectOwnerCount === 0, 'destroy 后 action、binding 与 side-effect owner 为 0');
+        assert(afterDestroy.activeParticles === 0 && !afterDestroy.particlePlaying && !afterDestroy.particleEmitting, 'destroy 后 particle 停止且清空');
+        assert(runtime.diagnostics.length === 0, `运行时 channel diagnostic 必须为空：${JSON.stringify(runtime.diagnostics)}`);
+        const scopedError = await engine.device.popErrorScope();
+        if (scopedError) validationErrors.push(scopedError.message);
+        assert(validationErrors.length === 0, `GPU validation error 必须为 0：${validationErrors.join('; ')}`);
+        engine.stop();
+        engine.destroy();
+        engine = null;
+        const released = tracker.getDebugSnapshot();
+        assert(released.resources.length === 0 && released.releasedOwnerResiduals === 0, 'engine destroy 后 GPU owner/resource residual 为 0');
+
+        const payload = {
+          status: 'passed', samples, middleProgress: middle.transitionProgress,
+          rapidTransitions: 20, latestState: latest.currentStateId,
+          beforeDestroy, afterDestroy, released: {
+            resources: released.resources.length,
+            owners: released.owners.filter(owner => owner.resources > 0).length,
+            releasedOwnerResiduals: released.releasedOwnerResiduals,
+          },
+          gpuValidationErrors: validationErrors.length,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        try { engine?.destroy(); } catch { /* report original */ }
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error),
+        });
+        resultNode.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      } finally {
+        if (atlasUrl) URL.revokeObjectURL(atlasUrl);
+      }
+
+      function createDocument(resourceUri) {
+        const extension = {
+          clips: [{ id: 'a', start: 0, duration: 1 }, { id: 'b', start: 1, duration: 1 }],
+          stateMachine: {
+            format: 'haiyue-animation-state-machine@1', id: 'g08', name: 'G08',
+            parameters: [{ name: 'go', type: 'boolean', defaultValue: false }],
+            layers: [{
+              id: 'base', name: 'Base', initialStateId: 'a',
+              states: [
+                { id: 'a', name: 'A', motion: { kind: 'clip', clipId: 'a' }, loop: 'repeat' },
+                { id: 'b', name: 'B', motion: { kind: 'clip', clipId: 'b' }, loop: 'repeat' },
+              ],
+              transitions: [
+                { id: 'a-b', from: 'a', to: 'b', duration: 0.5, interruption: 'source-then-destination', conditions: [{ parameter: 'go', operator: 'is-true' }] },
+                { id: 'b-a', from: 'b', to: 'a', duration: 0.5, interruption: 'source-then-destination', conditions: [{ parameter: 'go', operator: 'is-false' }] },
+              ],
+            }],
+          },
+        };
+        return {
+          format: api.ANIMATION_FORMAT, version: api.ANIMATION_VERSION,
+          canvas: { width: 256, height: 256, coordinateSystem: 'screen-y-down' }, duration: 2, frameRate: 60,
+          resources: [{ id: 'atlas', type: 'image', uri: resourceUri, width: 2, height: 1 }],
+          nodes: [{
+            id: 'node', transform: { position: [0, 0] },
+            components: [
+              {
+                type: 'org.haiyue.vector-shape@1', commands: 'MLLZ', values: [48, 190, 208, 190, 128, 74],
+                morph: {
+                  times: [0, 1, 2], valueSize: 6, interpolation: 'linear',
+                  values: [48, 190, 208, 190, 128, 74, 30, 190, 226, 190, 128, 104, 78, 220, 178, 220, 128, 34],
+                },
+                fill: { kind: 'solid', color: [0.08, 0.72, 1, 1] },
+              },
+              {
+                type: 'sprite2d', resource: 'atlas', size: [72, 72], position: [128, 62],
+                uvRectTrack: { times: [0, 1, 2], valueSize: 4, interpolation: 'step', values: [0, 0, 0.5, 1, 0.5, 0, 0.5, 1, 0, 0, 0.5, 1] },
+              },
+              {
+                type: 'particle2d', maxParticles: 64, emissionRate: 20, burst: 4, seed: 8,
+                lifetime: [0.4, 0.8], speed: [20, 36], angle: [0, Math.PI * 2], gravity: [0, 10],
+                startSize: [5, 8], endSize: [0, 2], startColor: [1, 0.8, 0.2, 1], endColor: [1, 0.2, 0.05, 0],
+                shape: 'circle', shapeRadius: 12, radial: true,
+              },
+            ],
+          }],
+          extensionsUsed: [api.HYA_STATE_MACHINE_EXTENSION_ID, 'org.haiyue.vector-shape@1'],
+          extensionsRequired: [api.HYA_STATE_MACHINE_EXTENSION_ID],
+          extensions: { [api.HYA_STATE_MACHINE_EXTENSION_ID]: extension },
+        };
+      }
+
+      async function createAtlas() {
+        const atlas = document.createElement('canvas'); atlas.width = 2; atlas.height = 1;
+        const context = atlas.getContext('2d');
+        context.fillStyle = '#ff354f'; context.fillRect(0, 0, 1, 1);
+        context.fillStyle = '#38e58c'; context.fillRect(1, 0, 1, 1);
+        return new Promise((resolve, reject) => atlas.toBlob(blob => blob ? resolve(blob) : reject(new Error('atlas 编码失败')), 'image/png'));
+      }
+
+      async function canvasBitmapHash(source) {
+        const bitmap = await createImageBitmap(source);
+        const target = document.createElement('canvas'); target.width = source.width; target.height = source.height;
+        const context = target.getContext('2d', { willReadFrequently: true });
+        context.drawImage(bitmap, 0, 0); bitmap.close();
+        const data = context.getImageData(0, 0, target.width, target.height).data;
+        let hash = 0x811c9dc5; let painted = 0;
+        for (let offset = 0; offset < data.length; offset += 4) {
+          const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+          if (r > 24 || g > 28 || b > 44) painted++;
+          hash ^= r; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= g; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= b; hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return { hash: hash.toString(16).padStart(8, '0'), painted };
+      }
+
+      function frames(count) { return new Promise(resolve => { const next = () => count-- <= 0 ? resolve() : requestAnimationFrame(next); next(); }); }
+      function assert(condition, message) { if (!condition) throw new Error(message); }
+    </script>
+  </body>
+</html>

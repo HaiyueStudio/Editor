@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Voxel editor history smoke</title>
+  <style>
+    html, body, iframe { width: 100%; height: 100%; margin: 0; border: 0; }
+    #result { display: none; }
+  </style>
+</head>
+<body>
+  <iframe id="editor" src="../../index.html"></iframe>
+  <pre id="result"></pre>
+  <script type="module">
+    const result = document.querySelector('#result');
+    const editor = document.querySelector('#editor');
+    const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    const waitFor = async (read, label, timeout = 20_000) => {
+      const deadline = performance.now() + timeout;
+      while (performance.now() < deadline) {
+        const value = read();
+        if (value) return value;
+        await delay(50);
+      }
+      throw new Error(`Timed out waiting for ${label}.`);
+    };
+    const axisSignature = editorDocument => [...editorDocument.querySelectorAll('#camera-axis line')]
+      .map(line => `${line.getAttribute('x2')},${line.getAttribute('y2')}`)
+      .join('|');
+    const readStoredState = (targetWindow, key) => new Promise((resolve, reject) => {
+      const open = targetWindow.indexedDB.open('haiyue-voxel-editor', 1);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const request = open.result.transaction('state', 'readonly').objectStore('state').get(key);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result?.value ?? null);
+      };
+    });
+
+    try {
+      await new Promise((resolve, reject) => {
+        editor.addEventListener('load', resolve, { once: true });
+        editor.addEventListener('error', () => reject(new Error('Editor iframe failed to load.')), { once: true });
+      });
+      const editorWindow = editor.contentWindow;
+      const editorDocument = editor.contentDocument;
+      await waitFor(() => editorDocument.querySelector('#loading')?.classList.contains('hidden'), 'WebGPU editor startup');
+
+      const mirrorHelp = editorDocument.getElementById('mirror-help');
+      editor.focus();
+      editorWindow.focus();
+      mirrorHelp.querySelector('button').focus({ preventScroll: true });
+      if (editorDocument.activeElement !== mirrorHelp.querySelector('button')) {
+        throw new Error('Mirror help trigger did not receive keyboard focus.');
+      }
+      // Headless Chrome keeps the inner document's activeElement but does not
+      // consistently compose focusin across an offscreen iframe boundary.
+      // Dispatch the same composed event a keyboard focus transition produces
+      // so the component behavior remains the assertion target.
+      mirrorHelp.dispatchEvent(new editorWindow.FocusEvent('focusin', {
+        bubbles: true,
+        composed: true,
+      }));
+      await waitFor(() => mirrorHelp.shadowRoot.querySelector('.tooltip')?.classList.contains('visible'), 'mirror help tooltip');
+      if (!mirrorHelp.label.includes('镜像轴可以组合')) {
+        throw new Error('Mirror help tooltip is missing its localized explanation.');
+      }
+      mirrorHelp.querySelector('button').blur();
+
+      editorDocument.getElementById('editor-help').click();
+      const helpDialog = editorDocument.getElementById('editor-help-dialog');
+      await waitFor(() => helpDialog.open, 'editor help dialog');
+      if (!helpDialog.textContent.includes('Space + 左键拖动')) {
+        throw new Error('Editor help is missing viewport controls.');
+      }
+      editorDocument.getElementById('close-editor-help').click();
+      await waitFor(() => !helpDialog.open, 'closing editor help dialog');
+
+      editorDocument.getElementById('editor-settings').click();
+      const settingsDialog = editorDocument.getElementById('editor-settings-dialog');
+      await waitFor(() => settingsDialog.open, 'editor settings dialog');
+      const language = editorDocument.getElementById('editor-language');
+      language.value = 'en-US';
+      language.dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      await waitFor(
+        () => editorDocument.querySelector('[data-i18n="paint.replaceTitle"]')?.textContent === 'Replace Color',
+        'English editor locale',
+      );
+      if (!mirrorHelp.label.includes('mirror axes can be combined')) {
+        throw new Error('Mirror help tooltip did not switch to English.');
+      }
+      if (editorWindow.localStorage.getItem('haiyue.voxel-editor.locale') !== 'en-US') {
+        throw new Error('Editor locale was not persisted.');
+      }
+      language.value = 'zh-CN';
+      language.dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      await waitFor(
+        () => editorDocument.querySelector('[data-i18n="paint.replaceTitle"]')?.textContent === '替换颜色',
+        'Chinese editor locale',
+      );
+      editorDocument.getElementById('close-editor-settings').click();
+      await waitFor(() => !settingsDialog.open, 'closing editor settings dialog');
+
+      for (const id of ['shape-min-x', 'shape-min-y', 'shape-min-z', 'shape-max-x', 'shape-max-y', 'shape-max-z']) {
+        editorDocument.getElementById(id).value = '0';
+      }
+      editorDocument.getElementById('generate-shape').click();
+      await waitFor(() => editorDocument.getElementById('voxel-count').textContent === '1', 'shape creation');
+      await waitFor(() => !editorDocument.getElementById('project-unsaved').hidden, 'unsaved project marker');
+      await delay(1100);
+      const recovery = await readStoredState(editorWindow, 'recovery');
+      if (!recovery?.dirty || recovery.project.voxels.length !== 1) {
+        throw new Error('IndexedDB recovery snapshot did not capture the edited project.');
+      }
+      editorWindow.dispatchEvent(new editorWindow.KeyboardEvent('keydown', {
+        key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+      await waitFor(() => editorDocument.getElementById('project-unsaved').hidden, 'Ctrl+S saved marker');
+      const currentProject = await readStoredState(editorWindow, 'current-project');
+      if (currentProject?.dirty || currentProject?.project.voxels.length !== 1) {
+        throw new Error('Ctrl+S did not save the current project to IndexedDB.');
+      }
+      if (!editorDocument.getElementById('recent-projects-menu').items?.length) {
+        throw new Error('Saved project was not added to the recent-project menu.');
+      }
+
+      const canvas = editorDocument.getElementById('viewport');
+      canvas.setPointerCapture = () => {};
+      canvas.releasePointerCapture = () => {};
+      const initialAxis = axisSignature(editorDocument);
+      editorDocument.getElementById('camera-orbit').click();
+      canvas.dispatchEvent(new editorWindow.PointerEvent('pointerdown', {
+        pointerId: 11, pointerType: 'mouse', button: 0, buttons: 1, clientX: 400, clientY: 300,
+      }));
+      canvas.dispatchEvent(new editorWindow.PointerEvent('pointermove', {
+        pointerId: 11, pointerType: 'mouse', button: 0, buttons: 1, clientX: 520, clientY: 240,
+      }));
+      canvas.dispatchEvent(new editorWindow.PointerEvent('pointerup', {
+        pointerId: 11, pointerType: 'mouse', button: 0, buttons: 0, clientX: 520, clientY: 240,
+      }));
+      const rotatedAxis = await waitFor(() => {
+        const signature = axisSignature(editorDocument);
+        return signature !== initialAxis ? signature : '';
+      }, 'camera-axis rotation');
+
+      editorDocument.getElementById('undo-command').click();
+      await waitFor(() => editorDocument.getElementById('voxel-count').textContent === '0', 'voxel undo');
+      await delay(100);
+      const axisAfterUndo = axisSignature(editorDocument);
+      if (axisAfterUndo !== rotatedAxis) throw new Error('Undo reset or changed the camera orientation.');
+
+      editorDocument.querySelector('[data-camera-view="top"]').click();
+      await waitFor(() => editorDocument.getElementById('projection-label').textContent.includes('顶视图'), 'top preset view');
+      const sliceY = editorDocument.getElementById('slice-y');
+      sliceY.value = '3';
+      sliceY.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+      const sliceMode = editorDocument.getElementById('slice-mode');
+      sliceMode.value = 'single';
+      sliceMode.dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      const workPlane = editorDocument.getElementById('work-plane-enabled');
+      workPlane.checked = true;
+      workPlane.dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      editorDocument.getElementById('frame-all').click();
+      await delay(100);
+      if (editorDocument.getElementById('slice-y-value').value !== '3') {
+        throw new Error('Slice slider did not update the active work-plane coordinate.');
+      }
+
+      for (const id of ['mirror-x', 'mirror-y', 'mirror-z', 'replace-source-color', 'replace-color-scope', 'replace-color']) {
+        if (!editorDocument.getElementById(id)) throw new Error(`Missing paint control #${id}.`);
+      }
+      for (const id of [
+        'box-selection-mode', 'selection-gizmo-mode', 'selection-snap',
+        'selection-pivot-mode', 'selection-pivot-x', 'selection-pivot-y', 'selection-pivot-z',
+      ]) {
+        if (!editorDocument.getElementById(id)) throw new Error(`Missing selection transform control #${id}.`);
+      }
+      for (const id of [
+        'module-search', 'module-sort', 'module-assets', 'rename-module', 'duplicate-module',
+        'remove-unused-module', 'locate-module-instances', 'assign-selection-layer',
+        'module-conflict-details', 'highlight-module-conflicts',
+      ]) {
+        if (!editorDocument.getElementById(id)) throw new Error(`Missing module asset control #${id}.`);
+      }
+      for (const id of [
+        'duplicate-animation', 'animation-range-start', 'animation-range-end', 'animation-timeline',
+        'onion-previous', 'onion-next', 'copy-animation-keyframes', 'paste-animation-keyframes',
+        'select-current-keyframe', 'animation-keyframe-status',
+      ]) {
+        if (!editorDocument.getElementById(id)) throw new Error(`Missing animation timeline control #${id}.`);
+      }
+      editorDocument.getElementById('work-plane-enabled').checked = false;
+      editorDocument.getElementById('slice-mode').value = 'all';
+      editorDocument.getElementById('slice-mode').dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      editorDocument.getElementById('generate-shape').click();
+      await waitFor(() => editorDocument.getElementById('voxel-count').textContent === '1', 'replacement source voxel');
+      const colorInput = editorDocument.getElementById('color-input');
+      colorInput.value = '#f26b5e';
+      colorInput.dispatchEvent(new editorWindow.Event('change', { bubbles: true }));
+      editorDocument.getElementById('replace-source-color').value = '#69d2e7';
+      editorDocument.getElementById('replace-color').click();
+      await waitFor(() => editorDocument.getElementById('undo-command').title.includes('全局替换颜色'), 'replace-color command');
+
+      const promptAnswers = ['Smoke Module', '2,2,2', 'Smoke Animation'];
+      const originalPrompt = editorWindow.prompt;
+      editorWindow.prompt = () => promptAnswers.shift() ?? null;
+      editorDocument.getElementById('new-module').click();
+      await waitFor(() => editorDocument.getElementById('edit-context').textContent.includes('Smoke Module'), 'module creation');
+      editorDocument.getElementById('generate-shape').click();
+      editorDocument.getElementById('edit-scene').click();
+      editorDocument.getElementById('paste-module').click();
+      editorDocument.getElementById('new-animation').click();
+      await waitFor(() => editorDocument.getElementById('animation-library').value, 'new animation selection');
+      editorDocument.getElementById('set-animation-keyframe').click();
+      await waitFor(() => editorDocument.querySelectorAll('.timeline-keyframe').length === 1, 'first timeline keyframe');
+      await waitFor(() => editorDocument.getElementById('animation-keyframe-status').classList.contains('saved'), 'saved keyframe status');
+      const animationFrame = editorDocument.getElementById('animation-frame');
+      animationFrame.value = '1';
+      animationFrame.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+      editorDocument.getElementById('module-pos-x').value = '2';
+      editorDocument.getElementById('set-animation-keyframe').click();
+      await waitFor(() => editorDocument.querySelectorAll('.timeline-keyframe').length === 2, 'second timeline keyframe');
+      editorDocument.getElementById('animation-range-start').value = '1';
+      editorDocument.getElementById('animation-range-end').value = '2';
+      editorDocument.getElementById('save-animation-settings').click();
+      editorDocument.getElementById('onion-previous').click();
+      editorDocument.getElementById('onion-next').click();
+      editorWindow.prompt = originalPrompt;
+
+      editorWindow.dispatchEvent(new editorWindow.KeyboardEvent('keydown', {
+        key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+      await waitFor(() => editorDocument.getElementById('project-unsaved').hidden, 'second project save');
+      const droppedProject = {
+        format: 'haiyue-voxel', version: 1,
+        size: { x: 8, y: 8, z: 8 },
+        editor: { currentColor: '#69d2e7' },
+        voxels: [{ x: 1, y: 1, z: 1, color: '#69d2e7' }],
+      };
+      const transfer = new editorWindow.DataTransfer();
+      transfer.items.add(new editorWindow.File(
+        [JSON.stringify(droppedProject)], 'dropped-project.json', { type: 'application/json' },
+      ));
+      editorWindow.dispatchEvent(new editorWindow.DragEvent('dragenter', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+      if (!editorDocument.getElementById('drop-import-overlay').classList.contains('visible')) {
+        throw new Error('File drag did not show the import overlay.');
+      }
+      editorWindow.dispatchEvent(new editorWindow.DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+      await waitFor(() => editorDocument.getElementById('project-name').textContent === 'dropped-project', 'dropped JSON project import');
+      if (editorDocument.getElementById('drop-import-overlay').classList.contains('visible')) {
+        throw new Error('File drop did not hide the import overlay.');
+      }
+      editorDocument.getElementById('generate-shape').click();
+      await waitFor(() => !editorDocument.getElementById('project-unsaved').hidden, 'dirty marker after dropped project edit');
+      const unload = new editorWindow.Event('beforeunload', { cancelable: true });
+      editorWindow.dispatchEvent(unload);
+      if (!unload.defaultPrevented) throw new Error('Unsaved project did not install beforeunload protection.');
+
+      result.textContent = JSON.stringify({
+        fixture: 'voxel-editor-history-smoke',
+        voxelCount: Number(editorDocument.getElementById('voxel-count').textContent),
+        cameraPreserved: true,
+        viewportTools: true,
+        paintTools: true,
+        helpDialog: true,
+        inlineHelp: true,
+        localization: true,
+        visualTimeline: true,
+        autosave: true,
+        dropImport: true,
+        unloadProtected: true,
+      });
+      result.dataset.status = 'passed';
+    } catch (error) {
+      result.textContent = JSON.stringify({
+        fixture: 'voxel-editor-history-smoke',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      result.dataset.status = 'failed';
+    }
+  </script>
+</body>
+</html>

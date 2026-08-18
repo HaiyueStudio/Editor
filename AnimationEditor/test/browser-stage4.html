@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Animation Editor stage-9 browser fixture</title>
+  </head>
+  <body>
+    <div id="progress">Starting Animation Editor</div>
+    <pre id="result"></pre>
+    <script type="module">
+      const result = document.querySelector('#result');
+      const progress = document.querySelector('#progress');
+      const frame = document.createElement('iframe');
+      frame.src = '/AnimationEditor/';
+      frame.style.cssText = 'position:fixed;left:-2000px;top:0;width:1440px;height:1000px;border:0';
+      document.body.append(frame);
+
+      try {
+        await waitFor(() => frame.contentDocument?.querySelector('#add-node'), 'editor shell');
+        const document = frame.contentDocument;
+        const editorWindow = frame.contentWindow;
+        const tree = document.querySelector('#hierarchy-tree');
+        let spritesheetGenerated = false;
+        await waitFor(() => editorWindow.customElements.get('ge-dialog')
+          && document.querySelector('#gpu-status')?.textContent !== '检测中', 'editor initialization');
+        if (document.documentElement.lang !== 'zh-CN'
+          || document.querySelector('#new-project').getAttribute('aria-label') !== '新建工程') {
+          throw new Error('Animation Editor did not start in Chinese.');
+        }
+        document.querySelector('#editor-settings').click();
+        await waitFor(() => document.querySelector('#editor-settings-dialog').open, 'settings dialog');
+        const language = document.querySelector('#editor-language');
+        language.value = 'en-US';
+        language.dispatchEvent(new Event('change', { bubbles: true }));
+        await waitFor(() => document.documentElement.lang === 'en-US'
+          && document.querySelector('#new-project').getAttribute('aria-label') === 'New project'
+          && document.querySelector('.assets-panel h2').textContent === 'Assets', 'English localization');
+        language.value = 'zh-CN';
+        language.dispatchEvent(new Event('change', { bubbles: true }));
+        await waitFor(() => document.documentElement.lang === 'zh-CN'
+          && document.querySelector('#new-project').getAttribute('aria-label') === '新建工程'
+          && document.querySelector('.assets-panel h2').textContent === '资源', 'Chinese localization');
+        document.querySelector('#close-editor-settings').click();
+        progress.textContent = 'Waiting for initial HYA compilation';
+        await waitFor(() => document.querySelector('#preview-title')?.textContent !== '正在准备 HYA Runtime', 'initial compilation');
+
+        const compositionDuration = document.querySelector('ge-input[aria-label="总时长（秒）"]');
+        if (!compositionDuration || compositionDuration.value !== '1') {
+          throw new Error('Missing composition duration editor.');
+        }
+        compositionDuration.dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '2', valueAsNumber: 2, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="总时长（秒）"]')?.value === '2', 'composition duration edit');
+        await waitFor(() => [...document.querySelectorAll('#timeline-ruler .ruler-label')]
+          .some(candidate => candidate.textContent === '2s'), 'timeline duration update');
+
+        document.querySelector('#add-node-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: 'rectangle' }, bubbles: true,
+        }));
+        progress.textContent = 'Waiting for rectangle runtime preview';
+        await waitFor(() => {
+          const title = document.querySelector('#preview-title')?.textContent ?? '';
+          const stats = document.querySelector('#preview-stats')?.textContent ?? '';
+          return title === 'HYA Runtime 已连接' && /1 visuals/.test(stats);
+        }, 'rectangle preview', 30_000);
+
+        await waitFor(() => document.querySelector('ge-input[aria-label="位置 X"]'), 'editable transform inspector');
+        document.querySelector('ge-input[aria-label="位置 X"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '120', valueAsNumber: 120, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="位置 X"]')?.value === '120', 'transform edit');
+
+        document.querySelector('#add-track-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: 'position' }, bubbles: true,
+        }));
+        progress.textContent = 'Waiting for position track';
+        await waitFor(() => document.querySelectorAll('#track-list .track-select').length === 1, 'position track');
+        await waitFor(() => /1 tracks/.test(document.querySelector('#preview-stats')?.textContent ?? ''), 'animated runtime');
+
+        const timelineSurface = document.querySelector('#timeline-lanes .timeline-lanes-surface');
+        const timelineBounds = timelineSurface.getBoundingClientRect();
+        timelineSurface.dispatchEvent(new editorWindow.MouseEvent('dblclick', {
+          bubbles: true,
+          clientX: timelineBounds.right - 1,
+          clientY: timelineBounds.top + 44,
+        }));
+        await waitFor(() => document.querySelectorAll('#timeline-lanes .keyframe-dot').length === 2, 'double-click keyframe insertion');
+        const updatedTimelineSurfaceBounds = document.querySelector('#timeline-lanes .timeline-lanes-surface').getBoundingClientRect();
+        const endKeyframeBounds = document.querySelectorAll('#timeline-lanes .keyframe-dot')[1].getBoundingClientRect();
+        if (updatedTimelineSurfaceBounds.right - endKeyframeBounds.right < 20) {
+          throw new Error('Timeline end keyframe does not have a visible right gutter.');
+        }
+        const rulerLabelStyle = editorWindow.getComputedStyle(document.querySelector('#timeline-ruler .ruler-label'));
+        if (rulerLabelStyle.userSelect !== 'none' && rulerLabelStyle.webkitUserSelect !== 'none') {
+          throw new Error(`Timeline ruler labels are still selectable: ${rulerLabelStyle.userSelect}/${rulerLabelStyle.webkitUserSelect}`);
+        }
+        await waitFor(() => document.querySelector('ge-input[aria-label="X"]'), 'keyframe inspector');
+        document.querySelector('ge-input[aria-label="X"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '280', valueAsNumber: 280, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="X"]')?.value === '280', 'keyframe value edit');
+        document.querySelectorAll('#timeline-lanes .keyframe-dot')[0].click();
+        await waitFor(() => document.querySelector('ge-input[aria-label="时间（秒）"]')?.value === '0', 'first keyframe selection');
+        const interpolation = [...document.querySelectorAll('ge-select')].find(candidate => candidate.label === '插值');
+        if (!interpolation) throw new Error('Missing keyframe interpolation editor.');
+        if (interpolation.options.map(option => option.value).join(',') !== 'step,linear,cubic-bezier') {
+          throw new Error(`Missing keyframe interpolation options: ${JSON.stringify(interpolation.options)}`);
+        }
+        interpolation.dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: 'cubic-bezier' }, bubbles: true,
+        }));
+        await waitFor(() => [...document.querySelectorAll('ge-input')].some(candidate => candidate.getAttribute('aria-label') === 'X1'), 'cubic easing inspector');
+
+        tree.selectedIds = [];
+        tree.dispatchEvent(new CustomEvent('selection-change', { detail: { selectedIds: [] }, bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        document.querySelector('#add-node-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: 'vector' }, bubbles: true,
+        }));
+        progress.textContent = 'Waiting for advanced vector runtime preview';
+        await waitFor(() => tree.data.some(item => item.id === 'vector'), 'vector hierarchy');
+        await waitFor(() => /2 (?:nodes|个节点)/u.test(document.querySelector('#preview-detail')?.textContent ?? ''), 'vector preview', 30_000);
+        const addBlur = [...document.querySelectorAll('#inspector-content button')]
+          .find(candidate => candidate.textContent === '＋ 模糊');
+        if (!addBlur) throw new Error('Missing advanced effect authoring controls.');
+        addBlur.click();
+        await waitFor(() => [...document.querySelectorAll('#inspector-content h3')]
+          .some(candidate => candidate.textContent === '模糊'), 'blur inspector');
+        const blurTrackItem = document.querySelector('#add-track-menu').items
+          .find(candidate => candidate.label === 'Blur · Radius');
+        if (!blurTrackItem) throw new Error('Missing typed blur track binding.');
+        document.querySelector('#add-track-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: blurTrackItem.value }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelectorAll('#track-list .track-select').length === 2, 'inline blur track');
+        await waitFor(() => document.querySelector('#preview-title')?.textContent === 'HYA Runtime 已连接', 'advanced binary round trip', 30_000);
+        const deleteAdvancedTrack = [...document.querySelectorAll('#inspector-content button')]
+          .find(candidate => candidate.textContent === '删除轨道');
+        if (!deleteAdvancedTrack) throw new Error('Missing advanced track deletion control.');
+        deleteAdvancedTrack.click();
+        await waitFor(() => document.querySelectorAll('#track-list .track-select').length === 1, 'advanced track cleanup');
+        tree.selectedIds = ['vector'];
+        if (!tree.deleteSelection()) throw new Error('Shared tree did not delete the advanced vector fixture.');
+        await waitFor(() => /1 (?:nodes|个节点)/u.test(document.querySelector('#preview-detail')?.textContent ?? ''), 'advanced fixture cleanup', 30_000);
+
+        document.querySelector('#add-clip').click();
+        await waitFor(() => document.querySelectorAll('#timeline-lanes .timeline-clip').length === 1, 'named clip');
+        document.querySelector('ge-input[aria-label="开始"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '0', valueAsNumber: 0, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="开始"]')?.value === '0', 'clip start edit');
+        document.querySelector('ge-input[aria-label="时长"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '1', valueAsNumber: 1, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="时长"]')?.value === '1', 'clip duration edit');
+
+        document.querySelector('#authoring-tabs').dispatchEvent(new CustomEvent('tab-change', {
+          detail: { value: 'state-machine' }, bubbles: true,
+        }));
+        document.querySelector('#create-state-machine').click();
+        progress.textContent = 'Waiting for state-machine runtime';
+        await waitFor(() => document.querySelectorAll('#state-graph .state-node').length === 1, 'initial state graph');
+        await waitFor(() => !document.querySelector('#reset-state-runtime').disabled, 'state-machine runtime', 30_000);
+
+        document.querySelector('#add-parameter-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: 'boolean' }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelectorAll('#parameter-list .state-parameter-row').length === 1, 'boolean parameter');
+        document.querySelector('#inspector-content ge-input[aria-label="名称"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: 'moving', valueAsNumber: null, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('#parameter-list .state-parameter-row strong')?.textContent === 'moving', 'parameter rename');
+        document.querySelector('#add-state').click();
+        await waitFor(() => document.querySelectorAll('#state-graph .state-node').length === 2, 'second state');
+
+        document.querySelectorAll('#state-graph .state-node')[0].click();
+        document.querySelectorAll('#state-graph .state-node')[1].dispatchEvent(new MouseEvent('click', {
+          bubbles: true, shiftKey: true,
+        }));
+        await waitFor(() => !document.querySelector('#add-transition').disabled, 'two selected states');
+        document.querySelector('#add-transition').click();
+        await waitFor(() => document.querySelectorAll('#state-transition-layer .state-transition').length === 1, 'state transition');
+        const addCondition = [...document.querySelectorAll('#inspector-content button')]
+          .find(candidate => candidate.textContent === '添加条件');
+        if (!addCondition) throw new Error('Missing transition condition control.');
+        addCondition.click();
+        await waitFor(() => [...document.querySelectorAll('#inspector-content ge-select')]
+          .some(candidate => candidate.label === '参数'), 'transition condition');
+        const exitTime = [...document.querySelectorAll('#inspector-content ge-checkbox')]
+          .find(candidate => candidate.label === '使用退出时间');
+        if (!exitTime) throw new Error('Missing transition exit-time control.');
+        const previousStateMachineDetail = document.querySelector('#preview-detail').textContent;
+        exitTime.dispatchEvent(new CustomEvent('checked-change', {
+          detail: { checked: false }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('#preview-title')?.textContent === 'HYA Runtime 已连接'
+          && document.querySelector('#preview-detail')?.textContent !== previousStateMachineDetail,
+        'updated state-machine runtime', 30_000);
+        const runtimeBoolean = document.querySelector('#parameter-list ge-checkbox');
+        runtimeBoolean.dispatchEvent(new CustomEvent('checked-change', {
+          detail: { checked: true }, bubbles: true,
+        }));
+        await waitFor(() => /moving = true/.test(document.querySelector('#status-message')?.textContent ?? ''), 'runtime parameter update');
+        if (document.querySelector('#toggle-play').getAttribute('aria-pressed') !== 'true') {
+          document.querySelector('#toggle-play').click();
+        }
+        await waitFor(() => document.querySelector('#state-graph .state-node.runtime-active strong')?.textContent === 'State 2', 'parameter-driven transition', 30_000);
+
+        const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+I9nqAAAAAElFTkSuQmCC';
+        const pngBytes = Uint8Array.from(atob(pngBase64), character => character.charCodeAt(0));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([pngBytes], 'pixel.png', { type: 'image/png' }));
+        const assetInput = document.querySelector('#asset-file-input');
+        assetInput.files = transfer.files;
+        assetInput.dispatchEvent(new Event('change', { bubbles: true }));
+        progress.textContent = 'Waiting for imported image asset';
+        await waitFor(() => document.querySelectorAll('#asset-list .asset-item').length === 1, 'image asset import');
+
+        document.querySelector('#add-node-menu').dispatchEvent(new CustomEvent('item-select', {
+          detail: { value: 'sprite' }, bubbles: true,
+        }));
+        progress.textContent = 'Waiting for sprite runtime preview';
+        await waitFor(() => {
+          const title = document.querySelector('#preview-title')?.textContent ?? '';
+          const stats = document.querySelector('#preview-stats')?.textContent ?? '';
+          return title === 'HYA Runtime 已连接' && /2 visuals/.test(stats);
+        }, 'sprite preview', 30_000);
+
+        document.querySelector('ge-input[aria-label="图集列数"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '2', valueAsNumber: 2, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelector('ge-input[aria-label="图集列数"]')?.value === '2', 'spritesheet columns');
+        document.querySelector('ge-input[aria-label="图集行数"]').dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '2', valueAsNumber: 2, valid: true }, bubbles: true,
+        }));
+        await waitFor(() => document.querySelectorAll('.sprite-sheet-cell').length === 4, 'spritesheet grid');
+        document.querySelector('.sprite-sheet-cell[data-frame="3"]').click();
+        await waitFor(() => document.querySelector('.sprite-sheet-cell[data-frame="3"].selected'), 'spritesheet frame selection');
+        const generateSpritesheet = [...document.querySelectorAll('#inspector-content button')]
+          .find(candidate => candidate.textContent === '生成整张图集动画');
+        if (!generateSpritesheet) throw new Error('Missing spritesheet animation action.');
+        generateSpritesheet.click();
+        await waitFor(() => document.querySelectorAll('#track-list .track-select').length === 2, 'spritesheet UV track');
+        spritesheetGenerated = true;
+        document.querySelector('#undo-command').click();
+        await waitFor(() => document.querySelectorAll('#track-list .track-select').length === 1, 'spritesheet generation undo');
+
+        tree.selectedIds = ['sprite'];
+        if (!tree.deleteSelection()) throw new Error('Shared tree did not delete the selected sprite.');
+        await waitFor(() => /1 visuals/.test(document.querySelector('#preview-stats')?.textContent ?? ''), 'tree deletion');
+        document.querySelector('#undo-command').click();
+        await waitFor(() => /2 visuals/.test(document.querySelector('#preview-stats')?.textContent ?? ''), 'tree deletion undo');
+
+        tree.selectedIds = ['rectangle'];
+        if (!tree.copySelection()) throw new Error('Shared tree did not copy the rectangle.');
+        tree.selectedIds = [];
+        if (!tree.pasteClipboard()) throw new Error('Shared tree did not paste the rectangle.');
+        await waitFor(() => /3 visuals/.test(document.querySelector('#preview-stats')?.textContent ?? ''), 'tree copy and paste');
+        await waitFor(() => document.querySelector('#state-graph .state-node.runtime-active strong')?.textContent === 'State 2', 'restored runtime parameter state', 30_000);
+
+        document.querySelector('#export-package').click();
+        progress.textContent = 'Waiting for deterministic delivery package';
+        await waitFor(() => /已导出 .*\.hya-package\.zip.*1 bundled/u.test(
+          document.querySelector('#status-message')?.textContent ?? '',
+        ), 'delivery package export', 30_000);
+
+        const workspaceRows = document.querySelector('#workspace-rows');
+        const previousRatio = workspaceRows.ratio;
+        workspaceRows.shadowRoot.querySelector('[role="separator"]').dispatchEvent(new editorWindow.KeyboardEvent('keydown', {
+          key: 'ArrowUp', bubbles: true,
+        }));
+        await waitFor(() => workspaceRows.ratio < previousRatio, 'keyboard split resize');
+        const timelineColumns = document.querySelector('#timeline-columns');
+        const previousTimelineRatio = timelineColumns.ratio;
+        const savedWorkspaceRatio = workspaceRows.ratio;
+        timelineColumns.shadowRoot.querySelector('[role="separator"]').dispatchEvent(new editorWindow.KeyboardEvent('keydown', {
+          key: 'ArrowLeft', bubbles: true,
+        }));
+        await waitFor(() => timelineColumns.ratio < previousTimelineRatio, 'nested split resize');
+        const savedSplitLayout = JSON.parse(editorWindow.localStorage.getItem('haiyue-animation-editor:split-layout@1') ?? '{}');
+
+        const exportButton = document.querySelector('#export-hya');
+        const exportPackageButton = document.querySelector('#export-package');
+        const canvas = document.querySelector('#preview-canvas');
+        const payload = {
+          previewTitle: document.querySelector('#preview-title').textContent,
+          locale: document.documentElement.lang,
+          runtimeTarget: document.querySelector('#runtime-target').textContent,
+          previewStats: document.querySelector('#preview-stats').textContent,
+          exportEnabled: !exportButton.hasAttribute('disabled'),
+          packageExportEnabled: !exportPackageButton.hasAttribute('disabled'),
+          packageExported: /\.hya-package\.zip/u.test(document.querySelector('#status-message').textContent),
+          compositionDurationUpdated: [...document.querySelectorAll('#timeline-ruler .ruler-label')]
+            .some(candidate => candidate.textContent === '2s'),
+          spritesheetGenerated,
+          splitCount: document.querySelectorAll('ge-split[data-layout-key]').length,
+          splitLayoutSaved: savedSplitLayout.workspaceRows === savedWorkspaceRatio
+            && savedSplitLayout.timelineColumns === timelineColumns.ratio,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          webgpu: 'gpu' in editorWindow.navigator,
+          assetCount: document.querySelectorAll('#asset-list .asset-item').length,
+          hierarchyCount: tree.data.length,
+          sharedInputRegistered: Boolean(editorWindow.customElements.get('ge-input')),
+          timelineTrackCount: document.querySelectorAll('#track-list .track-select').length,
+          keyframeCount: document.querySelectorAll('#timeline-lanes .keyframe-dot').length,
+          clipCount: document.querySelectorAll('#timeline-lanes .timeline-clip').length,
+          parameterCount: document.querySelectorAll('#parameter-list .state-parameter-row').length,
+          stateCount: document.querySelectorAll('#state-graph .state-node').length,
+          transitionCount: document.querySelectorAll('#state-transition-layer .state-transition').length,
+          activeState: document.querySelector('#state-graph .state-node.runtime-active strong')?.textContent ?? '',
+        };
+        if (!payload.exportEnabled || !payload.packageExportEnabled || !payload.packageExported
+          || !payload.compositionDurationUpdated || !payload.spritesheetGenerated
+          || payload.splitCount !== 6 || !payload.splitLayoutSaved
+          || payload.locale !== 'zh-CN' || !payload.webgpu || !payload.sharedInputRegistered
+          || payload.assetCount !== 1 || payload.hierarchyCount !== 3
+          || payload.timelineTrackCount !== 1 || payload.keyframeCount !== 2 || payload.clipCount !== 1
+          || payload.parameterCount !== 1 || payload.stateCount !== 2 || payload.transitionCount !== 1
+          || payload.activeState !== 'State 2'
+          || payload.canvasWidth <= 0 || payload.canvasHeight <= 0) {
+          throw new Error(`Invalid stage-9 state: ${JSON.stringify(payload)}`);
+        }
+        result.textContent = JSON.stringify(payload);
+        result.dataset.status = 'passed';
+      } catch (error) {
+        result.textContent = JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+          previewTitle: frame.contentDocument?.querySelector('#preview-title')?.textContent ?? '',
+          previewDetail: frame.contentDocument?.querySelector('#preview-detail')?.textContent ?? '',
+          previewStats: frame.contentDocument?.querySelector('#preview-stats')?.textContent ?? '',
+          statusMessage: frame.contentDocument?.querySelector('#status-message')?.textContent ?? '',
+          errorMessage: frame.contentDocument?.querySelector('#error-message')?.textContent ?? '',
+        });
+        result.dataset.status = 'failed';
+      }
+
+      async function waitFor(read, label, timeoutMs = 20_000) {
+        const deadline = performance.now() + timeoutMs;
+        while (performance.now() < deadline) {
+          const value = read();
+          if (value) return value;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        throw new Error(`Timed out waiting for ${label}.`);
+      }
+    </script>
+  </body>
+</html>

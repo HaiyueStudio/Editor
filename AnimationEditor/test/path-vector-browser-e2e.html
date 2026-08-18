@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G04 Path / Vector browser fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.4 system-ui, sans-serif; background: #090d14; color: #d7dde8; }
+      body { margin: 0; padding: 18px; }
+      main { display: grid; grid-template-columns: 340px 340px; gap: 16px; align-items: start; }
+      h1, #progress, #result { grid-column: 1 / -1; }
+      h1 { margin: 0; font-size: 18px; }
+      section { padding: 10px; border: 1px solid #293142; border-radius: 8px; background: #0e141f; }
+      h2 { margin: 0 0 8px; font-size: 13px; color: #aab6ca; }
+      canvas { display: block; width: 320px; height: 280px; border: 1px solid #364159; border-radius: 4px; }
+      #motion { height: 130px; }
+      #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="failed"] { color: #ff7b86; }
+      [data-status="passed"] { color: #73dc9d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G04 Path / Vector 路径、Morph、Motion Path 与 WebGPU</h1>
+      <section><h2>路径与矢量画布</h2><canvas id="path" width="320" height="280"></canvas></section>
+      <section><h2>编译后 HYA WebGPU 预览</h2><canvas id="runtime" width="320" height="280"></canvas></section>
+      <section><h2>Position Motion Path</h2><canvas id="motion" width="320" height="130"></canvas></section>
+      <div id="progress">正在加载 G04 模块…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.path-vector-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G04 浏览器测试 bundle。');
+      }
+      const domain = await import(`./${bundleDirectory}/path-domain.js`);
+      const { PathVectorCanvasAdapter, PathMotionCanvasAdapter } = await import(`./${bundleDirectory}/path-adapters.js`);
+      const { AnimationEditorRuntimePreview } = await import(`./${bundleDirectory}/runtime-preview.js`);
+      const {
+        availableAdvancedPropertyBindings,
+        cloneAnimationEditorProject,
+        compileAnimationEditorProject,
+        createAdvancedPropertyTrack,
+        createBasicAnimationNode,
+        createCoreTransformTrack,
+        createEmptyAnimationEditorProject,
+        createTimelineKeyframe,
+        parseAnimationEditorProject,
+        serializeAnimationEditorProject,
+      } = await import('../dist-test/testing.js');
+
+      const pathCanvas = document.querySelector('#path');
+      const motionCanvas = document.querySelector('#motion');
+      const runtimeCanvas = document.querySelector('#runtime');
+      const progress = document.querySelector('#progress');
+      const resultNode = document.querySelector('#result');
+      const gpuErrors = [];
+      const runtime = new AnimationEditorRuntimePreview(runtimeCanvas, { onError: error => gpuErrors.push(String(error)) });
+      const adapters = [];
+
+      try {
+        assert(runtime.supported, '浏览器必须提供 WebGPU');
+        let project = cloneAnimationEditorProject(createEmptyAnimationEditorProject({
+          width: 320, height: 280, duration: 1, frameRate: 30, name: 'G04 Path Vector',
+        }));
+        const node = createBasicAnimationNode(project, 'vector');
+        let initial = domain.createAuthoringPath('browser-path', [-120, 80]);
+        initial = domain.appendPathCommand(initial, { kind: 'L', end: [0, -100] });
+        const component = domain.createAuthoredPathComponent('browser-vector', initial, {
+          fill: null,
+          stroke: {
+            color: [1, 0.72, 0.12, 1], width: 8, opacity: 1,
+            lineCap: 'round', lineJoin: 'round', miterLimit: 4, dash: [18, 8], dashOffset: 0,
+          },
+        });
+        node.components = [component]; project.nodes.push(node);
+
+        let commits = 0;
+        let previews = 0;
+        let exactCompiles = 0;
+        let exactCompilation = null;
+        const vector = new PathVectorCanvasAdapter(pathCanvas, {
+          project: () => project,
+          nodeId: node.id,
+          componentId: component.id,
+          cache: { maxEntries: 8, maxFlattenedPoints: 4096 },
+          onPreview: () => { previews++; },
+          onCommit: next => { project = next; commits++; },
+          onExactPreviewRequested: () => { exactCompilation = compileAnimationEditorProject(project); exactCompiles++; },
+        });
+        adapters.push(vector);
+        vector.setView({ zoom: 1, pan: [160, 140] });
+        assert(pathCanvas.getAttribute('role') === 'application' && pathCanvas.tabIndex === 0, 'Path 画布支持键盘与 ARIA');
+
+        progress.textContent = '用 Pen 指针完成路径并关闭轮廓';
+        vector.setTool('pen'); vector.setPenCommand('L');
+        pointer(pathCanvas, 'pointerdown', 260, 220, 1);
+        vector.closePath();
+        assert(domain.serializeAuthoringPath(domain.readProjectAuthoringPath(project, node.id, component.id)).commands === 'MLLZ', '指针新增 L 并关闭为 Z');
+        assert(commits === 2 && exactCompiles === 2, '每个 Pen/Close 操作只提交一个 exact 事务');
+
+        progress.textContent = '选择、拖动、取消与双击插点';
+        vector.setTool('select');
+        pointer(pathCanvas, 'pointerdown', 160, 40, 2);
+        pointer(pathCanvas, 'pointermove', 180, 55, 2);
+        pointer(pathCanvas, 'pointerup', 180, 55, 2);
+        assert(commits === 3 && previews === 1, '点拖动仅预览一次并提交一次');
+        const beforeCancel = project;
+        pointer(pathCanvas, 'pointerdown', 180, 55, 3);
+        pointer(pathCanvas, 'pointermove', 200, 70, 3);
+        pointer(pathCanvas, 'pointercancel', 200, 70, 3);
+        assert(project === beforeCancel && commits === 3, 'pointercancel 完整回滚');
+        const beforeInsert = domain.pathTopologySignature(domain.readProjectAuthoringPath(project, node.id, component.id)).pointCount;
+        mouse(pathCanvas, 'dblclick', 110, 138);
+        const afterInsert = domain.pathTopologySignature(domain.readProjectAuthoringPath(project, node.id, component.id)).pointCount;
+        assert(afterInsert === beforeInsert + 1, '双击路径段插入控制点');
+
+        progress.textContent = '验证 stroke / dash 的 exact WebGPU 输出';
+        const strokeCompilation = compileAnimationEditorProject(project);
+        assert(strokeCompilation.parsed.nodes[0].components[0].stroke.dash.length === 2, 'Dash 已进入编译后的 HYA');
+        await runtime.load(strokeCompilation, { autoplay: false });
+        runtime.seek(0); await frames(5);
+        const strokePixels = await pixelMetrics(runtimeCanvas);
+        assert(strokePixels.painted > 40, `Stroke/Dash WebGPU 路径有有效像素：${JSON.stringify(strokePixels)}`);
+
+        progress.textContent = '编辑 Gradient / Stroke / Trim / Round 与 Morph';
+        project = domain.editProjectPathVectorStyle(project, node.id, component.id, {
+          kind: 'fill-gradient', gradientKind: 'linear-gradient', start: [-130, -110], end: [130, 100],
+          stops: [0, 0.12, 0.88, 0.96, 1, 1, 0.95, 0.24, 0.14, 1], opacity: 0.92,
+        });
+        project = domain.editProjectPathVectorStyle(project, node.id, component.id, {
+          kind: 'trim', value: { start: 0, end: 0.92, offset: 0, mode: 'simultaneous' },
+        });
+        project = domain.editProjectPathVectorStyle(project, node.id, component.id, { kind: 'round', radius: 10 });
+        const basePath = domain.readProjectAuthoringPath(project, node.id, component.id);
+        let target = domain.movePathPoint(basePath, { commandId: basePath.commands[1].id, part: 'end' }, [65, -112]);
+        target = domain.movePathPoint(target, { commandId: basePath.commands[2].id, part: 'end' }, [122, 50]);
+        const morphResult = domain.createPathMorphKeyframe(project, node.id, component.id, 1, target);
+        project = morphResult.project;
+        vector.setMorphTarget(target);
+
+        let draft = cloneAnimationEditorProject(project);
+        const trimBinding = availableAdvancedPropertyBindings(draft, node.id).find(binding => binding.target.property === 'vector.modifier.trim-end');
+        assert(trimBinding, 'Trim End 绑定可用');
+        const trimTrack = createAdvancedPropertyTrack(draft, node.id, trimBinding.key, 0);
+        draft.timeline.tracks.push(trimTrack);
+        createTimelineKeyframe(draft, trimTrack.id, 1, [0.35]);
+        const positionTrack = createCoreTransformTrack(draft, node.id, 'position', 0);
+        positionTrack.keyframes[0].spatialOut = [18, -22];
+        draft.timeline.tracks.push(positionTrack);
+        const positionEnd = createTimelineKeyframe(draft, positionTrack.id, 1, [190, 140]);
+        positionEnd.spatialIn = [-18, 20];
+        project = draft;
+        vector.renderNow();
+
+        progress.textContent = '直接编辑 Motion Path 并同步 Timeline 选择';
+        let motionCommits = 0;
+        let timelineSelection = [];
+        const motion = new PathMotionCanvasAdapter(motionCanvas, {
+          project: () => project,
+          trackId: () => positionTrack.id,
+          onCommit: next => { project = next; motionCommits++; },
+          onTimelineSelectionChange: selection => { timelineSelection = selection; },
+          onExactPreviewRequested: () => { exactCompilation = compileAnimationEditorProject(project); exactCompiles++; },
+        });
+        adapters.push(motion);
+        motion.setView({ zoom: 1, pan: [0, -80] });
+        motion.renderNow();
+        pointer(motionCanvas, 'pointerdown', 190, 60, 10);
+        pointer(motionCanvas, 'pointermove', 220, 83, 10);
+        pointer(motionCanvas, 'pointerup', 220, 83, 10);
+        assert(motionCommits === 1 && timelineSelection[0].keyframeId === positionEnd.id, 'Canvas 点击同步 Timeline 并提交 Position key');
+        motion.setTimelineSelection([{ trackId: positionTrack.id, keyframeId: positionTrack.keyframes[0].id, handle: 'outgoing' }]);
+        assert(motion.selection[0].handle === 'outgoing', 'Timeline 选择同步回 Canvas 手柄');
+        motion.renderNow();
+        pointer(motionCanvas, 'pointerdown', 178, 38, 11);
+        pointer(motionCanvas, 'pointermove', 196, 51, 11);
+        pointer(motionCanvas, 'pointerup', 196, 51, 11);
+        assert(motionCommits === 2, '空间手柄直接编辑提交一次');
+
+        progress.textContent = '验证视图变化不重建几何且 cache 有界';
+        vector.setMorphTarget(null);
+        vector.setOnionSkinTimes([]); vector.renderNow();
+        const rebuildBeforeView = vector.cacheMetrics.rebuilds;
+        const point = domain.readProjectAuthoringPath(project, node.id, component.id).commands[1].end;
+        const firstHit = domain.hitTestAuthoringPath(basePath, domain.worldToPathScreen(basePath.commands[1].end, { zoom: 1, pan: [0, 0] }), { zoom: 1, pan: [0, 0] });
+        vector.setView({ zoom: 1.6, pan: [18, -12] }); vector.renderNow();
+        const secondHit = domain.hitTestAuthoringPath(basePath, domain.worldToPathScreen(basePath.commands[1].end, { zoom: 1.6, pan: [18, -12] }), { zoom: 1.6, pan: [18, -12] });
+        assert(firstHit.reference.commandId === secondHit.reference.commandId && point, '缩放/平移后命中 identity 不跳变');
+        assert(vector.cacheMetrics.rebuilds === rebuildBeforeView, '纯视图变化不重建几何');
+        const longTasks = [];
+        const observer = PerformanceObserver.supportedEntryTypes.includes('longtask')
+          ? new PerformanceObserver(entries => longTasks.push(...entries.getEntries().map(entry => entry.duration))) : null;
+        observer?.observe({ type: 'longtask' });
+        for (let frame = 0; frame < 30; frame++) {
+          vector.setOnionSkinTimes([frame / 29]); vector.renderNow();
+        }
+        await frames(2); observer?.disconnect();
+        assert(vector.cacheMetrics.entries <= 8 && vector.cacheMetrics.peakEntries <= 8, 'scrub 缓存保持有界');
+        assert(vector.cacheMetrics.flattenedPoints <= 4096, 'flatten point 预算保持有界');
+
+        progress.textContent = '保存重开、编译并检查 Morph / Trim WebGPU 像素';
+        const reopened = parseAnimationEditorProject(JSON.parse(serializeAnimationEditorProject(project)));
+        const compilation = compileAnimationEditorProject(reopened);
+        exactCompilation = compilation;
+        assert(compilation.parsed.source === 'binary', '运行时输入是编码后重新解析的 HYA 字节');
+        const delivered = compilation.parsed.nodes[0].components[0];
+        assert(delivered.commands === domain.serializeAuthoringPath(basePath).commands, '导出命令与作者路径一致');
+        assert(delivered.morph.valueSize === domain.serializeAuthoringPath(basePath).values.length, 'Morph topology/valueSize 一致');
+        assert(delivered.modifiers.map(item => item.kind).join('/') === 'trim-path/round-corners', 'modifier 顺序一致');
+        await runtime.load(compilation, { autoplay: false });
+        const pixels = {};
+        for (const [label, time] of [['start', 0], ['quarter', 0.25], ['middle', 0.5], ['threeQuarter', 0.75], ['end', 0.9]]) {
+          runtime.seek(time); await frames(5); pixels[label] = await pixelMetrics(runtimeCanvas);
+        }
+        assert(Object.values(pixels).every(frame => frame.painted > 40), `WebGPU 路径各采样帧均有有效像素：${JSON.stringify(pixels)}`);
+        assert(pixels.start.hash !== pixels.middle.hash && pixels.middle.hash !== pixels.end.hash, 'Morph 中间帧不是端点复用');
+        assert(pixels.end.painted < pixels.start.painted * 0.8, 'Trim End 动画显著减少末帧绘制像素');
+        runtime.play(); await frames(3); runtime.pause();
+        assert(runtime.currentTime > 0 && runtime.animation.nodes.length === 1, '编译后的 HYA 可播放');
+        assert(gpuErrors.length === 0, `GPU validation error 必须为 0：${gpuErrors.join('; ')}`);
+
+        const payload = {
+          status: 'passed', commands: delivered.commands, pointCount: domain.pathTopologySignature(basePath).pointCount,
+          commits, previews, motionCommits, exactCompiles, morphKeys: delivered.morph.times.length,
+          trimKeys: delivered.modifiers[0].endTrack.times.length, strokePixels, pixels,
+          cache: vector.cacheMetrics, longTasks: longTasks.filter(duration => duration > 50), gpuValidationErrors: gpuErrors.length,
+        };
+        window.pathVectorFixture = { project: reopened, payload, adapters };
+        resultNode.textContent = JSON.stringify(payload); resultNode.dataset.status = 'passed'; progress.textContent = 'Passed';
+      } catch (error) {
+        for (const adapter of adapters) adapter.dispose();
+        runtime.destroy();
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), gpuErrors,
+        });
+        resultNode.dataset.status = 'failed'; progress.textContent = 'Failed';
+      }
+
+      function pointer(canvas, type, x, y, pointerId) {
+        const bounds = canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new PointerEvent(type, {
+          bubbles: true, cancelable: true, pointerId, pointerType: 'mouse', button: 0,
+          buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
+          clientX: bounds.left + x, clientY: bounds.top + y,
+        }));
+      }
+      function mouse(canvas, type, x, y) {
+        const bounds = canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: bounds.left + x, clientY: bounds.top + y }));
+      }
+      async function pixelMetrics(canvas) {
+        const bitmap = await createImageBitmap(canvas);
+        const target = document.createElement('canvas'); target.width = canvas.width; target.height = canvas.height;
+        const context = target.getContext('2d', { willReadFrequently: true }); context.drawImage(bitmap, 0, 0); bitmap.close();
+        const data = context.getImageData(0, 0, target.width, target.height).data;
+        let painted = 0; let sumX = 0; let sumY = 0; let hash = 2166136261;
+        for (let y = 0; y < target.height; y += 2) for (let x = 0; x < target.width; x += 2) {
+          const index = (y * target.width + x) * 4;
+          const r = data[index]; const g = data[index + 1]; const b = data[index + 2];
+          if (r > 28 || g > 31 || b > 38) { painted++; sumX += x; sumY += y; }
+          hash ^= r + g * 3 + b * 7 + x * 11 + y * 13; hash = Math.imul(hash, 16777619);
+        }
+        return { painted, centroid: [sumX / Math.max(1, painted), sumY / Math.max(1, painted)], hash: (hash >>> 0).toString(16) };
+      }
+      function frames(count) {
+        return new Promise(resolve => {
+          const step = () => count-- <= 0 ? resolve() : requestAnimationFrame(step); step();
+        });
+      }
+      function assert(condition, message) { if (!condition) throw new Error(message); }
+    </script>
+  </body>
+</html>

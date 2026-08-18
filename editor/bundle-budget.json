@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 2,
+  "maxStartupClosureJsBytes": 920000,
+  "maxStartupClosureGzipBytes": 175000,
+  "maxAsyncChunkBytes": 2850000,
+  "maxAsyncChunkGzipBytes": 500000,
+  "maxTotalJsBytes": 6200000,
+  "maxTotalGzipBytes": 1240000,
+  "minTotalGzipHeadroomRatio": 0.1,
+  "capabilities": {
+    "editor-shell": {
+      "rootModules": ["src/infra/app/mainEditorApp.ts"],
+      "allowedOptionalRuntimes": [],
+      "deferredModules": {
+        "script-authoring": [
+          "src/script/scriptEditor.ts",
+          "src/script/scriptSyntaxHighlighter.ts"
+        ]
+      },
+      "maxStaticClosureGzipBytes": 625000
+    },
+    "content-authoring": {
+      "rootModules": [
+        "src/infra/content/ContentAuthoringPanel.ts",
+        "src/infra/content/materialGraphCompiler.worker.ts"
+      ],
+      "allowedOptionalRuntimes": [],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 440000,
+      "maxIncrementalGzipBytes": 55000
+    },
+    "player-core": {
+      "rootModules": ["src/player.ts"],
+      "allowedOptionalRuntimes": [],
+      "deferredModules": {
+        "scene-deserialization": [
+          "src/domain/scene/deserialization.ts",
+          "src/domain/runtime/playerResources.ts",
+          "src/engine-adapter/PlayerRuntimeAdapter.ts"
+        ],
+        "debug": ["src/player/PlayerDebugRuntime.ts"],
+        "shadow": ["src/player/PlayerShadowRuntime.ts"]
+      },
+      "maxStaticClosureGzipBytes": 440000
+    },
+    "gltf": {
+      "rootModules": ["../node_modules/@haiyue/extensions/src/gltf.ts"],
+      "allowedOptionalRuntimes": ["gltf"],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 505000,
+      "maxIncrementalGzipBytes": 30000
+    },
+    "spine": {
+      "rootModules": ["../node_modules/@haiyue/extensions/src/spine.ts"],
+      "allowedOptionalRuntimes": ["spine"],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 510000,
+      "maxIncrementalGzipBytes": 43000
+    },
+    "tilemap": {
+      "rootModules": ["../node_modules/@haiyue/extensions/src/tilemap.ts"],
+      "allowedOptionalRuntimes": ["tilemap"],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 480000,
+      "maxIncrementalGzipBytes": 8000
+    },
+    "tween": {
+      "rootModules": ["src/infra/app/tweenEditorContribution.ts"],
+      "allowedOptionalRuntimes": ["tween"],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 475000,
+      "maxIncrementalGzipBytes": 5000
+    },
+    "physics": {
+      "rootModules": ["src/infra/app/configuredSystemRuntimeContribution.ts"],
+      "allowedOptionalRuntimes": ["physics"],
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 650000,
+      "maxIncrementalGzipBytes": 180000
+    },
+    "import-export": {
+      "rootModules": ["src/export/exportWorkerEntry.ts"],
+      "allowedOptionalRuntimes": [],
+      "deferredModules": {
+        "texture": ["src/export/texturePipeline.ts"],
+        "codegen": ["src/export/projectTemplate.ts"],
+        "archive": ["src/export/projectZip.ts"]
+      },
+      "incrementalFrom": "editor-shell",
+      "maxStaticClosureGzipBytes": 215040,
+      "maxIncrementalGzipBytes": 65000
+    }
+  }
+}

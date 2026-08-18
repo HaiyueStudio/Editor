@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G06 原生 3D authoring/runtime WebGPU fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.45 system-ui, sans-serif; background: #090d14; color: #d8e0ec; }
+      body { margin: 0; padding: 18px; }
+      main { display: grid; grid-template-columns: minmax(520px, 1fr) 300px; gap: 16px; }
+      h1, #progress, #result { grid-column: 1 / -1; }
+      h1 { margin: 0; font-size: 18px; }
+      section { padding: 11px; border: 1px solid #29344a; border-radius: 8px; background: #0e1521; }
+      h2 { margin: 0 0 8px; font-size: 13px; color: #acbbd2; }
+      canvas { display: block; width: 100%; height: 480px; border: 1px solid #394864; background: #080c13; }
+      ul { margin: 0; padding-left: 18px; }
+      #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="passed"] { color: #73dc9d; }
+      [data-status="failed"] { color: #ff7b86; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G06 原生 3D：创建、编辑、重开、导出与同字节 WebGPU 播放</h1>
+      <section><h2>Exact HYA Runtime</h2><canvas id="canvas" width="640" height="480"></canvas></section>
+      <section>
+        <h2>验收通道</h2>
+        <ul>
+          <li>原生 Camera / Primitive / PBR</li>
+          <li>TRS / Camera / Material 动画</li>
+          <li>Grid、Orbit/Fly、Camera View</li>
+          <li>Selection bounds、local/world Gizmo math</li>
+          <li>GPU error 与 owner residual</li>
+        </ul>
+      </section>
+      <div id="progress">正在加载 G06 fixture…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.native-3d-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G06 浏览器测试 bundle。');
+      }
+      const entry = await import(`./${bundleDirectory}/native-3d.js`);
+      const editor = entry.native3dEditor;
+      const preview = entry.native3dPreview;
+      const spec = entry.native3dSpec;
+      const runtimeApi = entry.native3dRuntime;
+      const canvas = document.querySelector('#canvas');
+      const progress = document.querySelector('#progress');
+      const resultNode = document.querySelector('#result');
+      let engine = null;
+      let runtime = null;
+      let viewport = null;
+
+      try {
+        assert('gpu' in navigator, '浏览器必须提供 WebGPU');
+        progress.textContent = '创建并编辑原生 3D project';
+        let project = editor.createNative3dProject({
+          id: 'g06-browser', name: 'G06 原生 3D 浏览器', width: 640, height: 480, duration: 2, frameRate: 60,
+        });
+        project = editor.addNative3dMaterial(project, {
+          id: 'material:box', name: '动画材质', baseColorFactor: [0.08, 0.38, 1, 1],
+          metallicFactor: 0.1, roughnessFactor: 0.48, emissiveFactor: [0.01, 0.04, 0.12],
+          alphaMode: 'opaque', doubleSided: false,
+        });
+        project = editor.addNative3dCamera(project, {
+          nodeId: 'camera', componentId: 'camera:main',
+          transform: {
+            translation: [0, 2.1, 6],
+            rotation: [-0.1305261922, 0, 0, 0.9914448614],
+            scale: [1, 1, 1],
+          },
+          projection: { kind: 'perspective', fovYRadians: 0.68, near: 0.1, far: 100 },
+        });
+        project = editor.addNative3dPrimitive(project, {
+          nodeId: 'box', componentId: 'box:mesh', primitive: 'box', materialId: 'material:box',
+          transform: { translation: [-1.25, 0.2, 0], rotation: [0, 0, 0, 1], scale: [1.2, 1.2, 1.2] },
+        });
+        project = editor.setNative3dNodeTransform(project, 'box', { eulerYXZ: [0.05, 0.18, 0] });
+
+        const gltfSource = await fetch('../../node_modules/@haiyue/extensions/test/fixtures/gltf/animation-characterization.gltf').then(response => {
+          if (!response.ok) throw new Error(`加载真实 glTF fixture 失败：${response.status}`);
+          return response.text();
+        });
+        const gltfUri = `data:model/gltf+json,${encodeURIComponent(gltfSource)}`;
+        const importedModel = await entry.loadGltfModel(gltfUri);
+        try {
+          const clips = entry.createGltfAnimation3DClips(importedModel, 'fixture');
+          project = editor.addNative3dAsset(project, {
+            id: 'model:fixture', name: '真实 glTF 动画角色', type: 'model',
+            source: { kind: 'external', uri: gltfUri },
+            delivery: { uri: gltfUri, mimeType: 'model/gltf+json' },
+            provenance: { importer: 'gltf', sourceFormat: 'gltf-2.0' },
+          });
+          project = editor.addNative3dModel(project, {
+            nodeId: 'character', componentId: 'character:model', resource: 'model:fixture',
+          });
+          project = editor.importNative3dGltfClips(project, 'character', clips, { extendComposition: true });
+        } finally {
+          entry.disposeGltfModel(importedModel);
+        }
+        project = editor.createNative3dClip(project, { id: 'clip:showcase', name: '展示', duration: 2 });
+        project = editor.createNative3dTrack(project, 'clip:showcase', keyedTrack('track:box-translation', {
+          id: 'binding:box-translation', target: { kind: 'node-id', nodeId: 'box' },
+          path: 'transform.translation', valueType: 'vec3', valueSize: 3,
+        }, [[0, [-1.25, 0.2, 0]], [1, [0, 1, 0]], [2, [1.25, 0.2, 0]]]));
+        project = editor.createNative3dTrack(project, 'clip:showcase', keyedTrack('track:box-rotation', {
+          id: 'binding:box-rotation', target: { kind: 'node-id', nodeId: 'box' },
+          path: 'transform.rotation', valueType: 'quaternion', valueSize: 4,
+        }, [[0, [0, 0, 0, 1]], [2, [0, 1, 0, 0]]]));
+        project = editor.createNative3dTrack(project, 'clip:showcase', keyedTrack('track:material-color', {
+          id: 'binding:material-color', target: { kind: 'slot', slot: 'material:box' },
+          path: 'property', component: 'material3d', property: 'baseColorFactor', valueType: 'vec4', valueSize: 4,
+        }, [[0, [0.08, 0.38, 1, 1]], [1, [1, 0.18, 0.06, 1]], [2, [0.1, 0.95, 0.45, 1]]]));
+        project = editor.createNative3dTrack(project, 'clip:showcase', keyedTrack('track:camera-fov', {
+          id: 'binding:camera-fov', target: { kind: 'node-id', nodeId: 'camera' },
+          path: 'property', component: 'camera3d', property: 'fovYRadians', valueType: 'scalar', valueSize: 1,
+        }, [[0, [0.68]], [1, [0.82]], [2, [0.62]]]));
+        project = editor.createNative3dTrack(project, 'gltf:character:0', keyedTrack('track:run-camera-fov', {
+          id: 'binding:gltf-camera-fov', target: { kind: 'node-id', nodeId: 'camera' },
+          path: 'property', component: 'camera3d', property: 'fovYRadians', valueType: 'scalar', valueSize: 1,
+        }, [[0, [0.68]], [1, [0.82]]]));
+        project = editor.createNative3dTrack(project, 'gltf:character:1', keyedTrack('track:idle-camera-fov', {
+          id: 'binding:gltf-camera-fov', target: { kind: 'node-id', nodeId: 'camera' },
+          path: 'property', component: 'camera3d', property: 'fovYRadians', valueType: 'scalar', valueSize: 1,
+        }, [[0, [0.68]], [1, [0.68]]]));
+
+        const saved = editor.serializeNative3dProject(project);
+        const reopened = editor.parseNative3dProject(saved);
+        assert(reopened.nodes.length === 3 && reopened.timeline.clips.find(clip => clip.id === 'clip:showcase').tracks.length === 4, '保存重开保持原生 3D/glTF 数据');
+        const compilation = editor.compileNative3dProject(reopened);
+        const artifact = editor.createNative3dHyaArtifact(reopened);
+        assert(equalBytes(artifact.bytes, new Uint8Array(compilation.binary)), 'preview/export 使用同一 HYA bytes');
+        const packageArtifact = await entry.createNative3dHyaPackageArtifact(reopened);
+        const packageAgain = await entry.createNative3dHyaPackageArtifact(reopened);
+        assert(equalBytes(new Uint8Array(packageArtifact.binary), new Uint8Array(packageAgain.binary)), '3D 交付包字节确定');
+        assert(packageArtifact.externalAssetCount === 1 && packageArtifact.manifest.family === '3d', '3D 交付包显式记录外部 glTF');
+        const delivery = spec.parseNative3DAnimation(compilation.binary);
+        assert(delivery.payload.mode === 'native-3d' && delivery.document.nodes.length === 0, '运行时从编码后同字节 3D carrier 解析');
+
+        progress.textContent = '启动真实 WebGPU runtime 与 3D 编辑视口';
+        engine = new entry.HaiyueEngine({
+          canvas, clearColor: { r: 0.012, g: 0.022, b: 0.045, a: 1 }, msaaSamples: 4,
+          diagnostics: { enabled: true },
+        });
+        await engine.init();
+        const validationErrors = [];
+        engine.device.addEventListener('uncapturederror', event => validationErrors.push(event.error.message));
+        engine.device.pushErrorScope('validation');
+        const scene = engine.createScene({
+          name: 'G06 Native 3D', render3D: { loadOp: 'clear' }, render2D: false, gui: false,
+          pipelineLabel: 'G06.native3d',
+        });
+        engine.switchScene(scene);
+        runtime = await runtimeApi.createHyaAnimation3DRuntime({
+          scene, payload: delivery.payload, resources: delivery.resources,
+          useAuthoredCamera: true, addPreviewLights: true,
+        });
+        viewport = new preview.Native3dViewportController({ scene, canvas, runtime, gridExtent: 12, gridStep: 1 });
+        viewport.select(['box']);
+        viewport.setNavigationMode('fly');
+        viewport.update(16);
+        viewport.setNavigationMode('orbit');
+        viewport.focus([0, 0.5, 0], 7);
+        viewport.showAuthoredCamera('camera');
+        assert(viewport.cameraView && runtime.authoredCameraIds.includes('camera'), 'Camera View 已切换到 authored camera');
+
+        const transform = reopened.nodes.find(node => node.id === 'box').transform;
+        const localMove = preview.applyGizmoDelta(reopened, 'box', transform, 'translate', 'local', 'x', 80);
+        const worldMove = preview.applyGizmoDelta(reopened, 'box', transform, 'translate', 'world', 'x', 80);
+        assert(localMove !== reopened && worldMove !== reopened, 'local/world Gizmo 都生成不可变编辑结果');
+
+        const action = runtime.playClip('clip:showcase', { id: 'Showcase', loop: 'once', clampWhenFinished: true });
+        const idle = runtime.playClip('gltf:character:1', { id: 'Idle', loop: 'once', clampWhenFinished: true });
+        const run = runtime.playClip('gltf:character:0', {
+          id: 'Run', loop: 'once', clampWhenFinished: true,
+          fadeFrom: idle, fadeDuration: 1,
+        });
+        assert(action.actionCount === 1 && idle.actionCount === 2 && run.actionCount === 2, '场景与 glTF 都由现有 Animation3D mixer action 驱动');
+        const animatedTransform = requireEntity(runtime.root, 'AnimatedTRS').getComponent(entry.Transform3D);
+        const morphGeometry = requireGeometry(runtime.root, 'SkinnedMorph');
+        assert(animatedTransform && morphGeometry.morphUseGpu && morphGeometry.skinning, '真实 glTF 使用 Transform3D、skinning 与 GPU Morph');
+        engine.run();
+        const samples = [];
+        for (const delta of [0, 0.5, 0.5]) {
+          runtime.update(delta);
+          await frames(4);
+          samples.push(await canvasBitmapHash(canvas));
+        }
+        assert(samples.every(sample => sample.painted > 150), '三个时间点都有非空 3D WebGPU 像素');
+        assert(new Set(samples.map(sample => sample.hash)).size === samples.length, 'glTF cross-fade 与 TRS/材质/相机动画产生不同关键像素');
+        assertArrayClose(animatedTransform.localMatrix.slice(12, 15), [3, 4, 5]);
+        assertArrayClose(morphGeometry.morphWeights, [0.75, 0.25]);
+        assertArrayClose(morphGeometry.skinning.jointMatrices.slice(28, 32), [0, 2, 0, 1]);
+        const scopedError = await engine.device.popErrorScope();
+        if (scopedError) validationErrors.push(scopedError.message);
+        assert(validationErrors.length === 0, `GPU validation error 必须为 0：${validationErrors.join('; ')}`);
+
+        viewport.destroy();
+        viewport = null;
+        runtime.destroy();
+        const released = runtime.diagnostics();
+        runtime = null;
+        assert(released.ownerResidualCount === 0, 'runtime destroy 后 owner residual 为 0');
+        engine.stop();
+        engine.destroy();
+        engine = null;
+
+        const payload = {
+          status: 'passed', savedBytes: new TextEncoder().encode(saved).byteLength, packageBytes: packageArtifact.bytes,
+          hyaBytes: artifact.bytes.byteLength, samples, gpuValidationErrors: validationErrors.length,
+          actionCount: { showcase: action.actionCount, idle: idle.actionCount, run: run.actionCount },
+          gltfPose: { root: [3, 4, 5], morph: [0.75, 0.25], jointTip: [0, 2, 0, 1] },
+          cameraView: true, navigationModes: ['fly', 'orbit'], released,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        try { viewport?.destroy(); runtime?.destroy(); engine?.destroy(); } catch { /* report original */ }
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error),
+        });
+        resultNode.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      }
+
+      function keyedTrack(id, binding, keys) {
+        return {
+          id, name: id, binding, interpolation: 'linear',
+          keyframes: keys.map(([time, value], index) => ({ id: `${id}:key:${index}`, time, value })),
+        };
+      }
+
+      function equalBytes(left, right) {
+        return left.length === right.length && left.every((value, index) => value === right[index]);
+      }
+
+      function findEntity(root, name) {
+        if (root.name === name) return root;
+        for (const child of root.children) {
+          const match = findEntity(child, name);
+          if (match) return match;
+        }
+        return null;
+      }
+
+      function requireEntity(root, name) {
+        const entity = findEntity(root, name);
+        assert(entity, `找不到 glTF entity：${name}`);
+        return entity;
+      }
+
+      function requireGeometry(root, name) {
+        const node = requireEntity(root, name);
+        const primitive = node.children.find(child => child.getComponent(entry.Mesh3D));
+        const mesh = primitive?.getComponent(entry.Mesh3D);
+        assert(mesh, `找不到 glTF mesh：${name}`);
+        return mesh.geometry;
+      }
+
+      function assertArrayClose(actual, expected, epsilon = 1e-5) {
+        assert(actual.length === expected.length, '数组宽度不匹配');
+        for (let index = 0; index < expected.length; index++) {
+          assert(Math.abs(actual[index] - expected[index]) <= epsilon, `数组第 ${index} 项不匹配：${actual[index]} / ${expected[index]}`);
+        }
+      }
+
+      async function frames(count) {
+        for (let index = 0; index < count; index++) await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+
+      async function canvasBitmapHash(source) {
+        const bitmap = await createImageBitmap(source);
+        const target = document.createElement('canvas');
+        target.width = source.width; target.height = source.height;
+        const context = target.getContext('2d', { willReadFrequently: true });
+        context.drawImage(bitmap, 0, 0); bitmap.close();
+        const data = context.getImageData(0, 0, target.width, target.height).data;
+        let hash = 0x811c9dc5;
+        let painted = 0;
+        for (let offset = 0; offset < data.length; offset += 4) {
+          const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+          if (r > 25 || g > 30 || b > 45) painted++;
+          hash ^= r; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= g; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= b; hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return { hash: hash.toString(16).padStart(8, '0'), painted };
+      }
+
+      function assert(condition, message) { if (!condition) throw new Error(message); }
+    </script>
+  </body>
+</html>

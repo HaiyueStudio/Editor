@@ -1,0 +1,34 @@
+appId: com.haiyue.voxeleditor
+productName: HaiYue Voxel Editor
+artifactName: HaiYue-Voxel-Editor-${version}-${os}-${arch}.${ext}
+npmRebuild: false
+asar: true
+directories:
+  app: electron
+  output: release-electron
+  buildResources: pwa/icons
+files:
+  - app-dist/**/*
+  - main.mjs
+  - package.json
+  - '!node_modules{,/**/*}'
+mac:
+  category: public.app-category.graphics-design
+  icon: pwa/icons/icon-512.png
+  target:
+    - dmg
+    - zip
+win:
+  icon: pwa/icons/icon-512.png
+  target:
+    - nsis
+    - portable
+linux:
+  category: Graphics
+  icon: pwa/icons/icon-512.png
+  target:
+    - AppImage
+    - deb
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

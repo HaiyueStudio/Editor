@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>海月编辑器</title>
+  <link rel="icon" type="image/png" href="./assets/branding/haiyue-favicon.png" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #10141c;
+      color: #d8e2f2;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 40px minmax(0, 1fr);
+      background: #10141c;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 12px;
+      border-bottom: 1px solid #303746;
+      background: #1b2130;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      margin-right: 8px;
+      color: #eef3ff;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .brand-logo {
+      width: 25px;
+      height: 25px;
+      flex: 0 0 25px;
+      object-fit: contain;
+    }
+
+    .header-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 18px;
+      background: #303746;
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 0;
+    }
+
+    ge-split {
+      min-width: 0;
+      min-height: 0;
+      background: #10141c;
+    }
+
+    [slot="first"],
+    [slot="second"] {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .panel {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #171d28;
+    }
+
+    .panel-header {
+      flex: 0 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 10px;
+      border-bottom: 1px solid #303746;
+      color: #aebbd0;
+      background: #1b2230;
+      font-weight: 600;
+    }
+
+    .viewport-tabs {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 2px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      background: #121822;
+    }
+
+    .viewport-tab {
+      height: 18px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 3px;
+      color: #8fa7c8;
+      background: transparent;
+      font: 11px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .viewport-tab.active {
+      color: #eef3ff;
+      background: #255a91;
+    }
+
+    .viewport-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: auto;
+      font-weight: 400;
+    }
+
+    .viewport-tool,
+    .viewport-tools select,
+    .viewport-tools input[type="number"] {
+      height: 22px;
+      min-width: 24px;
+      padding: 0 5px;
+      border: 1px solid #303746;
+      border-radius: 3px;
+      color: #aebbd0;
+      background: #121822;
+      font: 10px system-ui, sans-serif;
+    }
+
+    .viewport-tool.active { color: #fff; border-color: #4a90d9; background: #255a91; }
+    #save-button[data-dirty] { outline: 1px solid #ffc84a; outline-offset: 1px; }
+    .viewport-tools input[type="number"] { width: 44px; }
+    .viewport-snap { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; }
+
+    .transform-gizmo {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 8;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+
+    .transform-gizmo button { pointer-events: auto; touch-action: none; user-select: none; }
+    .gizmo-axis {
+      position: absolute;
+      width: 50px;
+      height: 18px;
+      padding-left: 35px;
+      border: 0;
+      color: white;
+      background: linear-gradient(currentColor, currentColor) 7px 8px / 33px 3px no-repeat;
+      font: 700 10px system-ui;
+      transform-origin: 7px 9px;
+      cursor: grab;
+    }
+    .gizmo-x { color: #ff5b62; transform: translate(-7px, -9px); }
+    .gizmo-y { color: #60df75; transform: translate(-7px, -9px) rotate(-90deg); }
+    .gizmo-z { color: #55a8ff; transform: translate(-7px, -9px) rotate(135deg); }
+    .gizmo-y, .gizmo-z { text-shadow: 0 0 2px #000; }
+    .gizmo-center { position: absolute; width: 12px; height: 12px; transform: translate(-6px, -6px); border: 1px solid #fff; background: #ffc84a; cursor: move; }
+    .transform-gizmo[data-mode="rotate"] .gizmo-axis { border: 2px solid currentColor; border-left-color: transparent; border-radius: 50%; width: 42px; height: 42px; padding: 0; background: none; transform: translate(-21px, -21px); }
+    .transform-gizmo[data-mode="scale"] .gizmo-axis { background-size: 30px 4px; }
+
+    .panel-body {
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow: auto;
+    }
+
+    .hierarchy ge-tree {
+      height: 100%;
+      background: #171d28;
+    }
+
+    .hierarchy .panel-body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .panel-search {
+      width: calc(100% - 12px);
+      height: 26px;
+      margin: 6px;
+      padding: 0 8px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 11px system-ui, sans-serif;
+    }
+
+    .asset-operation-center { display: grid; gap: 3px; padding: 0 6px 6px; }
+    .asset-operation { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 24px; padding: 3px 6px; border-radius: 3px; background: #172235; font-size: 10px; }
+    .asset-operation span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .asset-operation-failed { color: #ff8c91; }
+    .asset-operation-completed { color: #82dd9a; }
+    .asset-operation button { border: 0; color: inherit; background: transparent; cursor: pointer; }
+
+    .system-list {
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+    }
+
+    .system-list li {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 8px;
+      border-radius: 4px;
+      color: #c8d3e4;
+    }
+
+    .system-list li::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      flex: 0 0 6px;
+      border-radius: 50%;
+      background: #6fc38f;
+    }
+
+    .system-toolbar {
+      display: flex;
+      gap: 6px;
+      padding: 8px 8px 0;
+    }
+
+    .system-toolbar select,
+    .system-toolbar button,
+    .system-card input,
+    .system-card select {
+      min-width: 0;
+      height: 26px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .system-toolbar select {
+      flex: 1 1 auto;
+    }
+
+    .system-toolbar button {
+      flex: 0 0 auto;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+
+    .system-list li.system-card {
+      height: auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+      margin-bottom: 6px;
+      padding: 8px;
+      border: 1px solid #303746;
+      background: #121822;
+    }
+
+    .system-list li.system-card::before {
+      display: none;
+    }
+
+    .system-card-title {
+      min-width: 0;
+      color: #eef3ff;
+      font-weight: 650;
+    }
+
+    .system-card-fields {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 6px;
+    }
+
+    .system-card-field {
+      display: grid;
+      grid-template-columns: minmax(64px, 0.85fr) minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      color: #8fa7c8;
+    }
+
+    .system-card-field input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    .system-card-remove {
+      width: 24px;
+      height: 24px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #171d28;
+      cursor: pointer;
+    }
+
+    .viewport-panel {
+      background: #0f131b;
+    }
+
+    .viewport-wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background-color: #d6dbe3;
+      background-image:
+        linear-gradient(45deg, #eef2f7 25%, transparent 25%),
+        linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #eef2f7 75%),
+        linear-gradient(-45deg, transparent 75%, #eef2f7 75%);
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+      background-size: 24px 24px;
+    }
+
+    #viewport {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      touch-action: none;
+    }
+
+    .selection-helper-2d-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .selection-helper-2d {
+      position: absolute;
+      box-sizing: border-box;
+      border: 1px solid rgba(64, 191, 255, 0.98);
+      background: rgba(64, 191, 255, 0.08);
+      box-shadow: 0 0 0 1px rgba(6, 12, 22, 0.9), 0 0 10px rgba(64, 191, 255, 0.45);
+    }
+
+    .viewport-message {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      max-width: min(420px, calc(100% - 24px));
+      padding: 8px 10px;
+      border: 1px solid #3d4654;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: rgba(16, 20, 28, 0.86);
+      display: none;
+    }
+
+    .editor-notifications {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      z-index: 3000;
+      display: grid;
+      gap: 8px;
+      width: min(360px, calc(100vw - 24px));
+      pointer-events: none;
+    }
+
+    .editor-notification {
+      padding: 9px 11px;
+      border: 1px solid #3d4654;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: rgba(18, 24, 34, 0.96);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+      opacity: 1;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      overflow-wrap: anywhere;
+    }
+
+    .editor-notification.error {
+      border-color: #8f4646;
+      color: #ffe1e1;
+      background: rgba(54, 22, 28, 0.96);
+    }
+
+    .editor-notification.closing {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    .play-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      grid-template-rows: 40px 40px minmax(0, 1fr) 220px;
+      background: rgba(4, 7, 12, 0.84);
+      backdrop-filter: blur(6px);
+    }
+
+    .script-editor-overlay {
+      grid-template-rows: 40px minmax(0, 1fr);
+    }
+
+    .play-overlay-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 12px;
+      border-bottom: 1px solid #303746;
+      color: #eef3ff;
+      background: #111722;
+      font-weight: 650;
+    }
+
+    .play-overlay-close {
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 18px system-ui, sans-serif;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .play-overlay-close:hover {
+      border-color: #3d6fa8;
+      background: #172235;
+    }
+
+    .play-overlay-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .play-overlay-action {
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .play-device-toolbar {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid #303746;
+      background: #0d131d;
+      color: #aebbd0;
+      overflow: auto;
+    }
+
+    .play-device-toolbar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .play-device-toolbar select,
+    .play-device-toolbar input {
+      height: 26px;
+      min-width: 72px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .play-device-custom {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .play-device-stage {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: 16px;
+      background: #05070b;
+    }
+
+    .play-device-viewport {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .play-device-frame {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #05070b;
+      transform-origin: top left;
+    }
+
+    .play-device-frame.device {
+      flex: 0 0 auto;
+      border: 1px solid #3d4654;
+      border-radius: 12px;
+      box-shadow: 0 18px 46px rgba(0, 0, 0, 0.46);
+    }
+
+    .play-output {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px 10px;
+      background: #090d14;
+      color: #b8c5d8;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .play-debug-panel {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(220px, 0.9fr) minmax(200px, 0.65fr) minmax(260px, 1.2fr);
+      border-top: 1px solid #303746;
+      background: #090d14;
+    }
+
+    .play-debug-section {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 30px minmax(0, 1fr);
+      border-right: 1px solid #303746;
+    }
+
+    .play-debug-section:last-child {
+      border-right: 0;
+    }
+
+    .play-debug-section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 10px;
+      border-bottom: 1px solid #303746;
+      color: #d8e2f2;
+      background: #0d131d;
+      font: 12px system-ui, sans-serif;
+      font-weight: 650;
+    }
+
+    .play-debug-export {
+      border: 1px solid #3b4a60;
+      border-radius: 4px;
+      padding: 2px 7px;
+      color: #b9d8ff;
+      background: #152033;
+      font: 10px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .play-debug-body {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px 10px;
+      color: #b8c5d8;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .play-debug-empty {
+      color: #7f91aa;
+    }
+
+    .play-debug-entity {
+      display: grid;
+      gap: 4px;
+      margin-bottom: 8px;
+      color: #eef3ff;
+    }
+
+    .play-debug-entity small,
+    .play-debug-component small,
+    .play-debug-metric small {
+      color: #7f91aa;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .play-debug-component {
+      display: grid;
+      gap: 3px;
+      padding: 6px 0;
+      border-top: 1px solid rgba(48, 55, 70, 0.6);
+    }
+
+    .play-debug-component.disabled {
+      opacity: 0.55;
+    }
+
+    .play-debug-fields {
+      display: grid;
+      gap: 5px;
+      margin-top: 5px;
+    }
+
+    .play-debug-field {
+      display: grid;
+      grid-template-columns: minmax(78px, 0.45fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .play-debug-field span {
+      min-width: 0;
+      color: #9aabc2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .play-debug-field input,
+    .play-debug-field select,
+    .play-debug-field textarea {
+      min-width: 0;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      padding: 4px 6px;
+      color: #d8e2f2;
+      background: #0d131d;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .play-debug-field input[type="checkbox"] {
+      justify-self: start;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+    }
+
+    .play-debug-field textarea {
+      resize: vertical;
+    }
+
+    .play-debug-field .invalid {
+      border-color: #f87171;
+    }
+
+    .play-debug-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .play-debug-metric {
+      min-width: 0;
+      padding: 7px 8px;
+      border: 1px solid #273143;
+      border-radius: 4px;
+      background: #0d131d;
+    }
+
+    .play-debug-metric strong {
+      display: block;
+      margin-top: 3px;
+      color: #eef3ff;
+      font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .play-breakpoints-editor {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 6px;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .play-breakpoints-input {
+      min-width: 0;
+      min-height: 0;
+      resize: none;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      padding: 7px 8px;
+      color: #d8e2f2;
+      background: #0d131d;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .play-breakpoints-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .play-breakpoints-status {
+      min-width: 0;
+      color: #7f91aa;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font: 11px system-ui, sans-serif;
+    }
+
+    .play-breakpoints-apply {
+      height: 26px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    @media (max-width: 900px) {
+      .play-overlay {
+        grid-template-rows: 40px 40px minmax(0, 1fr) 280px;
+      }
+
+      .play-debug-panel {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+      }
+
+      .play-debug-section {
+        border-right: 0;
+        border-bottom: 1px solid #303746;
+      }
+    }
+
+    .play-output-line {
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(48, 55, 70, 0.35);
+    }
+
+    .play-output-line.warn {
+      color: #f0c674;
+    }
+
+    .play-output-line.error {
+      color: #ff8f8f;
+    }
+
+    .play-output-line.lifecycle {
+      color: #8fc7ff;
+    }
+
+    .play-frame {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      background: #05070b;
+    }
+
+    .script-overlay-body {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 10px;
+      min-width: 0;
+      min-height: 0;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    ge-tabs {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .resource-list {
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      min-height: 100%;
+      margin: 0;
+      padding: 8px;
+      list-style: none;
+    }
+
+    .resource-list.geometry-grid,
+    .resource-list.material-grid,
+    .resource-list.texture-grid,
+    .resource-list.prefab-grid {
+      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+      gap: 8px;
+    }
+
+    .resource-list li {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      background: #121822;
+    }
+
+    .resource-list.resource-list-virtualized li {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 112px;
+    }
+
+    .geometry-card,
+    .material-card,
+    .texture-card,
+    .prefab-card {
+      position: relative;
+      gap: 6px;
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    .geometry-create-card {
+      place-items: center;
+      min-height: 96px;
+      color: #8fa7c8;
+      cursor: pointer;
+    }
+
+    .geometry-create-card:hover,
+    .geometry-create-card.open {
+      border-color: #3d6fa8;
+      background: #172235;
+    }
+
+    .geometry-create-icon {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #3d4654;
+      border-radius: 4px;
+      color: #d8e2f2;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .geometry-create-menu {
+      position: absolute;
+      z-index: 20;
+      top: 8px;
+      left: calc(100% + 6px);
+      width: 112px;
+      padding: 4px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      background: #1b2230;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+    }
+
+    .geometry-create-menu button {
+      width: 100%;
+      height: 26px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 3px;
+      color: #d8e2f2;
+      background: transparent;
+      text-align: left;
+      font: 12px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .geometry-create-menu button:hover {
+      background: #255a91;
+    }
+
+    .geometry-card:hover,
+    .material-card:hover,
+    .texture-card:hover,
+    .prefab-card:hover {
+      border-color: #3d6fa8;
+      background: #172235;
+    }
+
+    .geometry-card.selected,
+    .material-card.selected,
+    .texture-card.selected,
+    .prefab-card.selected {
+      border-color: #73b7ff;
+      background: #1b3150;
+      box-shadow: inset 0 0 0 1px #73b7ff;
+    }
+
+    .geometry-card.selected .resource-name,
+    .material-card.selected .resource-name,
+    .texture-card.selected .resource-name,
+    .prefab-card.selected .resource-name {
+      color: #ffffff;
+    }
+
+    .geometry-card canvas,
+    .material-card canvas,
+    .texture-card canvas,
+    .prefab-card canvas {
+      width: 100%;
+      aspect-ratio: 1.25;
+      border-radius: 3px;
+      background: #0b1018;
+    }
+
+    .texture-card img,
+    .prefab-card img {
+      width: 100%;
+      aspect-ratio: 1.25;
+      object-fit: cover;
+      border-radius: 3px;
+      background: #0b1018;
+    }
+
+    .resource-name {
+      color: #d8e2f2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .resource-meta {
+      color: #8fa7c8;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .resource-empty {
+      padding: 10px;
+      color: #8fa7c8;
+    }
+
+    .inspector-form {
+      display: grid;
+      gap: 12px;
+      padding: 10px;
+    }
+
+    .field,
+    .vector-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .component-field-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .component-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .icon-button {
+      width: 24px;
+      height: 24px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 16px system-ui, sans-serif;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .icon-button:hover {
+      border-color: #3d6fa8;
+      background: #172235;
+    }
+
+    .icon-button[disabled] {
+      opacity: 0.45;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .editor-options-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .editor-options-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 40;
+      width: min(320px, calc(100vw - 24px));
+      padding: 12px;
+      border: 1px solid #303746;
+      border-radius: 6px;
+      background: #171d28;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.36);
+    }
+
+    .editor-options-panel[hidden] {
+      display: none;
+    }
+
+    .editor-options-title {
+      margin: 0 0 12px;
+      color: #eef3ff;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .editor-options-section {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field label,
+    .vector-field label {
+      color: #8fa7c8;
+    }
+
+    .field input,
+    .field .readonly,
+    .field .value,
+    ge-select {
+      min-height: 28px;
+    }
+
+    .field input,
+    .field .readonly,
+    .field .value {
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .field input {
+      width: 100%;
+      outline: none;
+    }
+
+    .field input:focus,
+    .vector-field input:focus {
+      border-color: #3d6fa8;
+    }
+
+    .generic-field-group {
+      margin: 12px 0 6px;
+      padding-top: 8px;
+      border-top: 1px solid #303746;
+      color: #8fa7c8;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .asset-ref-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 112px;
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .asset-ref-field input,
+    .asset-ref-field select {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .asset-ref-picker {
+      min-height: 28px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      background: #121822;
+      color: #d8e2f2;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .inspector-section {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding-top: 10px;
+      border-top: 1px solid #303746;
+    }
+
+    .section-title {
+      color: #aebbd0;
+      font-weight: 650;
+    }
+
+    .vector-inputs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .vector-inputs input {
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .inspector-empty,
+    .inspector-note {
+      padding: 10px;
+      color: #8fa7c8;
+    }
+
+    .resource-detail {
+      display: grid;
+      gap: 12px;
+      padding: 10px;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 26px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #263142;
+    }
+
+    .detail-label {
+      color: #8fa7c8;
+    }
+
+    .detail-value {
+      color: #d8e2f2;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .detail-input,
+    .detail-select {
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+    }
+
+    .detail-input {
+      padding: 0 6px;
+    }
+
+    .detail-action {
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      border: 1px solid #3d6fa8;
+      border-radius: 4px;
+      color: #eef3ff;
+      background: #255a91;
+      font: 12px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .detail-action:hover {
+      background: #2f6eac;
+    }
+
+    .content-authoring {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      min-height: 100%;
+      padding: 10px;
+      overflow: auto;
+    }
+
+    .content-authoring-toolbar,
+    .content-authoring-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .content-authoring button,
+    .content-authoring select,
+    .content-authoring input {
+      min-width: 0;
+      min-height: 27px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+    }
+
+    .content-authoring button { cursor: pointer; }
+    .content-authoring button:hover { border-color: #4a90d9; }
+    .content-authoring select { flex: 1 1 120px; }
+    .content-authoring textarea {
+      width: 100%;
+      min-height: 210px;
+      resize: vertical;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      padding: 8px;
+      color: #d8e2f2;
+      background: #0d131d;
+      font: 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .content-authoring-summary,
+    .content-authoring-status {
+      padding: 7px 8px;
+      border: 1px solid #273143;
+      border-radius: 4px;
+      color: #9eb0c9;
+      background: #0d131d;
+      white-space: pre-wrap;
+    }
+
+    .content-authoring-status[data-state="error"] { color: #ff9398; border-color: #713a40; }
+    .content-authoring-status[data-state="ok"] { color: #86e39e; border-color: #315e40; }
+    .timeline-lanes { position: relative; display: grid; gap: 4px; min-height: 54px; padding: 6px; overflow: hidden; border: 1px solid #303746; border-radius: 4px; background: #0b1018; }
+    .timeline-clip { min-width: 36px; height: 22px; padding: 3px 5px; overflow: hidden; border-radius: 3px; color: #eef3ff; background: #255a91; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .material-node-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
+    .material-node-card { display: grid; gap: 4px; padding: 7px; border: 1px solid #35445b; border-radius: 4px; background: #121a27; }
+    .material-node-card small { color: #8094af; }
+
+    textarea.detail-input {
+      height: auto;
+      padding: 8px;
+      resize: vertical;
+      font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .prefab-diff-list {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .prefab-diff-empty {
+      color: #8fa7c8;
+      font-size: 12px;
+    }
+
+    .prefab-diff-card {
+      min-width: 0;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0f1520;
+    }
+
+    .prefab-diff-title {
+      padding: 7px 8px;
+      border-bottom: 1px solid #303746;
+      color: #eef3ff;
+      background: #151c29;
+      font-size: 12px;
+      font-weight: 650;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .prefab-diff-row {
+      display: grid;
+      grid-template-columns: minmax(72px, 0.5fr) repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      padding: 7px 8px;
+      border-bottom: 1px solid rgba(48, 55, 70, 0.55);
+    }
+
+    .prefab-diff-row:last-child {
+      border-bottom: 0;
+    }
+
+    .prefab-diff-row.conflict {
+      background: rgba(115, 70, 26, 0.22);
+    }
+
+    .prefab-diff-field {
+      color: #d8e2f2;
+      font-size: 12px;
+      font-weight: 650;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .prefab-diff-cell {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .prefab-diff-cell span {
+      color: #8fa7c8;
+      font-size: 11px;
+    }
+
+    .prefab-diff-cell code {
+      display: block;
+      min-width: 0;
+      max-height: 58px;
+      overflow: auto;
+      padding: 4px 5px;
+      border-radius: 3px;
+      color: #d8e2f2;
+      background: #090d14;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .prefab-diff-actions {
+      grid-column: 2 / -1;
+      justify-content: flex-start;
+      padding-top: 2px;
+    }
+
+    .script-editor-host {
+      position: relative;
+      height: 220px;
+      min-height: 220px;
+      overflow: hidden;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      background: #0b1018;
+    }
+
+    .script-editor-host-large {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .script-editor-highlight,
+    .script-editor-textarea {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 8px;
+      border: 0;
+      box-sizing: border-box;
+      font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      tab-size: 2;
+      white-space: pre-wrap;
+      overflow-wrap: normal;
+      overflow: auto;
+      outline: none;
+    }
+
+    .script-editor-highlight {
+      z-index: 1;
+      color: #d8e2f2;
+      background: #0b1018;
+      pointer-events: none;
+    }
+
+    .script-editor-textarea {
+      z-index: 2;
+      resize: none;
+      color: transparent;
+      background: transparent;
+      caret-color: #d8e2f2;
+    }
+
+    .script-editor-textarea::selection {
+      color: transparent;
+      background: rgba(115, 183, 255, 0.28);
+    }
+
+    .script-editor-host .tok-keyword { color: #ff7ab6; }
+    .script-editor-host .tok-atom,
+    .script-editor-host .tok-bool,
+    .script-editor-host .tok-number { color: #f6c177; }
+    .script-editor-host .tok-string,
+    .script-editor-host .tok-string2 { color: #9ece6a; }
+    .script-editor-host .tok-comment { color: #6f7f96; font-style: italic; }
+    .script-editor-host .tok-variableName { color: #d8e2f2; }
+    .script-editor-host .tok-definition { color: #7dcfff; }
+    .script-editor-host .tok-propertyName { color: #73b7ff; }
+    .script-editor-host .tok-operator { color: #89ddff; }
+    .script-editor-host .tok-punctuation { color: #aebbd0; }
+    .code-help .tok-keyword { color: #ff7ab6; }
+    .code-help .tok-atom,
+    .code-help .tok-bool,
+    .code-help .tok-number { color: #f6c177; }
+    .code-help .tok-string,
+    .code-help .tok-string2 { color: #9ece6a; }
+    .code-help .tok-comment { color: #6f7f96; font-style: italic; }
+    .code-help .tok-variableName { color: #d8e2f2; }
+    .code-help .tok-definition { color: #7dcfff; }
+    .code-help .tok-propertyName { color: #73b7ff; }
+    .code-help .tok-operator { color: #89ddff; }
+    .code-help .tok-punctuation { color: #aebbd0; }
+
+    .code-help {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #aebbd0;
+      background: #101722;
+    }
+
+    .code-help-title {
+      color: #d8e2f2;
+      font-weight: 650;
+    }
+
+    .code-help pre {
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: #d8e2f2;
+      font: 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .code-help button {
+      justify-self: start;
+      height: 26px;
+      padding: 0 8px;
+      border: 1px solid #303746;
+      border-radius: 4px;
+      color: #d8e2f2;
+      background: #121822;
+      font: 12px system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .code-help button:hover {
+      border-color: #3d6fa8;
+      background: #172235;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <img class="brand-logo" src="./assets/branding/haiyue-logo-128.png" alt="" aria-hidden="true" />
+        <span data-i18n="app.brand">海月</span>
+      </div>
+      <ge-tooltip label="Undo" placement="bottom" delay="1000">
+        <ge-button id="undo-button" icon-only aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>
+        </ge-button>
+      </ge-tooltip>
+      <ge-tooltip label="Redo" placement="bottom" delay="1000">
+        <ge-button id="redo-button" icon-only aria-label="Redo" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h2"/></svg>
+        </ge-button>
+      </ge-tooltip>
+      <div class="toolbar-divider"></div>
+      <ge-tooltip label="Open" placement="bottom" delay="1000">
+        <ge-button id="open-button" icon-only aria-label="Open">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h4"/></svg>
+        </ge-button>
+      </ge-tooltip>
+      <ge-dropdown id="recent-scenes-dropdown" placement="bottom-start">
+        <ge-button slot="trigger" label="Recent" data-i18n-label="toolbar.recent"></ge-button>
+      </ge-dropdown>
+      <ge-tooltip label="Save" placement="bottom" delay="1000">
+        <ge-button id="save-button" icon-only aria-label="Save">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+        </ge-button>
+      </ge-tooltip>
+      <ge-button id="save-as-button" label="Save As" data-i18n-label="toolbar.saveAs"></ge-button>
+      <ge-button id="export-project-button" label="Export Project" data-i18n-label="toolbar.exportProject"></ge-button>
+      <input id="open-file-input" type="file" accept="application/json,.json" hidden />
+      <div class="toolbar-divider"></div>
+      <ge-dropdown id="starter-kit-dropdown" placement="bottom-start">
+        <ge-button slot="trigger" label="Kits" data-i18n-label="toolbar.kits"></ge-button>
+      </ge-dropdown>
+      <ge-tooltip label="Play" placement="bottom" delay="1000">
+        <ge-button id="play-button" icon-only aria-label="Play">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16l14-8Z"/></svg>
+        </ge-button>
+      </ge-tooltip>
+      <div class="header-spacer"></div>
+      <div class="editor-options-wrap">
+        <ge-tooltip label="Editor options" placement="bottomRight" delay="1000">
+          <button id="editor-options-button" class="icon-button" type="button" aria-label="Editor options" aria-haspopup="dialog" aria-expanded="false" aria-controls="editor-options-panel">⚙</button>
+        </ge-tooltip>
+        <div id="editor-options-panel" class="editor-options-panel" role="dialog" aria-labelledby="editor-options-title" hidden>
+          <h2 id="editor-options-title" class="editor-options-title" data-i18n="options.title">Editor Options</h2>
+          <div class="editor-options-section">
+            <div class="field">
+              <label for="editor-language-select" data-i18n="options.language">Language</label>
+              <select id="editor-language-select" class="detail-select">
+                <option value="zh-CN" data-i18n="language.zh">中文</option>
+                <option value="en-US" data-i18n="language.en">English</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="editor-default-material-select" data-i18n="options.defaultMaterial">Default 3D Material</label>
+              <select id="editor-default-material-select" class="detail-select">
+                <option value="pbr" data-i18n="defaultMaterial.pbr">PBR Metallic/Roughness</option>
+                <option value="basic" data-i18n="defaultMaterial.basic">Basic</option>
+                <option value="blinn-phong" data-i18n="defaultMaterial.blinnPhong">Blinn-Phong</option>
+                <option value="normal" data-i18n="defaultMaterial.normal">Normal</option>
+                <option value="depth" data-i18n="defaultMaterial.depth">Depth</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <ge-split id="workspace-split" class="workspace" direction="horizontal" ratio="0.2" min-first="180" min-second="520">
+      <ge-split id="left-stack-split" slot="first" direction="vertical" ratio="0.7" min-first="160" min-second="120">
+        <section class="panel hierarchy" slot="first">
+          <div class="panel-header" data-i18n="panel.hierarchy">Hierarchy</div>
+          <div class="panel-body">
+            <input id="entity-search-input" class="panel-search" type="search" placeholder="Search entities" aria-label="Search entities" />
+            <ge-tree id="hierarchy-tree" allow-drag></ge-tree>
+          </div>
+        </section>
+
+        <section class="panel systems" slot="second">
+          <div class="panel-header" data-i18n="panel.systems">Systems</div>
+          <div class="panel-body">
+            <div class="system-toolbar">
+              <select id="system-add-select">
+                <option value="Physics2DSystem">Physics2DSystem</option>
+                <option value="RadialShadowRenderFeature">RadialShadowRenderFeature</option>
+              </select>
+              <button id="system-add-button" type="button" data-i18n="action.add">Add</button>
+            </div>
+            <ul id="system-list" class="system-list"></ul>
+          </div>
+        </section>
+      </ge-split>
+
+      <ge-split id="center-split" slot="second" direction="horizontal" ratio="0.625" min-first="320" min-second="240">
+        <ge-split id="viewport-stack-split" slot="first" direction="vertical" ratio="0.7" min-first="260" min-second="120">
+          <section class="panel viewport-panel" slot="first">
+            <div class="panel-header">
+              <span data-i18n="panel.viewport">Viewport</span>
+              <div class="viewport-tools" aria-label="Transform tools">
+                <button id="viewport-tool-translate" class="viewport-tool active" type="button" title="Translate (W)">W</button>
+                <button id="viewport-tool-rotate" class="viewport-tool" type="button" title="Rotate (E)">E</button>
+                <button id="viewport-tool-scale" class="viewport-tool" type="button" title="Scale (R)">R</button>
+                <select id="viewport-transform-space" aria-label="Transform space"><option value="world">World</option><option value="local">Local</option></select>
+                <select id="viewport-transform-pivot" aria-label="Transform pivot"><option value="active">Pivot</option><option value="center">Center</option></select>
+                <label class="viewport-snap"><input id="viewport-snap-enabled" type="checkbox" />Snap</label>
+                <input id="viewport-snap-value" type="number" min="0.001" step="0.1" value="0.5" aria-label="Snap value" />
+                <button id="viewport-focus-selection" class="viewport-tool" type="button" title="Focus selection (F)">F</button>
+              </div>
+              <div class="viewport-tabs" role="tablist" aria-label="Viewport control mode" data-i18n-aria-label="viewport.modeAria">
+                <button id="viewport-mode-orbit" class="viewport-tab active" type="button" role="tab" aria-selected="true" data-i18n="viewport.orbit">Orbit</button>
+                <ge-dropdown id="box-select-target-dropdown" placement="bottom-end">
+                  <button id="viewport-mode-box" class="viewport-tab" slot="trigger" type="button" role="tab" aria-selected="false" data-i18n="viewport.boxAll">Box Select: All</button>
+                </ge-dropdown>
+              </div>
+            </div>
+            <div class="panel-body viewport-wrap" id="viewport-wrap">
+              <canvas id="viewport"></canvas>
+              <div id="selection-helper-2d-layer" class="selection-helper-2d-layer"></div>
+              <div id="viewport-message" class="viewport-message"></div>
+            </div>
+          </section>
+
+          <section class="panel" slot="second">
+            <input id="resource-search-input" class="panel-search" type="search" placeholder="Search resources" aria-label="Search resources" />
+            <div id="asset-operation-center" class="asset-operation-center" hidden></div>
+            <ge-tabs
+              id="resource-tabs"
+              value="geometry"
+              options='[
+                {"label":"Geometries","value":"geometry"},
+                {"label":"Materials","value":"material"},
+                {"label":"Textures","value":"texture"},
+                {"label":"Models","value":"model"},
+                {"label":"Prefabs","value":"prefab"},
+                {"label":"Scripts","value":"script"}
+              ]'
+            >
+              <ul id="geometry-resources" class="resource-list geometry-grid" slot="geometry"></ul>
+              <ul id="material-resources" class="resource-list material-grid" slot="material"></ul>
+              <ul id="texture-resources" class="resource-list texture-grid" slot="texture"></ul>
+              <ul id="model-resources" class="resource-list prefab-grid" slot="model"></ul>
+              <ul id="prefab-resources" class="resource-list prefab-grid" slot="prefab"></ul>
+              <ul id="script-resources" class="resource-list prefab-grid" slot="script"></ul>
+            </ge-tabs>
+          </section>
+        </ge-split>
+
+        <section class="panel inspector" slot="second">
+          <ge-tabs
+            id="inspector-tabs"
+            value="inspector"
+            options='[
+              {"label":"Inspector","value":"inspector"},
+              {"label":"Global Settings","value":"global"},
+              {"label":"Animation","value":"animation"},
+              {"label":"Material Graph","value":"material-graph"}
+            ]'
+          >
+          <div class="panel-body" slot="inspector">
+            <div id="entity-inspector-panel">
+              <div id="inspector-empty" class="inspector-empty" data-i18n="inspector.empty">No entity selected</div>
+              <div id="inspector-form" class="inspector-form" hidden>
+                <div class="field">
+                  <label for="entity-name-input" data-i18n="field.name">Name</label>
+                  <input id="entity-name-input" type="text" autocomplete="off" />
+                </div>
+                <div class="field">
+                  <label data-i18n="field.id">ID</label>
+                  <div id="entity-id-value" class="readonly">-</div>
+                </div>
+                <div class="field">
+                  <div class="component-field-header">
+                    <label data-i18n="field.components">Components</label>
+                    <div class="component-actions">
+                      <button id="remove-component-button" class="icon-button" type="button" title="Remove component" data-i18n-title="component.remove">−</button>
+                      <ge-dropdown id="add-component-dropdown" placement="bottom-end">
+                        <button id="add-component-button" class="icon-button" slot="trigger" type="button" title="Add component" data-i18n-title="component.add">+</button>
+                      </ge-dropdown>
+                    </div>
+                  </div>
+                  <ge-select id="selected-components"></ge-select>
+                </div>
+                <div id="component-editor-empty" class="inspector-note" data-i18n="component.empty">Select a component to edit.</div>
+                <div id="transform-section" class="inspector-section" hidden>
+                  <div id="component-section-title" class="section-title">Transform</div>
+                  <div id="cartesian-transform-fields" class="inspector-section">
+                  <div class="vector-field">
+                    <label data-i18n="field.position">Position</label>
+                    <div class="vector-inputs">
+                      <input id="position-x" type="number" step="0.1" aria-label="Position X" />
+                      <input id="position-y" type="number" step="0.1" aria-label="Position Y" />
+                      <input id="position-z" type="number" step="0.1" aria-label="Position Z" />
+                    </div>
+                  </div>
+                  <div class="vector-field">
+                    <label data-i18n="field.rotation">Rotation</label>
+                    <div class="vector-inputs">
+                      <input id="rotation-x" type="number" step="1" aria-label="Rotation X" />
+                      <input id="rotation-y" type="number" step="1" aria-label="Rotation Y" />
+                      <input id="rotation-z" type="number" step="1" aria-label="Rotation Z" />
+                    </div>
+                  </div>
+                  <div class="vector-field">
+                    <label data-i18n="field.scale">Scale</label>
+                    <div class="vector-inputs">
+                      <input id="scale-x" type="number" step="0.1" aria-label="Scale X" />
+                      <input id="scale-y" type="number" step="0.1" aria-label="Scale Y" />
+                      <input id="scale-z" type="number" step="0.1" aria-label="Scale Z" />
+                    </div>
+                  </div>
+                  </div>
+                  <div id="spherical-transform-fields" class="inspector-section" hidden>
+                    <div class="field">
+                      <label for="spherical-radius-input" data-i18n="field.radius">Radius</label>
+                      <input id="spherical-radius-input" type="number" step="0.1" min="0.005" />
+                    </div>
+                    <div class="vector-field">
+                      <label data-i18n="field.angles">Angles</label>
+                      <div class="vector-inputs">
+                        <input id="spherical-theta-input" type="number" step="1" aria-label="Theta" />
+                        <input id="spherical-phi-input" type="number" step="1" min="0.3" max="179.7" aria-label="Phi" />
+                      </div>
+                    </div>
+                    <div class="vector-field">
+                      <label data-i18n="field.target">Target</label>
+                      <div class="vector-inputs">
+                        <input id="spherical-target-x" type="number" step="0.1" aria-label="Target X" />
+                        <input id="spherical-target-y" type="number" step="0.1" aria-label="Target Y" />
+                        <input id="spherical-target-z" type="number" step="0.1" aria-label="Target Z" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="transform-note" class="inspector-note" hidden></div>
+                <div id="mesh-section" class="inspector-section" hidden>
+                  <div class="section-title">Mesh3D</div>
+                  <div class="field">
+                    <label for="mesh-geometry-select" data-i18n="field.geometry">Geometry</label>
+                    <ge-select id="mesh-geometry-select"></ge-select>
+                  </div>
+                  <div class="field">
+                    <label for="mesh-material-select" data-i18n="field.material">Material</label>
+                    <ge-select id="mesh-material-select"></ge-select>
+                  </div>
+                </div>
+                <div id="transform2d-section" class="inspector-section" hidden>
+                  <div class="section-title">Transform2D</div>
+                  <div class="vector-field">
+                    <label data-i18n="field.positionRotation">Position / Rotation</label>
+                    <div class="vector-inputs">
+                      <input id="transform2d-x-input" type="number" step="1" aria-label="2D X" />
+                      <input id="transform2d-y-input" type="number" step="1" aria-label="2D Y" />
+                      <input id="transform2d-rotation-input" type="number" step="1" aria-label="2D Rotation" />
+                    </div>
+                  </div>
+                  <div class="vector-field">
+                    <label data-i18n="field.scale">Scale</label>
+                    <div class="vector-inputs">
+                      <input id="transform2d-scale-x-input" type="number" step="0.1" aria-label="2D Scale X" />
+                      <input id="transform2d-scale-y-input" type="number" step="0.1" aria-label="2D Scale Y" />
+                    </div>
+                  </div>
+                </div>
+                <div id="mesh2d-section" class="inspector-section" hidden>
+                  <div class="section-title">Mesh2D</div>
+                  <div class="field">
+                    <label for="mesh2d-material-select" data-i18n="field.material">Material</label>
+                    <ge-select id="mesh2d-material-select"></ge-select>
+                  </div>
+                  <div class="field">
+                    <label for="mesh2d-color-input" data-i18n="field.color">Color</label>
+                    <input id="mesh2d-color-input" type="color" />
+                  </div>
+                  <div class="field">
+                    <label for="mesh2d-alpha-input" data-i18n="field.alpha">Alpha</label>
+                    <input id="mesh2d-alpha-input" type="number" min="0" max="1" step="0.01" />
+                  </div>
+                  <div class="field">
+                    <label for="mesh2d-blending-select" data-i18n="field.blending">Blending</label>
+                    <select id="mesh2d-blending-select" class="detail-select">
+                      <option value="none">none</option>
+                      <option value="normal">normal</option>
+                      <option value="additive">additive</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="canvas-text-section" class="inspector-section" hidden>
+                  <div class="section-title">CanvasTextComponent</div>
+                  <div class="field">
+                    <label for="canvas-text-input" data-i18n="field.text">Text</label>
+                    <textarea id="canvas-text-input" class="detail-input" rows="3"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="canvas-text-style-input" data-i18n="field.styleJson">Style JSON</label>
+                    <textarea id="canvas-text-style-input" class="detail-input" rows="10"></textarea>
+                  </div>
+                </div>
+                <div id="data-component-section" class="inspector-section" hidden>
+                  <div class="section-title">DataComponent</div>
+                  <div class="field">
+                    <label for="data-component-input">JSON</label>
+                    <textarea id="data-component-input" class="detail-input" rows="10"></textarea>
+                  </div>
+                </div>
+                <div id="generic-component-section" class="inspector-section" hidden>
+                  <div id="generic-component-title" class="section-title">Component</div>
+                  <div id="generic-component-fields"></div>
+                </div>
+                <div id="tilemap2d-section" class="inspector-section" hidden>
+                  <div class="section-title">Tilemap2DComponent</div>
+                  <div class="vector-field">
+                    <label data-i18n="field.gridSize">Grid Size</label>
+                    <div class="vector-inputs">
+                      <input id="tilemap-columns-input" type="number" step="1" min="1" aria-label="Tilemap columns" />
+                      <input id="tilemap-rows-input" type="number" step="1" min="1" aria-label="Tilemap rows" />
+                    </div>
+                  </div>
+                  <div class="vector-field">
+                    <label data-i18n="field.cellSizeGap">Cell Size / Gap</label>
+                    <div class="vector-inputs">
+                      <input id="tilemap-cell-width-input" type="number" step="1" min="0.001" aria-label="Tilemap cell width" />
+                      <input id="tilemap-cell-height-input" type="number" step="1" min="0.001" aria-label="Tilemap cell height" />
+                      <input id="tilemap-gap-input" type="number" step="1" min="0" aria-label="Tilemap gap" />
+                    </div>
+                  </div>
+                  <div class="vector-field">
+                    <label data-i18n="field.origin">Origin</label>
+                    <div class="vector-inputs">
+                      <input id="tilemap-origin-x-input" type="number" step="1" aria-label="Tilemap origin X" />
+                      <input id="tilemap-origin-y-input" type="number" step="1" aria-label="Tilemap origin Y" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="tilemap-palette-input" data-i18n="field.paletteJson">Palette JSON</label>
+                    <textarea id="tilemap-palette-input" class="detail-input" rows="7"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="tilemap-cells-input" data-i18n="field.cellsJson">Cells JSON</label>
+                    <textarea id="tilemap-cells-input" class="detail-input" rows="8"></textarea>
+                  </div>
+                </div>
+                <div id="keyboard-section" class="inspector-section" hidden>
+                  <div class="section-title">KeyboardComponent</div>
+                  <div class="field">
+                    <label data-i18n="field.currentPressedKeys">Current pressed keys</label>
+                    <div id="keyboard-pressed-value" class="readonly">-</div>
+                  </div>
+                  <div class="code-help">
+                    <div class="code-help-title" data-i18n="script.api">Script API</div>
+                    <pre id="keyboard-example-code"></pre>
+                  </div>
+                </div>
+                <div id="camera-section" class="inspector-section" hidden>
+                  <div class="section-title" id="camera-section-title">Camera</div>
+                  <div id="camera3d-fields" class="inspector-section" hidden>
+                    <div class="field">
+                      <label for="camera-projection-select" data-i18n="field.projection">Projection</label>
+                      <select id="camera-projection-select" class="detail-select">
+                        <option value="perspective">Perspective</option>
+                        <option value="orthographic">Orthographic</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="camera-fov-input">FOV</label>
+                      <input id="camera-fov-input" type="number" step="1" min="1" max="179" />
+                    </div>
+                    <div class="vector-field">
+                      <label data-i18n="field.clip">Clip</label>
+                      <div class="vector-inputs">
+                        <input id="camera-near-input" type="number" step="0.01" aria-label="Camera near" />
+                        <input id="camera-far-input" type="number" step="1" aria-label="Camera far" />
+                        <input id="camera-reverse-z-input" type="checkbox" aria-label="Camera reverse Z" />
+                      </div>
+                    </div>
+                    <div class="vector-field">
+                      <label data-i18n="field.orthoBounds">Ortho Bounds</label>
+                      <div class="vector-inputs">
+                        <input id="camera-ortho-left-input" type="number" step="0.1" aria-label="Camera ortho left" />
+                        <input id="camera-ortho-right-input" type="number" step="0.1" aria-label="Camera ortho right" />
+                        <input id="camera-ortho-top-input" type="number" step="0.1" aria-label="Camera ortho top" />
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label for="camera-ortho-bottom-input" data-i18n="field.orthoBottom">Ortho Bottom</label>
+                      <input id="camera-ortho-bottom-input" type="number" step="0.1" />
+                    </div>
+                  </div>
+                  <div id="camera2d-fields" class="inspector-section" hidden>
+                    <div class="vector-field">
+                      <label data-i18n="field.sizeZoom">Size / Zoom</label>
+                      <div class="vector-inputs">
+                        <input id="camera2d-width-input" type="number" step="1" aria-label="Camera2D width" />
+                        <input id="camera2d-height-input" type="number" step="1" aria-label="Camera2D height" />
+                        <input id="camera2d-zoom-input" type="number" step="0.1" aria-label="Camera2D zoom" />
+                      </div>
+                    </div>
+                    <div class="vector-field">
+                      <label data-i18n="field.clip">Clip</label>
+                      <div class="vector-inputs">
+                        <input id="camera2d-near-input" type="number" step="0.01" aria-label="Camera2D near" />
+                        <input id="camera2d-far-input" type="number" step="1" aria-label="Camera2D far" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="script-section" class="inspector-section" hidden>
+                  <div class="section-title">ScriptComponent</div>
+                  <div class="field">
+                    <label for="script-resource-select" data-i18n="field.script">Script</label>
+                    <ge-select id="script-resource-select"></ge-select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="resource-detail" class="resource-detail" hidden>
+              <div class="section-title" id="resource-detail-title" data-i18n="resource.title">Resource</div>
+              <div class="detail-grid" id="resource-detail-grid"></div>
+            </div>
+          </div>
+          <div class="panel-body global-settings-panel" slot="global">
+            <div class="inspector-form">
+              <div class="inspector-section">
+                <div class="section-title" data-i18n="global.game">Game</div>
+                <div class="field">
+                  <label for="global-game-name-input" data-i18n="field.name">Name</label>
+                  <input id="global-game-name-input" type="text" autocomplete="off" />
+                </div>
+                <div class="vector-field">
+                  <label data-i18n="global.designSize">Design Size</label>
+                  <div class="vector-inputs">
+                    <input id="global-design-width-input" type="number" step="1" min="1" aria-label="Design width" />
+                    <input id="global-design-height-input" type="number" step="1" min="1" aria-label="Design height" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="global-viewport-mode-select" data-i18n="global.viewportMode">Viewport Mode</label>
+                  <select id="global-viewport-mode-select" class="detail-select">
+                    <option value="expand" data-i18n="viewportMode.expand">Expand</option>
+                    <option value="fill" data-i18n="viewportMode.fill">Fill</option>
+                    <option value="fixed" data-i18n="viewportMode.fixed">Fixed</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="global-clear-color-input" data-i18n="global.clearColor">Clear Color</label>
+                  <input id="global-clear-color-input" type="color" />
+                </div>
+                <div class="field">
+                  <label for="global-clear-alpha-input" data-i18n="global.clearAlpha">Clear Alpha</label>
+                  <input id="global-clear-alpha-input" type="number" min="0" max="1" step="0.01" />
+                </div>
+                <div class="field">
+                  <ge-checkbox id="global-reverse-z-input" label="Reverse Z" data-i18n-label="global.reverseZ"></ge-checkbox>
+                </div>
+                <div class="field">
+                  <label for="global-render2d-load-op-select" data-i18n="global.render2DLoadOp">2D Load Op</label>
+                  <select id="global-render2d-load-op-select" class="detail-select">
+                    <option value="load">Load</option>
+                    <option value="clear">Clear</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="global-gui-load-op-select" data-i18n="global.guiLoadOp">GUI Load Op</label>
+                  <select id="global-gui-load-op-select" class="detail-select">
+                    <option value="load">Load</option>
+                    <option value="clear">Clear</option>
+                  </select>
+                </div>
+              </div>
+              <div class="inspector-section">
+                <div class="section-title" data-i18n="global.customParameters">Custom Parameters</div>
+                <div class="field">
+                  <label for="global-parameters-input">JSON</label>
+                  <textarea id="global-parameters-input" class="detail-input" rows="12"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="animation-authoring-panel" class="content-authoring" slot="animation">
+            <div class="content-authoring-status">Open this tab to load the Animation authoring tools.</div>
+          </div>
+          <div id="material-graph-authoring-panel" class="content-authoring" slot="material-graph">
+            <div class="content-authoring-status">Open this tab to load the Material Graph tools.</div>
+          </div>
+          </ge-tabs>
+        </section>
+      </ge-split>
+    </ge-split>
+  </div>
+  <div id="play-overlay" class="play-overlay" hidden>
+    <div class="play-overlay-header">
+      <span data-i18n="play.title">Play</span>
+      <div class="play-overlay-actions">
+        <button id="play-restart-button" class="play-overlay-action" type="button" data-i18n="play.restart">Restart</button>
+        <button id="play-pause-button" class="play-overlay-action" type="button" data-i18n="play.pause">Pause</button>
+        <button id="play-close-button" class="play-overlay-close" type="button" title="Close" data-i18n-title="action.close">×</button>
+      </div>
+    </div>
+    <div class="play-device-toolbar">
+      <label>
+        <span data-i18n="play.device">Device</span>
+        <select id="play-device-select">
+          <option value="pc" data-i18n="device.pc">PC Responsive</option>
+          <option value="iphone-se">iPhone SE</option>
+          <option value="iphone-14">iPhone 14</option>
+          <option value="pixel-7">Pixel 7</option>
+          <option value="ipad">iPad</option>
+          <option value="custom" data-i18n="device.custom">Custom</option>
+        </select>
+      </label>
+      <label>
+        DPR
+        <input id="play-device-dpr-input" type="number" min="0.5" max="4" step="0.25" />
+      </label>
+      <label>
+        <span data-i18n="play.zoom">Zoom %</span>
+        <input id="play-device-zoom-input" type="number" min="25" max="200" step="5" />
+      </label>
+      <div id="play-device-custom" class="play-device-custom" hidden>
+        <label>
+          <span data-i18n="play.widthShort">W</span>
+          <input id="play-device-width-input" type="number" min="1" step="1" />
+        </label>
+        <label>
+          <span data-i18n="play.heightShort">H</span>
+          <input id="play-device-height-input" type="number" min="1" step="1" />
+        </label>
+      </div>
+    </div>
+    <div class="play-device-stage">
+      <div id="play-device-viewport" class="play-device-viewport">
+        <div id="play-device-frame" class="play-device-frame">
+          <iframe id="play-frame" class="play-frame" title="Scene Player" data-i18n-title="play.frameTitle" allow="fullscreen"></iframe>
+        </div>
+      </div>
+    </div>
+    <div class="play-debug-panel">
+      <section class="play-debug-section" aria-label="Runtime Inspector">
+        <div class="play-debug-section-title">Runtime Inspector</div>
+        <div id="play-runtime-inspector" class="play-debug-body"></div>
+      </section>
+      <section class="play-debug-section" aria-label="Performance">
+        <div class="play-debug-section-title">
+          <span>Diagnostics</span>
+          <button id="play-diagnostic-export" class="play-debug-export" type="button">Export JSON</button>
+        </div>
+        <div id="play-performance" class="play-debug-body"></div>
+      </section>
+      <section class="play-debug-section" aria-label="Log and Breakpoints">
+        <div class="play-debug-section-title">
+          <span>Log</span>
+          <span id="play-breakpoints-status" class="play-breakpoints-status"></span>
+        </div>
+        <div class="play-breakpoints-editor">
+          <div id="play-output" class="play-output" aria-live="polite"></div>
+          <div class="play-breakpoints-actions">
+            <textarea id="play-breakpoints-input" class="play-breakpoints-input" rows="3" spellcheck="false" placeholder="*, scriptId, scriptName, entityName, scriptId:onUpdate"></textarea>
+            <button id="play-breakpoints-apply" class="play-breakpoints-apply" type="button">Apply</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div id="script-editor-overlay" class="play-overlay script-editor-overlay" hidden>
+    <div class="play-overlay-header">
+      <span id="script-editor-overlay-title">Script</span>
+      <button id="script-editor-overlay-close" class="play-overlay-close" type="button" title="Close" data-i18n-title="action.close">×</button>
+    </div>
+    <div class="script-overlay-body">
+      <div class="field">
+        <label for="script-lifecycle-select" data-i18n="script.lifecycle">Lifecycle</label>
+        <ge-select id="script-lifecycle-select"></ge-select>
+      </div>
+      <div class="code-help">
+        <div class="code-help-title" data-i18n="script.lifecycleParameters">Lifecycle parameters</div>
+        <pre id="script-parameters-code"></pre>
+        <button id="script-insert-example" type="button" data-i18n="script.insertExample">Insert Example</button>
+      </div>
+      <div id="script-editor-host" class="script-editor-host script-editor-host-large"></div>
+    </div>
+  </div>
+  <ge-context-menu id="entity-context-menu"></ge-context-menu>
+
+  <script type="module" src="./dist/editor.js"></script>
+</body>
+</html>

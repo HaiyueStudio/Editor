@@ -1,0 +1,45 @@
+{
+  "name": "@haiyue/voxel-editor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WebGPU voxel modeling, animation and game-asset editor.",
+  "author": "HaiYue Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HaiyueStudio/Editor.git",
+    "directory": "voxelEditor"
+  },
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "build": "node ../scripts/build-rollup-once.mjs --expect dist",
+    "build:app": "npm run build && node scripts/build-app.mjs",
+    "build:pwa": "npm run build:app",
+    "build:test": "node ../scripts/build-rollup-once.mjs rollup.test.config.js --expect dist-test",
+    "dev": "rollup -c rollup.config.js --watch",
+    "preview:pwa": "npm run build:pwa && node scripts/serve-pwa.mjs",
+    "electron:start": "npm run build:app && electron .",
+    "electron:pack": "npm run build:app && electron-builder --dir --config electron-builder.yml",
+    "electron:dist": "npm run build:app && electron-builder --config electron-builder.yml",
+    "test": "npm run build:app && npm run build:test && node --test test/*.test.mjs",
+    "test:browser": "npm run build && node test/browser-smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@haiyue/engine": ">=0.1.0 <0.2.0",
+    "@haiyue/ui": ">=0.1.0 <0.2.0",
+    "wgpu-matrix": "^3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.2",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@webgpu/types": "^0.1.40",
+    "electron": "43.2.0",
+    "electron-builder": "^26.15.3",
+    "rollup": "^4.0.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.2.0"
+  }
+}

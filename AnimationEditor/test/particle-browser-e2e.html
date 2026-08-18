@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G05 Particle authoring browser fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.45 system-ui, sans-serif; background: #090d14; color: #d7dde8; }
+      body { margin: 0; padding: 18px; }
+      main { display: grid; grid-template-columns: 340px minmax(420px, 1fr); gap: 16px; align-items: start; }
+      h1, #progress, #result { grid-column: 1 / -1; }
+      h1 { margin: 0; font-size: 18px; }
+      section { padding: 11px; border: 1px solid #293142; border-radius: 8px; background: #0e141f; }
+      h2 { margin: 0 0 8px; font-size: 13px; color: #aab6ca; }
+      canvas { display: block; width: 100%; height: 330px; border: 1px solid #364159; background: #080c13; }
+      #inspector { display: grid; gap: 8px; max-height: 690px; overflow: auto; }
+      fieldset { display: grid; grid-template-columns: 1fr; gap: 5px; margin: 0; border: 1px solid #2c3649; }
+      label { display: grid; grid-template-columns: minmax(105px, 1fr) 82px 82px; gap: 5px; align-items: center; }
+      input, select { min-width: 0; width: 100%; box-sizing: border-box; }
+      output { display: block; color: #72dca2; }
+      ul { margin: 0; padding-left: 18px; }
+      [data-severity="error"] { color: #ff7b86; }
+      [data-severity="warning"] { color: #f3c969; }
+      #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="failed"] { color: #ff7b86; }
+      [data-status="passed"] { color: #73dc9d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G05 粒子编辑、确定性 scrub 与真实 WebGPU 统计</h1>
+      <section><h2>完整 Particle2D Inspector</h2><div id="inspector"></div></section>
+      <section>
+        <h2>Authoring Canvas（左）/ 同一 HYA bytes WebGPU（右）</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <canvas id="authoring" width="320" height="330"></canvas>
+          <canvas id="runtime" width="320" height="330"></canvas>
+        </div>
+      </section>
+      <div id="progress">正在加载 G05 fixture…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.particle-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G05 浏览器测试 bundle。');
+      }
+      const domain = await import(`./${bundleDirectory}/particle-domain.js`);
+      const {
+        ParticleCanvasAuthoringAdapter,
+        ParticleInspectorAuthoringAdapter,
+      } = await import(`./${bundleDirectory}/particle-adapters.js`);
+      const { ParticleWebGpuRuntimeAdapter } = await import(`./${bundleDirectory}/particle-runtime.js`);
+      const {
+        cloneAnimationEditorProject,
+        compileAnimationEditorProject,
+        createBasicAnimationNode,
+        createEmptyAnimationEditorProject,
+        freezeAnimationEditorProject,
+      } = await import('../dist-test/testing.js');
+
+      const resultNode = document.querySelector('#result');
+      const progress = document.querySelector('#progress');
+      const authoringCanvas = document.querySelector('#authoring');
+      const runtimeCanvas = document.querySelector('#runtime');
+      const inspectorRoot = document.querySelector('#inspector');
+      let runtime = null;
+      let canvasAdapter = null;
+      let inspector = null;
+
+      try {
+        assert('gpu' in navigator, '浏览器必须提供 WebGPU');
+        let project = cloneAnimationEditorProject(createEmptyAnimationEditorProject({
+          id: 'g05-browser', name: 'G05 Particle Browser', width: 320, height: 330, duration: 2, frameRate: 60,
+        }));
+        project.composition.endBehavior = 'loop';
+        project.assets.push({
+          id: 'spark', name: 'Spark Texture', type: 'image',
+          source: { kind: 'external', uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlMST8AAAAASUVORK5CYII=' },
+          delivery: { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlMST8AAAAASUVORK5CYII=', mimeType: 'image/png', width: 1, height: 1 },
+        });
+        const node = createBasicAnimationNode(project, 'group');
+        project.nodes.push(node);
+        project = freezeAnimationEditorProject(project);
+        project = domain.addParticle2DComponent(project, node.id, 'sparks', {
+          type: 'particle2d', maxParticles: 4096, emissionRate: 240, burst: 64, duration: 2, loop: true, seed: 20260804,
+          lifetime: [0.7, 1.8], speed: [35, 145], angle: [-2.75, -0.4], gravity: [0, 115],
+          startSize: [8, 18], endSize: [0, 4],
+          startColor: [1, 0.85, 0.22, 0.95], endColor: [1, 0.08, 0.01, 0],
+          shape: 'circle', shapeSize: [0, 0], shapeRadius: 22, blendMode: 'additive', radial: true,
+        });
+
+        let editCommits = 0;
+        let exactRequests = 0;
+        let lastStatistics = null;
+        const applyEdit = (edit) => {
+          project = domain.editParticle2DDescriptor(project, node.id, 'sparks', edit);
+          editCommits++;
+        };
+        inspector = new ParticleInspectorAuthoringAdapter(inspectorRoot, {
+          project: () => project, nodeId: node.id, componentId: 'sparks', onEdit: applyEdit,
+          onSetTextureResource: resourceId => {
+            project = domain.setParticle2DTextureResource(project, node.id, 'sparks', resourceId);
+            editCommits++;
+          },
+        });
+        const emissionInput = inspectorRoot.querySelector('[data-particle-field="emissionRate"] input');
+        emissionInput.value = '260';
+        emissionInput.dispatchEvent(new Event('change', { bubbles: true }));
+        const blendSelect = inspectorRoot.querySelector('[data-particle-field="blendMode"] select');
+        blendSelect.value = 'additive';
+        blendSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        const textureSelect = inspectorRoot.querySelector('[data-particle-field="resource"] select');
+        textureSelect.value = 'spark';
+        textureSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        assert(domain.readParticle2DDescriptor(project, node.id, 'sparks').emissionRate === 260, 'Inspector 可编辑 emission rate');
+        assert(domain.readParticle2DDescriptor(project, node.id, 'sparks').resource === 'spark', 'Inspector 可选择图像纹理');
+        textureSelect.value = '';
+        textureSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        assert(domain.readParticle2DDescriptor(project, node.id, 'sparks').resource === undefined, 'Inspector 可移除粒子纹理');
+        assert(inspectorRoot.querySelectorAll('[data-particle-field]').length >= 18, 'Inspector 覆盖完整基础粒子字段');
+
+        canvasAdapter = new ParticleCanvasAuthoringAdapter(authoringCanvas, {
+          project: () => project, nodeId: node.id, componentId: 'sparks', onEdit: applyEdit,
+          onExactPreviewRequested: () => { exactRequests++; },
+          onStatistics: stats => { lastStatistics = stats; inspector.setStatistics(stats); },
+        });
+        canvasAdapter.edit({ emissionRate: 270 }, '浏览器编辑发射率');
+        assert(domain.readParticle2DDescriptor(project, node.id, 'sparks').emissionRate === 270, 'Canvas edit 原子更新项目并重建引擎预览');
+        assert(canvasAdapter.metrics.exactPreviewRequests === 1 && exactRequests === 1, 'Canvas edit 请求一次 exact HYA preview');
+        assert(canvasAdapter.metrics.listenerCount === 2 && inspector.listenerCount > 0, 'Canvas/Inspector listener 固定注册');
+        assert(authoringCanvas.getAttribute('role') === 'slider' && authoringCanvas.tabIndex === 0, 'Canvas 支持键盘和 ARIA');
+
+        progress.textContent = '编译并启动同一 HYA bytes 的 WebGPU runtime';
+        const compilation = compileAnimationEditorProject(project);
+        assert(compilation.parsed.source === 'binary', 'runtime 输入来自编码后重新解析的 HYA bytes');
+        runtime = new ParticleWebGpuRuntimeAdapter(runtimeCanvas);
+        await runtime.initialize();
+        await runtime.load(compilation.parsed);
+        await runtime.seekFrame(1.8);
+        await frames(2);
+
+        const points = [0.35, 0.9, 1.55];
+        const samples = {};
+        for (const time of points) {
+          const authorA = canvasAdapter.scrub(time);
+          const authorPixelsA = canvasHash(authoringCanvas);
+          const authorB = canvasAdapter.scrub(time);
+          const authorPixelsB = canvasHash(authoringCanvas);
+          assert(authorA.fingerprint === authorB.fingerprint, `authoring ${time}s 重复 scrub 状态一致`);
+          assert(authorPixelsA.hash === authorPixelsB.hash && authorPixelsA.painted > 0, `authoring ${time}s 像素确定且非空`);
+
+          const gpuA = await runtime.seekFrame(time);
+          const gpuPixelsA = await canvasBitmapHash(runtimeCanvas);
+          const gpuB = await runtime.seekFrame(time);
+          const gpuPixelsB = await canvasBitmapHash(runtimeCanvas);
+          assert(gpuA.renderer.particleCount === gpuB.renderer.particleCount, `runtime ${time}s 粒子统计确定`);
+          assert(gpuA.renderer.emitterCount === 1 && gpuA.renderer.particleCount > 0, `runtime ${time}s 实际 draw emitter 非空`);
+          assert(gpuA.renderer.uploadedBytes > 0 && gpuB.renderer.uploadedBytes > 0, `runtime ${time}s 实际 upload 可见`);
+          assert(gpuPixelsA.hash === gpuPixelsB.hash && gpuPixelsA.painted > 0, `runtime ${time}s WebGPU 像素确定且非空`);
+          samples[time] = { authoring: authorPixelsA, runtime: gpuPixelsA, stats: gpuA.renderer };
+        }
+        assert(new Set(points.map(time => samples[time].runtime.hash)).size === points.length, '不同时间点产生不同 WebGPU 粒子像素');
+
+        progress.textContent = '连续 scrub：验证 listener/GPU owner/long-task 稳定';
+        await runtime.seekFrame(1.8);
+        const before = runtime.snapshot();
+        const canvasListeners = canvasAdapter.metrics.listenerCount;
+        const inspectorListeners = inspector.listenerCount;
+        const scrubDurations = [];
+        const longTasks = [];
+        const observer = typeof PerformanceObserver !== 'undefined'
+          ? new PerformanceObserver(list => longTasks.push(...list.getEntries().map(entry => entry.duration)))
+          : null;
+        try { observer?.observe({ type: 'longtask', buffered: false }); } catch { /* unsupported */ }
+        for (let index = 0; index < 48; index++) {
+          const time = (index * 0.037) % 1.8;
+          const started = performance.now();
+          canvasAdapter.scrub(time);
+          scrubDurations.push(performance.now() - started);
+          await runtime.seekFrame(time);
+        }
+        await frames(2);
+        observer?.disconnect();
+        const after = runtime.snapshot();
+        assert(canvasAdapter.metrics.listenerCount === canvasListeners, '连续 scrub 不增长 Canvas listener');
+        assert(inspector.listenerCount === inspectorListeners, '连续 scrub 不增长 Inspector listener');
+        assert(after.listenerCount === before.listenerCount, '连续 scrub 不增长 engine listener');
+        assert(after.ownerCount === before.ownerCount, '连续 scrub 不增长 GPU owner');
+        assert(lastStatistics.alive > 0 && lastStatistics.capacity === 4096, 'Preview 显示 alive/capacity');
+        assert(lastStatistics.drawCalls === 1 && lastStatistics.uploadedBytes > 0, 'Preview 显示 draw/upload');
+        assert(lastStatistics.renderStatistics === 'engine-projected', 'Canvas 统计明确标记为引擎状态推算');
+        inspector.setStatistics({ ...lastStatistics, renderStatistics: 'gpu-runtime' });
+        assert(inspectorRoot.textContent.includes('GPU 实测'), 'Inspector 可显示 GPU runtime 统计来源');
+        assert(runtime.validationErrors.length === 0, `GPU validation error 必须为 0：${runtime.validationErrors.join('; ')}`);
+
+        const adapterMetrics = canvasAdapter.metrics;
+        const inspectorCountBeforeDispose = inspector.listenerCount;
+        canvasAdapter.dispose();
+        inspector.dispose();
+        assert(canvasAdapter.metrics.listenerCount === 0 && inspector.listenerCount === 0, 'dispose 清理全部 authoring listener');
+        const released = runtime.destroy();
+        runtime = null;
+        assert(released.releasedOwnerResiduals === 0 && released.resources === 0, 'destroy 后 GPU owner/resource residual 为 0');
+
+        const payload = {
+          status: 'passed',
+          exactBytes: compilation.binary.byteLength,
+          samples,
+          edits: editCommits,
+          exactRequests,
+          adapterMetrics,
+          inspectorListeners: inspectorCountBeforeDispose,
+          before,
+          after,
+          maxScrubMs: Math.max(...scrubDurations),
+          longTasks,
+          released,
+          gpuValidationErrors: 0,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        const validationErrors = runtime?.validationErrors ?? [];
+        try { canvasAdapter?.dispose(); inspector?.dispose(); runtime?.destroy(); } catch { /* report original */ }
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), validationErrors,
+        });
+        resultNode.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      }
+
+      function canvasHash(canvas) {
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        return imageDataHash(context.getImageData(0, 0, canvas.width, canvas.height));
+      }
+
+      async function canvasBitmapHash(canvas) {
+        const bitmap = await createImageBitmap(canvas);
+        const target = document.createElement('canvas');
+        target.width = canvas.width;
+        target.height = canvas.height;
+        const context = target.getContext('2d', { willReadFrequently: true });
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return imageDataHash(context.getImageData(0, 0, target.width, target.height));
+      }
+
+      function imageDataHash(image) {
+        let hash = 0x811c9dc5;
+        let painted = 0;
+        for (let index = 0; index < image.data.length; index += 4) {
+          const r = image.data[index];
+          const g = image.data[index + 1];
+          const b = image.data[index + 2];
+          if (r > 20 || g > 24 || b > 30) painted++;
+          hash ^= r; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= g; hash = Math.imul(hash, 0x01000193) >>> 0;
+          hash ^= b; hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return { hash: hash.toString(16).padStart(8, '0'), painted };
+      }
+
+      function frames(count) {
+        return new Promise(resolve => {
+          const next = () => count-- <= 0 ? resolve() : requestAnimationFrame(next);
+          requestAnimationFrame(next);
+        });
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+    </script>
+  </body>
+</html>

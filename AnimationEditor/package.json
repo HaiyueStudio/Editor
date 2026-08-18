@@ -1,0 +1,38 @@
+{
+  "name": "@haiyue/animation-editor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-first authoring editor for Haiyue Animation projects and HYA assets.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HaiyueStudio/Editor.git",
+    "directory": "AnimationEditor"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node ../scripts/build-rollup-once.mjs --expect dist",
+    "build:test": "node ../scripts/build-rollup-once.mjs rollup.test.config.js --expect dist-test",
+    "dev": "node scripts/dev.mjs",
+    "dev:bundle": "rollup -c rollup.config.js --watch",
+    "test": "npm run build:test && node --test --test-concurrency=1 test/*.test.mjs && node scripts/verify-project-contract.mjs",
+    "test:browser": "npm run build && node scripts/verify-g09-browser.mjs",
+    "test:candidate": "npm run build:test && node --test test/designer-integration-acceptance.test.mjs && npm run build && node scripts/verify-g09-candidate.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@haiyue/animation-spec": ">=0.1.0 <0.2.0",
+    "@haiyue/engine": ">=0.1.0 <0.2.0",
+    "@haiyue/extensions": ">=0.1.0 <0.2.0",
+    "@haiyue/ui": ">=0.1.0 <0.2.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@webgpu/types": "^0.1.40",
+    "rollup": "^4.0.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.2.0"
+  }
+}

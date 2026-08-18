@@ -1,0 +1,39 @@
+:root { color-scheme: dark; font: 12px/1.45 Inter, system-ui, sans-serif; --bg:#090d13; --surface:#111722; --surface2:#151d2a; --border:#283346; --text:#e6edf7; --muted:#8290a5; --accent:#5bb8ff; }
+* { box-sizing: border-box; }
+html,body { width:100%; height:100%; margin:0; overflow:hidden; color:var(--text); background:var(--bg); }
+button,select,input { font:inherit; color:inherit; }
+button,select { min-height:28px; border:1px solid var(--border); border-radius:5px; background:var(--surface2); }
+button { padding:0 9px; cursor:pointer; } button:hover:not(:disabled) { border-color:#47617e; } button:disabled { opacity:.4; cursor:default; }
+.native-app { display:grid; grid-template-rows:48px minmax(0,1fr) 25px; height:100%; }
+.native-toolbar { display:flex; align-items:center; gap:6px; padding:0 10px; border-bottom:1px solid var(--border); background:var(--surface); }
+.native-toolbar .back { display:grid; width:28px; height:28px; place-items:center; color:var(--text); border:1px solid var(--border); border-radius:5px; text-decoration:none; }
+.native-toolbar label { display:flex; align-items:center; gap:5px; color:var(--muted); }
+.native-toolbar select { max-width:190px; }
+.chip { padding:2px 7px; border:1px solid rgba(91,184,255,.32); border-radius:999px; color:#9dd7ff; background:rgba(37,115,178,.17); font-size:9px; }
+.spacer { flex:1; }
+.native-workspace { display:grid; grid-template-columns:210px minmax(420px,1fr) 280px; grid-template-rows:minmax(300px,1fr) 210px; min-width:0; min-height:0; }
+.native-panel,.native-preview,.native-timeline { min-width:0; min-height:0; border-right:1px solid var(--border); border-bottom:1px solid var(--border); background:var(--surface); }
+.native-panel>header,.native-preview>header,.native-timeline>header { display:flex; align-items:center; min-height:37px; gap:6px; padding:0 9px; border-bottom:1px solid var(--border); color:#b9c6d8; }
+.native-panel>header button { margin-left:auto; }
+.native-preview { display:grid; grid-template-rows:37px minmax(0,1fr) 28px; background:#080c13; }
+.native-preview canvas { display:block; width:100%; height:100%; min-height:0; outline:none; touch-action:none; }
+.native-preview canvas:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); }
+.native-preview footer { display:flex; align-items:center; gap:8px; padding:0 9px; color:var(--muted); border-top:1px solid var(--border); }
+#preview-stats { margin-left:auto; }
+.native-timeline { grid-column:1 / -1; }
+#node-list,#inspector,#track-list { height:calc(100% - 37px); overflow:auto; }
+.node-item,.track-item { display:grid; width:100%; min-height:40px; align-content:center; gap:2px; padding:5px 9px; border:0; border-bottom:1px solid #202a39; border-radius:0; background:transparent; text-align:left; }
+.node-item:hover,.node-item.selected { background:rgba(91,184,255,.1); }
+.node-item.selected { box-shadow:inset 2px 0 var(--accent); }
+.node-item span,.track-item span { color:var(--muted); font-size:9px; }
+#inspector { padding:10px; }
+.field { display:grid; gap:4px; margin-bottom:9px; color:var(--muted); font-size:10px; }
+.field input { width:100%; height:30px; padding:0 7px; border:1px solid var(--border); border-radius:4px; background:#0d131d; }
+.vector { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+#track-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); align-content:start; }
+.track-item { min-height:58px; }
+.keys { position:relative; height:8px; border-radius:99px; background:#202a39; }
+.keys i { position:absolute; top:1px; width:6px; height:6px; border-radius:50%; background:var(--accent); transform:translateX(-50%); }
+.native-status { display:flex; align-items:center; gap:8px; padding:0 9px; color:var(--muted); border-top:1px solid #202a39; background:#0c1119; font-size:9px; }
+#task { display:flex; align-items:center; gap:6px; } #task[hidden] { display:none; } #task progress { width:100px; height:5px; accent-color:var(--accent); } #task button { min-height:18px; padding:0 5px; font-size:8px; }
+@media(max-width:980px){.native-workspace{grid-template-columns:180px minmax(360px,1fr)}.inspector{display:none}.native-toolbar label{display:none}}

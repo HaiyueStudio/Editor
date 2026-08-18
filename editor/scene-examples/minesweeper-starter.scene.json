@@ -1,0 +1,3165 @@
+{
+  "version": 1,
+  "name": "Minesweeper Starter Mobile",
+  "globals": {
+    "designWidth": 390,
+    "designHeight": 844,
+    "clearColor": [
+      0.96,
+      0.95,
+      0.92,
+      1
+    ],
+    "parameters": {
+      "starterKit": "minesweeper",
+      "layout": "responsive-mobile",
+      "description": "Importable Minesweeper starter scene. Left click reveals, right click or ctrl/meta click flags, R restarts."
+    },
+    "inputMap": {
+      "Restart": [
+        "KeyR"
+      ]
+    }
+  },
+  "resources": {
+    "geometries": [],
+    "materials": [],
+    "textures": [],
+    "prefabs": [],
+    "scripts": [
+      {
+        "id": 1,
+        "name": "Minesweeper GameManager",
+        "scripts": {
+          "onUpdate": "\nfunction getTilemap(entity) {\n  const direct = entity && entity.getComponent && entity.getComponent(\"Tilemap2DComponent\");\n  if (direct) return direct;\n  for (const item of entity && entity.components && entity.components.values ? entity.components.values() : []) {\n    if (item && (item.name === \"Tilemap2DComponent\" || String(item.UniqueSymbol) === \"Symbol(Tilemap2DComponent)\")) return item;\n  }\n  return null;\n}\n\nfunction getCanvasText(entity) {\n  const direct = entity && entity.getComponent && entity.getComponent(\"CanvasTextComponent\");\n  if (direct) return direct;\n  for (const item of entity && entity.components && entity.components.values ? entity.components.values() : []) {\n    if (item && (item.name === \"CanvasTextComponent\" || String(item.UniqueSymbol) === \"Symbol(CanvasTextComponent)\")) return item;\n  }\n  return null;\n}\n\nconst config = api.read.data() || {};\nconst boardEntity = api.read && api.read.find(\"Minesweeper Board\");\nconst board = getTilemap(boardEntity);\nconst statusTextEntity = api.read && api.read.find(\"Minesweeper Status Text\");\nconst minesTextEntity = api.read && api.read.find(\"Minesweeper Mines Text\");\nconst cellTextEntities = [];\nfor (let i = 0; i < 81; i++) cellTextEntities.push(api.read && api.read.find(\"Minesweeper Cell \" + i));\n\nif (!board) {\n  api.debug.console.warn(\"Minesweeper Starter requires Minesweeper Board with Tilemap2DComponent.\");\n  return;\n}\n\nconst state = component.state || (component.state = {});\nconst rows = Number(config.rows || 9);\nconst cols = Number(config.columns || 9);\nconst mineCount = Number(config.mines || 10);\nconst palette = config.paletteIndex || { hidden: 1, revealed: 2, flag: 3, mine: 4, exploded: 5 };\nconst numberColors = config.numberColors || {\n  1: \"#2563eb\",\n  2: \"#15803d\",\n  3: \"#dc2626\",\n  4: \"#4338ca\",\n  5: \"#b91c1c\",\n  6: \"#0f766e\",\n  7: \"#111827\",\n  8: \"#6b7280\"\n};\n\nfunction makeCells() {\n  return Array.from({ length: rows }, function (_, y) {\n    return Array.from({ length: cols }, function (_, x) {\n      return { x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, exploded: false };\n    });\n  });\n}\n\nfunction cellAt(x, y) {\n  return x >= 0 && y >= 0 && x < cols && y < rows ? state.cells[y][x] : null;\n}\n\nfunction neighbors(x, y) {\n  const result = [];\n  for (let yy = y - 1; yy <= y + 1; yy++) {\n    for (let xx = x - 1; xx <= x + 1; xx++) {\n      if (xx === x && yy === y) continue;\n      const cell = cellAt(xx, yy);\n      if (cell) result.push(cell);\n    }\n  }\n  return result;\n}\n\nfunction reset() {\n  state.cells = makeCells();\n  state.phase = \"ready\";\n  state.generated = false;\n  state.revealedCount = 0;\n  state.flaggedCount = 0;\n}\n\n\nfunction generate(firstX, firstY) {\n  const excluded = new Set([firstY + \",\" + firstX]);\n  for (const n of neighbors(firstX, firstY)) excluded.add(n.y + \",\" + n.x);\n  const candidates = [];\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      if (!excluded.has(y + \",\" + x)) candidates.push(state.cells[y][x]);\n    }\n  }\n  for (let i = candidates.length - 1; i > 0; i--) {\n    const j = Math.floor(Math.random() * (i + 1));\n    const tmp = candidates[i];\n    candidates[i] = candidates[j];\n    candidates[j] = tmp;\n  }\n  for (let i = 0; i < Math.min(mineCount, candidates.length); i++) candidates[i].mine = true;\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      state.cells[y][x].adjacent = neighbors(x, y).filter(function (cell) { return cell.mine; }).length;\n    }\n  }\n  state.generated = true;\n  state.phase = \"playing\";\n}\n\nfunction reveal(x, y) {\n  if (state.phase === \"won\" || state.phase === \"lost\") return;\n  if (!state.generated) generate(x, y);\n  const start = cellAt(x, y);\n  if (!start || start.flagged || start.revealed) return;\n  if (start.mine) {\n    start.exploded = true;\n    state.phase = \"lost\";\n    revealAllMines();\n    return;\n  }\n  const queue = [start];\n  while (queue.length) {\n    const cell = queue.shift();\n    if (!cell || cell.revealed || cell.flagged) continue;\n    cell.revealed = true;\n    state.revealedCount++;\n    if (cell.adjacent === 0) {\n      for (const next of neighbors(cell.x, cell.y)) {\n        if (!next.revealed && !next.flagged && !next.mine) queue.push(next);\n      }\n    }\n  }\n  if (state.revealedCount >= rows * cols - mineCount) {\n    state.phase = \"won\";\n    for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) if (state.cells[yy][xx].mine) state.cells[yy][xx].flagged = true;\n    state.flaggedCount = mineCount;\n  }\n}\n\nfunction toggleFlag(x, y) {\n  if (state.phase === \"won\" || state.phase === \"lost\") return;\n  const cell = cellAt(x, y);\n  if (!cell || cell.revealed) return;\n  cell.flagged = !cell.flagged;\n  state.flaggedCount += cell.flagged ? 1 : -1;\n  if (state.phase === \"ready\") state.phase = \"playing\";\n}\n\nfunction chordReveal(x, y) {\n  if (state.phase !== \"playing\") return;\n  const cell = cellAt(x, y);\n  if (!cell || !cell.revealed || cell.mine || cell.adjacent <= 0) return;\n  const nearby = neighbors(x, y);\n  const flags = nearby.filter(function (item) { return item.flagged; }).length;\n  if (flags !== cell.adjacent) return;\n  for (const item of nearby) {\n    if (!item.revealed && !item.flagged) reveal(item.x, item.y);\n    if (state.phase === \"lost\") return;\n  }\n}\n\nfunction revealAllMines() {\n  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (state.cells[y][x].mine) state.cells[y][x].revealed = true;\n}\n\nfunction setTilemapTransform(entity, x, y) {\n  const transform = entity && entity.getComponent && entity.getComponent(\"Transform2D\");\n  if (!transform) return;\n  transform.x = x;\n  transform.y = y;\n}\n\nfunction layoutTilemap(tilemap, cellWidth, cellHeight, gap) {\n  if (!tilemap) return;\n  tilemap.cellWidth = cellWidth;\n  tilemap.cellHeight = cellHeight;\n  tilemap.gap = gap;\n}\n\nfunction setTextBox(entity, value, x, y, width, height, fontSize, color) {\n  if (!entity) return;\n  entity.disabled = !value;\n  const transform = entity.getComponent && entity.getComponent(\"Transform2D\");\n  if (transform) {\n    transform.x = x;\n    transform.y = y;\n  }\n  const text = getCanvasText(entity);\n  if (!text) return;\n  text.text = String(value || \"\");\n  const style = text.style || {};\n  const next = {\n    ...style,\n    width: Math.max(1, Math.floor(width)),\n    height: Math.max(1, Math.floor(height)),\n    resolutionScale: Number(config.textResolutionScale || 2),\n    backgroundColor: \"rgba(255,255,255,0)\",\n    borderWidth: 0,\n    padding: 0,\n    textAlign: \"center\",\n    verticalAlign: \"middle\",\n    fontSize: Math.max(8, Math.floor(fontSize)),\n    fontFamily: \"system-ui, sans-serif\",\n    fontWeight: \"800\",\n    lineHeight: 1,\n    color: color || \"#111827\",\n    whiteSpace: \"pre-line\"\n  };\n  if (style.width !== next.width || style.height !== next.height || style.fontSize !== next.fontSize || style.color !== next.color || style.resolutionScale !== next.resolutionScale) {\n    text.style = next;\n  }\n}\n\nfunction getViewportMetrics() {\n  const canvas = document.getElementById(\"player-canvas\");\n  const rect = canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };\n  const fallbackWidth = Math.max(1, canvas && canvas.clientWidth || rect.width || window.innerWidth || 390);\n  const fallbackHeight = Math.max(1, canvas && canvas.clientHeight || rect.height || window.innerHeight || 844);\n  const cameras = api.read && api.read.findByComponent ? api.read.findByComponent(\"Camera2D\") : [];\n  const cameraEntity = cameras && cameras[0];\n  const camera = cameraEntity && cameraEntity.getComponent && cameraEntity.getComponent(\"Camera2D\");\n  const width = Math.max(1, Number(camera && camera.width) || fallbackWidth);\n  const height = Math.max(1, Number(camera && camera.height) || fallbackHeight);\n  return { canvas: canvas, rect: rect, width: width, height: height };\n}\n\nfunction updateLayout() {\n  const viewport = getViewportMetrics();\n  const width = viewport.width;\n  const height = viewport.height;\n  const portrait = height >= width;\n  const margin = portrait ? 18 : 30;\n  const hudReserve = portrait ? 170 : 90;\n  const cell = Math.max(24, Math.floor(Math.min((width - margin * 2) / cols, (height - hudReserve) / rows, portrait ? 54 : 64)));\n  const gap = Math.max(2, Math.floor(cell * 0.06));\n  const boardWidth = cols * cell;\n  const boardHeight = rows * cell;\n  const boardX = -boardWidth / 2;\n  const boardY = portrait ? -boardHeight / 2 - 8 : -boardHeight / 2 - 18;\n  state.layout = { boardX: boardX, boardY: boardY, cell: cell, rows: rows, cols: cols };\n  layoutTilemap(board, cell, cell, gap);\n  setTilemapTransform(boardEntity, boardX, boardY);\n\n  const panelWidth = Math.min(width - 36, Math.max(220, boardWidth));\n  const panelHeight = Math.max(26, Math.floor(cell * 0.48));\n  const panelFont = Math.max(13, Math.floor(cell * 0.28));\n  setTextBox(statusTextEntity, statusLabel(), -panelWidth / 2, boardY + boardHeight + 14, panelWidth, panelHeight, panelFont, state.phase === \"lost\" ? \"#dc2626\" : state.phase === \"won\" ? \"#15803d\" : \"#374151\");\n  setTextBox(minesTextEntity, \"MINES \" + Math.max(0, mineCount - state.flaggedCount), -panelWidth / 2, boardY + boardHeight + 14 + panelHeight + 6, panelWidth, panelHeight, panelFont, \"#374151\");\n}\n\nfunction worldToCell(clientX, clientY) {\n  const viewport = getViewportMetrics();\n  const rect = viewport.rect;\n  const layout = state.layout;\n  if (!layout || rect.width <= 0 || rect.height <= 0) return null;\n  const worldX = ((clientX - rect.left) / rect.width - 0.5) * viewport.width;\n  const worldY = (0.5 - (clientY - rect.top) / rect.height) * viewport.height;\n  const col = Math.floor((worldX - layout.boardX) / layout.cell);\n  const visualRow = Math.floor((worldY - layout.boardY) / layout.cell);\n  const row = rows - 1 - visualRow;\n  return col >= 0 && row >= 0 && col < cols && row < rows ? { x: col, y: row } : null;\n}\n\nfunction isSecondaryPointer(event) {\n  return event.button === 2 || (event.buttons & 2) === 2 || event.ctrlKey || event.metaKey;\n}\n\nfunction runSecondaryAction(cell) {\n  const target = cellAt(cell.x, cell.y);\n  if (target && target.revealed && target.adjacent > 0) chordReveal(cell.x, cell.y);\n  else toggleFlag(cell.x, cell.y);\n}\n\nfunction installPointerInput() {\n  const canvas = document.getElementById(\"player-canvas\");\n  if (!canvas || !canvas.addEventListener) return;\n  if (state.pointerReady && state.pointerCanvas === canvas) return;\n  if (state.pointerCanvas && state.contextMenuHandler && state.pointerDownHandler && state.pointerUpHandler && state.pointerCancelHandler && state.pointerCanvas.removeEventListener) {\n    state.pointerCanvas.removeEventListener(\"contextmenu\", state.contextMenuHandler);\n    state.pointerCanvas.removeEventListener(\"pointerdown\", state.pointerDownHandler);\n    state.pointerCanvas.removeEventListener(\"pointerup\", state.pointerUpHandler);\n    state.pointerCanvas.removeEventListener(\"pointercancel\", state.pointerCancelHandler);\n  }\n  state.contextMenuHandler = function (event) { event.preventDefault(); };\n  state.pointerCancelHandler = function () {\n    state.suppressNextPointerUp = false;\n    state.pointerDownCell = null;\n  };\n  state.pointerDownHandler = function (event) {\n    const cell = worldToCell(event.clientX, event.clientY);\n    state.pointerDownCell = cell;\n    state.suppressNextPointerUp = false;\n    if (!cell || !isSecondaryPointer(event)) return;\n    event.preventDefault();\n    state.suppressNextPointerUp = true;\n    runSecondaryAction(cell);\n  };\n  state.pointerUpHandler = function (event) {\n    if (state.suppressNextPointerUp) {\n      state.suppressNextPointerUp = false;\n      state.pointerDownCell = null;\n      event.preventDefault();\n      return;\n    }\n    const cell = worldToCell(event.clientX, event.clientY) || state.pointerDownCell;\n    state.pointerDownCell = null;\n    if (!cell) return;\n    event.preventDefault();\n    if (isSecondaryPointer(event)) runSecondaryAction(cell);\n    else reveal(cell.x, cell.y);\n  };\n  api.debug.listen(canvas, \"contextmenu\", state.contextMenuHandler);\n  api.debug.listen(canvas, \"pointerdown\", state.pointerDownHandler);\n  api.debug.listen(canvas, \"pointerup\", state.pointerUpHandler);\n  api.debug.listen(canvas, \"pointercancel\", state.pointerCancelHandler);\n  state.pointerCanvas = canvas;\n  state.pointerReady = true;\n  api.debug.addDisposer(function () {\n    state.pointerReady = false;\n    state.pointerCanvas = null;\n    state.pointerStart = null;\n  });\n}\n\nfunction statusLabel() {\n  if (state.phase === \"ready\") return \"Click a cell to start\";\n  if (state.phase === \"won\") return \"Cleared! Press R\";\n  if (state.phase === \"lost\") return \"Mine hit! Press R\";\n  return \"Left click reveal / right click flag\";\n}\n\nfunction draw() {\n  updateLayout();\n  board.clear(palette.hidden);\n  const layout = state.layout;\n  const fontSize = Math.max(14, Math.floor(layout.cell * 0.42));\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      const cell = state.cells[y][x];\n      let tile = palette.hidden;\n      let label = \"\";\n      let color = \"#111827\";\n      if (cell.revealed) {\n        tile = cell.exploded ? palette.exploded : cell.mine ? palette.mine : palette.revealed;\n        if (cell.mine) {\n          label = \"*\";\n          color = cell.exploded ? \"#ffffff\" : \"#111827\";\n        } else if (cell.adjacent > 0) {\n          label = String(cell.adjacent);\n          color = numberColors[cell.adjacent] || \"#111827\";\n        }\n      } else if (cell.flagged) {\n        tile = palette.flag;\n        label = \"F\";\n        color = \"#ffffff\";\n      }\n      board.setCell(x, rows - 1 - y, tile);\n      const index = y * cols + x;\n      const textX = layout.boardX + x * layout.cell;\n      const textY = layout.boardY + (rows - 1 - y) * layout.cell;\n      setTextBox(cellTextEntities[index], label, textX, textY, layout.cell, layout.cell, fontSize, color);\n    }\n  }\n}\n\nif (!state.ready) {\n  reset();\n  state.ready = true;\n  api.debug.console.log(\"Minesweeper Starter ready.\");\n}\ninstallPointerInput();\nif (api.input.wasPressed(\"Restart\") || api.input.wasPressed(\"KeyR\")) reset();\ndraw();\n",
+          "onEntityAddComponent": "",
+          "onEntityRemoveComponent": "",
+          "onEntityAddToWorld": "",
+          "onEntityRemoveFromWorld": ""
+        }
+      }
+    ]
+  },
+  "entities": [
+    {
+      "name": "Minesweeper Starter Kit",
+      "disabled": false,
+      "components": [],
+      "children": [
+        {
+          "name": "Minesweeper Camera2D",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Camera2D",
+              "width": 390,
+              "height": 844,
+              "near": -1000,
+              "far": 1000,
+              "zoom": 1
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Board",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -162,
+              "y": -210,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 9,
+              "rows": 9,
+              "cellWidth": 36,
+              "cellHeight": 36,
+              "originX": 0,
+              "originY": 0,
+              "gap": 2,
+              "cells": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.5803921568627451,
+                  0.6392156862745098,
+                  0.7215686274509804,
+                  1
+                ],
+                [
+                  0.8980392156862745,
+                  0.9058823529411765,
+                  0.9215686274509803,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.6196078431372549,
+                  0.043137254901960784,
+                  1
+                ],
+                [
+                  0.06666666666666667,
+                  0.09411764705882353,
+                  0.15294117647058825,
+                  1
+                ],
+                [
+                  0.8627450980392157,
+                  0.14901960784313725,
+                  0.14901960784313725,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 0",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 1",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 2",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 3",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 4",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 5",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 6",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 7",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 8",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 9",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 10",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 11",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 12",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 13",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 14",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 15",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 16",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 17",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 18",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 19",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 20",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 21",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 22",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 23",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 24",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 25",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 26",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 27",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 28",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 29",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 30",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 31",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 32",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 33",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 34",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 35",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 36",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 37",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 38",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 39",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 40",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 41",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 42",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 43",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 44",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 45",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 46",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 47",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 48",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 49",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 50",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 51",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 52",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 53",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 54",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 55",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 56",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 57",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 58",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 59",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 60",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 61",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 62",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 63",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 64",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 65",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 66",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 67",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 68",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 69",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 70",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 71",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 72",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 73",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 74",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 75",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 76",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 77",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 78",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 79",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Cell 80",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 36,
+                "height": 36,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#111827",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Status Text",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -150,
+              "y": 140,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "Click a cell to start",
+              "style": {
+                "width": 300,
+                "height": 32,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#374151",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper Mines Text",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -150,
+              "y": 176,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "MINES 10",
+              "style": {
+                "width": 300,
+                "height": 32,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#374151",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Minesweeper GameManager",
+          "disabled": false,
+          "components": [
+            {
+              "type": "KeyboardComponent"
+            },
+            {
+              "type": "DataComponent",
+              "data": {
+                "rows": 9,
+                "columns": 9,
+                "mines": 10,
+                "textResolutionScale": 2,
+                "paletteIndex": {
+                  "hidden": 1,
+                  "revealed": 2,
+                  "flag": 3,
+                  "mine": 4,
+                  "exploded": 5
+                },
+                "numberColors": {
+                  "1": "#2563eb",
+                  "2": "#15803d",
+                  "3": "#dc2626",
+                  "4": "#4338ca",
+                  "5": "#b91c1c",
+                  "6": "#0f766e",
+                  "7": "#111827",
+                  "8": "#6b7280"
+                }
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "scriptId": 1,
+              "scripts": {
+                "onUpdate": "",
+                "onEntityAddComponent": "",
+                "onEntityRemoveComponent": "",
+                "onEntityAddToWorld": "",
+                "onEntityRemoveFromWorld": ""
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

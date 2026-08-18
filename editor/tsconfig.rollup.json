@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*",
+    "../node_modules/@haiyue/engine/src/**/*",
+    "../node_modules/@haiyue/animation-spec/src/**/*",
+    "../node_modules/@haiyue/extensions/src/**/*",
+    "../node_modules/@haiyue/shader-language/src/**/*",
+    "../node_modules/@haiyue/ui/src/**/*"
+  ],
+  "exclude": ["dist", "dist-test"]
+}

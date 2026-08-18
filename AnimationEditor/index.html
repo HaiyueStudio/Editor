@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>Haiyue Animation Editor</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="animation-editor" class="app-shell">
+    <header class="app-header">
+      <div class="brand" aria-label="Haiyue Animation Editor">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Animation Editor</span>
+        <span class="format-chip">HYA</span>
+      </div>
+      <div class="toolbar-group file-actions" aria-label="工程操作" data-i18n-aria-label="toolbar.projectActions">
+        <ge-button id="new-project" icon-only title="新建工程" aria-label="新建工程"
+          data-i18n-title="toolbar.new" data-i18n-aria-label="toolbar.new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM15 3v5h4M12 11v7M8.5 14.5h7"/></svg>
+        </ge-button>
+        <ge-button id="open-project" icon-only title="打开工程" aria-label="打开工程"
+          data-i18n-title="toolbar.open" data-i18n-aria-label="toolbar.open">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h6l2 2h9l-2 10h-15zM3.5 7V5h6l2 2"/></svg>
+        </ge-button>
+        <ge-button id="save-project" icon-only title="保存工程（⌘/Ctrl+S）" aria-label="保存工程"
+          data-i18n-title="toolbar.saveShortcut" data-i18n-aria-label="toolbar.save">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7"/></svg>
+        </ge-button>
+        <ge-button id="save-as-project" label="另存为" data-i18n-label="toolbar.saveAs"></ge-button>
+        <ge-dropdown id="recent-projects-menu" placement="bottom-start">
+          <ge-button slot="trigger" label="最近" data-i18n-label="toolbar.recent"></ge-button>
+        </ge-dropdown>
+        <ge-button id="close-project" label="关闭" data-i18n-label="toolbar.close"></ge-button>
+      </div>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <div class="toolbar-group history-actions" aria-label="历史操作" data-i18n-aria-label="toolbar.historyActions">
+        <ge-button id="undo-command" icon-only title="撤销" aria-label="撤销" disabled
+          data-i18n-title="toolbar.undo" data-i18n-aria-label="toolbar.undo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6"/></svg>
+        </ge-button>
+        <ge-button id="redo-command" icon-only title="重做" aria-label="重做" disabled
+          data-i18n-title="toolbar.redo" data-i18n-aria-label="toolbar.redo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 5 5-5 5m4-5h-8a6 6 0 0 0-6 6"/></svg>
+        </ge-button>
+      </div>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <div class="transport" aria-label="播放控制" data-i18n-aria-label="toolbar.transport">
+        <button id="jump-start" class="icon-button" type="button" title="回到开始" aria-label="回到开始"
+          data-i18n-title="toolbar.jumpStart" data-i18n-aria-label="toolbar.jumpStart">|◀</button>
+        <button id="toggle-play" class="play-button" type="button" aria-pressed="false" title="播放运行时预览"
+          aria-label="播放运行时预览" data-i18n-title="toolbar.play" data-i18n-aria-label="toolbar.play">▶</button>
+        <button id="jump-end" class="icon-button" type="button" title="跳到结束" aria-label="跳到结束"
+          data-i18n-title="toolbar.jumpEnd" data-i18n-aria-label="toolbar.jumpEnd">▶|</button>
+        <span id="playhead-time" class="timecode">00:00:00</span>
+      </div>
+      <div class="header-spacer"></div>
+      <div class="document-status" aria-live="polite">
+        <span id="dirty-indicator" class="dirty-indicator" aria-hidden="true"></span>
+        <span id="project-name">Untitled Animation</span>
+      </div>
+      <ge-button id="editor-settings" icon-only title="编辑器设置" aria-label="编辑器设置"
+        data-i18n-title="app.settings" data-i18n-aria-label="app.settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.5h4.6l.6 2.2 1.4.8 2.2-.6 2.3 4-1.6 1.6v1.6l1.6 1.6-2.3 4-2.2-.6-1.4.8-.6 2.2H9.7l-.6-2.2-1.4-.8-2.2.6-2.3-4 1.6-1.6v-1.6L3.2 9.9l2.3-4 2.2.6 1.4-.8z"/><circle cx="12" cy="12.3" r="3"/></svg>
+      </ge-button>
+      <ge-button id="capability-help" icon-only title="能力与限制" aria-label="能力与限制"
+        data-i18n-title="app.capabilities" data-i18n-aria-label="app.capabilities">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.6 2.1c-.9.5-1.4 1.1-1.4 2.4M12 17.5v.1"/></svg>
+      </ge-button>
+      <div class="export-actions" aria-label="运行时导出" data-i18n-aria-label="toolbar.exportActions">
+        <ge-button id="export-hya" label="导出 HYA" title="编译、校验并导出内联资源的运行时 HYA"
+          data-i18n-label="toolbar.exportHya" data-i18n-title="toolbar.exportHyaTitle"></ge-button>
+        <ge-button id="export-package" label="导出交付包" title="导出 HYA、外置资源和确定性清单 ZIP"
+          data-i18n-label="toolbar.exportPackage" data-i18n-title="toolbar.exportPackageTitle"></ge-button>
+      </div>
+    </header>
+
+    <main class="editor-grid">
+      <ge-split id="workspace-rows" class="workspace-split" direction="vertical" ratio="0.72"
+        min-first="300" min-second="170" bar-size="4" data-layout-key="workspaceRows">
+        <ge-split id="workspace-columns" class="workspace-split" slot="first" ratio="0.18"
+          min-first="180" min-second="650" bar-size="4" data-layout-key="workspaceColumns">
+          <ge-split id="left-panel-split" class="left-column workspace-split" slot="first"
+            direction="vertical" ratio="0.38" min-first="120" min-second="160" bar-size="4"
+            data-layout-key="leftPanels" aria-label="资源和层级面板尺寸" data-i18n-aria-label="panel.leftSplit">
+        <section slot="first" class="panel assets-panel">
+          <header class="panel-header">
+            <div><span class="eyebrow">PROJECT</span><h2 data-i18n="panel.assets">资源</h2></div>
+            <div class="panel-actions">
+              <button id="import-asset" class="panel-action" type="button" title="导入图片、音频或二进制资源"
+                aria-label="导入图片、音频或二进制资源" data-i18n-title="action.importAsset" data-i18n-aria-label="action.importAsset">＋</button>
+              <button id="import-source" class="panel-action" type="button" title="导入 Lottie 或裸 HYA 来源"
+                aria-label="导入 Lottie 或裸 HYA 来源" data-i18n-title="action.importSource" data-i18n-aria-label="action.importSource">⇩</button>
+              <button id="delete-asset" class="panel-action" type="button" disabled title="删除所选资源"
+                aria-label="删除所选资源" data-i18n-title="action.deleteAsset" data-i18n-aria-label="action.deleteAsset">−</button>
+            </div>
+          </header>
+          <div id="asset-list" class="panel-body list-body"></div>
+        </section>
+        <section slot="second" class="panel hierarchy-panel">
+          <header class="panel-header">
+            <div><span class="eyebrow">COMPOSITION</span><h2 data-i18n="panel.hierarchy">节点层级</h2></div>
+            <div class="panel-actions">
+              <ge-dropdown id="add-node-menu" placement="bottom-end">
+                <button id="add-node" slot="trigger" class="panel-action" type="button" title="添加内容节点"
+                  aria-label="添加内容节点" data-i18n-title="action.addNode" data-i18n-aria-label="action.addNode">＋</button>
+              </ge-dropdown>
+              <button id="delete-node" class="panel-action" type="button" disabled title="删除所选节点"
+                aria-label="删除所选节点" data-i18n-title="action.deleteNode" data-i18n-aria-label="action.deleteNode">−</button>
+            </div>
+          </header>
+          <ge-tree id="hierarchy-tree" class="panel-body hierarchy-tree" allow-drag aria-label="动画节点层级"></ge-tree>
+        </section>
+          </ge-split>
+
+          <ge-split id="content-columns" class="workspace-split" slot="second" ratio="0.75"
+            min-first="420" min-second="220" bar-size="4" data-layout-key="contentColumns">
+
+      <section slot="first" class="viewport-panel" aria-label="WebGPU 预览" data-i18n-aria-label="panel.preview">
+        <header class="viewport-header">
+          <div>
+            <span class="eyebrow">LIVE STAGE</span>
+            <strong data-i18n="panel.previewTitle">WebGPU 预览</strong>
+          </div>
+          <div class="viewport-meta">
+            <span id="canvas-size">800 × 500</span>
+            <span id="gpu-status" class="status-chip" data-i18n="preview.detecting">检测中</span>
+          </div>
+        </header>
+        <div id="viewport-stage" class="viewport-stage">
+          <div class="canvas-frame">
+            <canvas id="preview-canvas" width="800" height="500" aria-label="动画预览画布" data-i18n-aria-label="preview.canvas"></canvas>
+            <div class="canvas-grid" aria-hidden="true"></div>
+            <div id="node-placeholder" class="node-placeholder" aria-hidden="true">
+              <span></span>
+            </div>
+          </div>
+          <div class="viewport-message">
+            <strong id="preview-title" data-i18n="preview.preparingTitle">正在准备 HYA Runtime</strong>
+            <span id="preview-detail" data-i18n="preview.preparingDetail">工程会先经过编译和二进制反向校验</span>
+          </div>
+        </div>
+        <footer class="viewport-footer">
+          <span data-i18n="preview.select">选择工具</span><kbd>V</kbd>
+          <span data-i18n="preview.pan">平移</span><kbd>Space</kbd>
+          <span data-i18n="preview.zoom">缩放</span><kbd>⌘ +/-</kbd>
+          <span class="footer-spacer"></span>
+          <span id="preview-stats" data-i18n="preview.notCompiled">尚未编译</span>
+          <span class="status-separator"></span>
+          <span id="selection-summary" data-i18n="preview.noSelection">未选择</span>
+        </footer>
+      </section>
+
+      <aside slot="second" class="panel inspector-panel" aria-label="属性检查器" data-i18n-aria-label="panel.inspector">
+        <header class="panel-header inspector-heading">
+          <div><span class="eyebrow">SELECTION</span><h2 data-i18n="panel.properties">属性</h2></div>
+          <div class="inspector-header-actions">
+            <button id="show-composition-settings" class="inspector-settings-button" type="button"
+              title="编辑工程总时长与播放设置" data-i18n-title="action.compositionTitle"
+              data-i18n="action.composition">合成</button>
+            <span id="selection-kind" class="status-chip subtle">COMPOSITION</span>
+          </div>
+        </header>
+        <div id="inspector-content" class="panel-body inspector-content"></div>
+      </aside>
+          </ge-split>
+        </ge-split>
+
+      <section slot="second" class="bottom-panel" aria-label="时间轴和状态机" data-i18n-aria-label="panel.authoring">
+        <ge-tabs
+          id="authoring-tabs"
+          value="timeline"
+          options='[{"label":"Timeline","value":"timeline"},{"label":"State Machine","value":"state-machine"}]'>
+          <div slot="timeline" class="authoring-panel timeline-panel">
+            <ge-split id="timeline-columns" class="authoring-split" ratio="0.18" min-first="180"
+              min-second="320" bar-size="4" data-layout-key="timelineColumns">
+            <div slot="first" class="track-sidebar">
+              <div class="timeline-toolbar">
+                <strong data-i18n="timeline.tracks">属性轨道</strong>
+                <div class="timeline-actions">
+                  <ge-dropdown id="add-track-menu" placement="top-start">
+                    <button id="add-track" slot="trigger" type="button" title="给所选节点添加核心变换轨道"
+                      data-i18n-title="timeline.addTrackTitle" data-i18n="timeline.addTrack">＋ 轨道</button>
+                  </ge-dropdown>
+                  <button id="add-keyframe" type="button" disabled title="在播放头添加关键帧"
+                    aria-label="在播放头添加关键帧" data-i18n-title="timeline.addKeyframeTitle"
+                    data-i18n-aria-label="timeline.addKeyframeTitle">◆</button>
+                  <button id="add-clip" type="button" title="添加命名动画片段"
+                    data-i18n-title="timeline.addClipTitle" data-i18n="timeline.addClip">＋ 片段</button>
+                </div>
+              </div>
+              <div id="track-list" class="track-list"></div>
+            </div>
+            <div slot="second" class="timeline-content">
+              <div id="timeline-ruler" class="timeline-ruler" aria-label="时间标尺" data-i18n-aria-label="timeline.ruler"></div>
+              <div id="timeline-lanes" class="timeline-lanes" aria-label="关键帧轨道；双击轨道空白处插入关键帧"
+                data-i18n-aria-label="timeline.lanes"></div>
+              <div class="timeline-zoom" aria-label="时间轴缩放" data-i18n-aria-label="timeline.zoom">
+                <button id="timeline-zoom-out" type="button" title="缩小时间轴" aria-label="缩小时间轴"
+                  data-i18n-title="timeline.zoomOut" data-i18n-aria-label="timeline.zoomOut">−</button>
+                <span id="timeline-zoom-value">240 px/s</span>
+                <button id="timeline-zoom-in" type="button" title="放大时间轴" aria-label="放大时间轴"
+                  data-i18n-title="timeline.zoomIn" data-i18n-aria-label="timeline.zoomIn">＋</button>
+              </div>
+            </div>
+            </ge-split>
+          </div>
+          <div slot="state-machine" class="authoring-panel state-machine-panel">
+            <ge-split id="state-machine-columns" class="authoring-split" ratio="0.18" min-first="190"
+              min-second="360" bar-size="4" data-layout-key="stateMachineColumns">
+            <div slot="first" class="state-sidebar">
+              <div class="state-sidebar-section">
+                <div class="state-section-heading">
+                  <span class="eyebrow" data-i18n="stateMachine.parameters">参数</span>
+                  <ge-dropdown id="add-parameter-menu" placement="top-start">
+                    <button id="add-parameter" slot="trigger" type="button" disabled title="添加状态机参数"
+                      aria-label="添加状态机参数" data-i18n-title="stateMachine.addParameter"
+                      data-i18n-aria-label="stateMachine.addParameter">＋</button>
+                  </ge-dropdown>
+                </div>
+                <div id="parameter-list" class="state-item-list"></div>
+              </div>
+              <div class="state-sidebar-section layer-section">
+                <div class="state-section-heading">
+                  <span class="eyebrow" data-i18n="stateMachine.layers">层</span>
+                  <button id="add-state-layer" type="button" disabled title="添加状态机层" aria-label="添加状态机层"
+                    data-i18n-title="stateMachine.addLayer" data-i18n-aria-label="stateMachine.addLayer">＋</button>
+                </div>
+                <div id="state-layer-list" class="state-item-list"></div>
+              </div>
+            </div>
+            <div slot="second" class="state-canvas">
+              <div class="state-grid" aria-hidden="true"></div>
+              <div id="state-graph-toolbar" class="state-graph-toolbar">
+                <span id="active-state-layer" data-i18n="stateMachine.noLayer">未选择层</span>
+                <button id="add-state" type="button" disabled data-i18n="stateMachine.addState">＋ 状态</button>
+                <button id="add-transition" type="button" disabled data-i18n="stateMachine.connect">连接所选状态</button>
+                <button id="reset-state-runtime" type="button" disabled data-i18n="stateMachine.reset">重置运行时</button>
+              </div>
+              <svg id="state-transition-layer" class="state-transition-layer" aria-label="状态转场"
+                data-i18n-aria-label="stateMachine.transitions"></svg>
+              <div id="state-graph" class="state-graph" aria-label="状态图" data-i18n-aria-label="stateMachine.graph"></div>
+              <div id="state-summary" class="empty-state-card">
+                <span class="state-icon">⌘</span>
+                <strong>State Machine</strong>
+                <span data-i18n="stateMachine.hint">先创建命名片段，再建立状态机</span>
+                <button id="create-state-machine" type="button" data-i18n="stateMachine.create">创建状态机</button>
+              </div>
+            </div>
+            </ge-split>
+          </div>
+        </ge-tabs>
+      </section>
+      </ge-split>
+    </main>
+
+    <footer class="status-bar">
+      <span id="status-message" data-i18n="status.ready">就绪</span>
+      <div id="task-progress" class="task-progress" hidden role="status" aria-live="polite">
+        <progress id="task-progress-value" max="1" value="0"></progress>
+        <span id="task-progress-label"></span>
+        <button id="cancel-task" type="button" data-i18n="task.cancel">取消</button>
+      </div>
+      <span class="footer-spacer"></span>
+      <span id="project-stats">0 nodes · 0 tracks · 0 assets</span>
+      <span class="status-separator"></span>
+      <span id="runtime-target">HYA 1.0 · screen-y-down</span>
+    </footer>
+    <div id="drop-import-overlay" class="drop-import-overlay" aria-hidden="true">
+      <strong data-i18n="drop.title">打开工程或导入资源</strong>
+      <span data-i18n="drop.detail">支持 .hya-project.json、图片、音频和二进制文件</span>
+    </div>
+  </div>
+
+  <input id="project-file-input" type="file" accept=".hya-project.json,application/json" hidden />
+  <input id="asset-file-input" type="file" accept="image/*,audio/*,application/octet-stream,.bin" multiple hidden />
+  <input id="relink-asset-file-input" type="file" hidden />
+  <input id="source-file-input" type="file" accept=".hya,.json,application/json,application/vnd.haiyue.animation" hidden />
+
+  <ge-dialog id="new-project-dialog" heading="从模板新建" dismissible data-i18n-heading="template.title">
+    <div id="template-grid" class="template-grid"></div>
+    <p class="dialog-hint" data-i18n="template.familyHint">工程创建后固定为 2D 或原生 3D；两种数据不会混在同一工程中。</p>
+    <ge-button id="new-project-cancel" slot="footer" label="取消" data-i18n-label="dialog.cancel"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="capability-dialog" heading="能力与限制" dismissible data-i18n-heading="capability.title">
+    <div class="capability-help-copy">
+      <section><strong data-i18n="capability.exactTitle">Exact HYA 预览</strong><p data-i18n="capability.exactDetail">预览、裸 HYA 和交付包都消费同一次编译的运行时数据。</p></section>
+      <section><strong data-i18n="capability.authoringTitle">可视化编辑</strong><p data-i18n="capability.authoringDetail">Tween、SpriteSheet、Path/Vector、粒子、状态机与原生 3D 均有可视化入口。</p></section>
+      <section><strong data-i18n="capability.limitTitle">明确限制</strong><p data-i18n="capability.limitDetail">HYA 反向导入只恢复有限编辑数据；2D/3D 工程不能混合；外部资源需要在交付环境中可访问。</p></section>
+      <a href="./CAPABILITY_MATRIX.md" target="_blank" rel="noreferrer" data-i18n="capability.matrix">查看完整能力矩阵</a>
+    </div>
+    <ge-button id="capability-close" slot="footer" label="完成" data-i18n-label="settings.done"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="confirm-dialog" heading="未保存的修改" data-i18n-heading="dialog.unsaved">
+    <p id="confirm-message" class="dialog-copy"></p>
+    <ge-button id="confirm-cancel" slot="footer" label="取消" data-i18n-label="dialog.cancel"></ge-button>
+    <ge-button id="confirm-accept" slot="footer" label="继续" data-i18n-label="dialog.continue"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="save-as-dialog" heading="工程另存为" dismissible data-i18n-heading="dialog.saveAs">
+    <label class="dialog-field">
+      <span data-i18n="dialog.fileName">文件名</span>
+      <input id="save-as-name" type="text" autocomplete="off" spellcheck="false" />
+    </label>
+    <p class="dialog-hint" data-i18n="dialog.saveAsHint">文件会以 .hya-project.json 后缀下载。</p>
+    <ge-button id="save-as-cancel" slot="footer" label="取消" data-i18n-label="dialog.cancel"></ge-button>
+    <ge-button id="save-as-confirm" slot="footer" label="保存副本" data-i18n-label="dialog.saveCopy"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="recovery-dialog" heading="发现自动保存" dismissible data-i18n-heading="dialog.recovery">
+    <p id="recovery-message" class="dialog-copy"></p>
+    <ge-button id="discard-recovery" slot="footer" label="丢弃" data-i18n-label="dialog.discard"></ge-button>
+    <ge-button id="restore-recovery" slot="footer" label="恢复工程" data-i18n-label="dialog.restore"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="error-dialog" heading="无法打开工程" dismissible data-i18n-heading="dialog.openError">
+    <div id="error-message" class="dialog-error" role="alert"></div>
+    <ge-button id="dismiss-error" slot="footer" label="知道了" data-i18n-label="dialog.dismiss"></ge-button>
+  </ge-dialog>
+
+  <ge-dialog id="editor-settings-dialog" heading="编辑器设置" dismissible data-i18n-heading="settings.title">
+    <label class="dialog-field" for="editor-language">
+      <span data-i18n="settings.language">界面语言</span>
+      <select id="editor-language">
+        <option value="zh-CN">简体中文</option>
+        <option value="en-US">English</option>
+      </select>
+    </label>
+    <p class="dialog-hint" data-i18n="settings.languageHint">语言设置会保存在当前浏览器中。</p>
+    <ge-button id="close-editor-settings" slot="footer" label="完成" data-i18n-label="settings.done"></ge-button>
+  </ge-dialog>
+  <script type="module" src="./dist/main.js"></script>
+</body>
+</html>

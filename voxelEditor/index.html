@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e131b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title data-i18n="app.title">海月体素编辑器</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./pwa/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./pwa/icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="brand" aria-label="海月体素编辑器" data-i18n-aria-label="app.title">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span data-i18n="app.brand">海月体素</span>
+        <span class="brand-tag">VOXEL</span>
+      </div>
+      <span class="header-divider"></span>
+      <div class="project-identity" title="当前工程" data-i18n-title="project.current">
+        <span id="project-name" data-i18n="project.untitled">未命名工程</span><b id="project-unsaved" hidden>*</b>
+      </div>
+      <ge-button id="save-project" icon-only title="保存到浏览器 (Ctrl/⌘ S)" aria-label="保存到浏览器" data-i18n-title="app.saveShortcut" data-i18n-aria-label="app.save">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5zM8 4v6h8V4M8 20v-6h8v6"/></svg>
+      </ge-button>
+      <ge-dropdown id="recent-projects-menu" placement="bottom-start">
+        <ge-button slot="trigger" icon-only title="最近打开工程" aria-label="最近打开工程" data-i18n-title="app.recent" data-i18n-aria-label="app.recent">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v10H4zM4 7V5h6l2 2M8 14h8M12 11v6"/></svg>
+        </ge-button>
+      </ge-dropdown>
+      <span class="header-divider"></span>
+      <ge-button id="undo-command" icon-only title="撤销" aria-label="撤销" disabled data-i18n-title="app.undo" data-i18n-aria-label="app.undo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6"/></svg>
+      </ge-button>
+      <ge-button id="redo-command" icon-only title="重做" aria-label="重做" disabled data-i18n-title="app.redo" data-i18n-aria-label="app.redo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 5 5-5 5m4-5h-8a6 6 0 0 0-6 6"/></svg>
+      </ge-button>
+      <span class="header-divider"></span>
+      <ge-button id="import-project" icon-only title="导入工程（JSON / VOX）" aria-label="导入工程" data-i18n-title="app.importProjectFormats" data-i18n-aria-label="app.importProject">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 18v2h16v-2"/></svg>
+      </ge-button>
+      <ge-button id="import-image-header" icon-only title="导入图片为模块" aria-label="导入图片为模块" data-i18n-title="app.importImage" data-i18n-aria-label="app.importImage">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
+      </ge-button>
+      <div class="header-spacer"></div>
+      <ge-button id="editor-help" icon-only title="操作帮助" aria-label="操作帮助" data-i18n-title="app.help" data-i18n-aria-label="app.help">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.9c0 2.1-2.4 2.2-2.4 4.1M12 17.5v.1"/></svg>
+      </ge-button>
+      <ge-button id="editor-settings" icon-only title="编辑器设置" aria-label="编辑器设置" data-i18n-title="app.settings" data-i18n-aria-label="app.settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.5h4.6l.6 2.2 1.4.8 2.2-.6 2.3 4-1.6 1.6v1.6l1.6 1.6-2.3 4-2.2-.6-1.4.8-.6 2.2H9.7l-.6-2.2-1.4-.8-2.2.6-2.3-4 1.6-1.6v-1.6L3.2 9.9l2.3-4 2.2.6 1.4-.8z"/><circle cx="12" cy="12.3" r="3"/></svg>
+      </ge-button>
+      <ge-dropdown id="export-menu" placement="bottom-end">
+        <ge-button slot="trigger" icon-only title="导出" aria-label="导出" data-i18n-title="app.export" data-i18n-aria-label="app.export">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 17v3h16v-3"/></svg>
+        </ge-button>
+      </ge-dropdown>
+      <input id="project-file" type="file" accept=".json,.vox,application/json" hidden />
+      <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" hidden />
+    </header>
+
+    <main class="workspace">
+      <ge-split ratio="0.81" min-first="560" min-second="238" bar-size="5">
+        <ge-split slot="first" ratio="0.22" min-first="205" min-second="360" bar-size="5">
+          <aside slot="first" class="panel left-panel">
+            <div class="panel-header"><span data-i18n="panel.tools">工具</span><kbd>1—4</kbd></div>
+            <div class="panel-body controls">
+              <section>
+                <div class="section-label" data-i18n="panel.editMode">编辑模式</div>
+                <div class="tool-grid">
+                  <button class="tool-button active" data-tool="add" aria-pressed="true">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8.5 12 5l7 3.5v7L12 19l-7-3.5zM12 12v7m0-7 7-3.5M12 12 5 8.5M17 3v5M14.5 5.5h5"/></svg>
+                    <span data-i18n="tool.add">添加</span><kbd>1</kbd>
+                  </button>
+                  <button class="tool-button" data-tool="erase" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 16 8-10 4 3-8 10H7l-2-2 2-1Zm6-1 4 3M5 19h14"/></svg>
+                    <span data-i18n="tool.erase">擦除</span><kbd>2</kbd>
+                  </button>
+                  <button class="tool-button" data-tool="paint" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5-8.5 8.5H5v-5.5zM12 7l5 5M5 21h14"/></svg>
+                    <span data-i18n="tool.paint">着色</span><kbd>3</kbd>
+                  </button>
+                  <button class="tool-button" data-tool="select" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h5M5 5v5M19 5h-5M19 5v5M5 19h5M5 19v-5M19 19h-5M19 19v-5"/><path d="M9 9h6v6H9z"/></svg>
+                    <span data-i18n="tool.select">选择</span><kbd>4</kbd>
+                  </button>
+                </div>
+                <div id="brush-options" class="brush-options active">
+                  <label><span class="field-label-with-help"><span data-i18n="brush.label">笔刷</span><ge-tooltip class="inline-help-tooltip" label="Flood Fill 和 Surface Paint 只对已有体素生效，应配合着色或擦除模式使用。" data-i18n-label="hint.brushSpecial" placement="right" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></span>
+                    <select id="brush-kind">
+                      <option value="voxel" data-i18n="brush.voxel">连续体素</option>
+                      <option value="line" data-i18n="brush.line">拖拽直线</option>
+                      <option value="box" data-i18n="brush.box">拖拽立方体</option>
+                      <option value="flood" data-i18n="brush.flood">Flood Fill 连通填充</option>
+                      <option value="surface" data-i18n="brush.surface">Surface Paint 外露表面</option>
+                    </select>
+                  </label>
+                  <label><span data-i18n="common.size">尺寸</span><input id="brush-size" type="number" min="1" max="16" value="1" /></label>
+                  <div class="mirror-options" role="group" aria-label="镜像绘制轴" data-i18n-aria-label="brush.mirrorAxes">
+                    <span class="field-label-with-help"><span data-i18n="brush.mirror">镜像绘制</span><ge-tooltip id="mirror-help" class="inline-help-tooltip" label="X、Y、Z 镜像轴可以组合使用；一次绘制产生的所有镜像结果会合并为一条撤销记录。" data-i18n-label="hint.mirror" placement="right" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></span>
+                    <label><input id="mirror-x" type="checkbox" />X</label>
+                    <label><input id="mirror-y" type="checkbox" />Y</label>
+                    <label><input id="mirror-z" type="checkbox" />Z</label>
+                  </div>
+                </div>
+                <div id="selection-options" class="selection-options">
+                  <label><span class="field-label-with-help"><span data-i18n="selection.kind">选择方式</span><ge-tooltip class="inline-help-tooltip" label="框选时按 Shift 可以追加选择，按 Alt/Option 可以从当前选区中减去。" data-i18n-label="hint.selectionModifiers" placement="right" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></span>
+                    <select id="selection-kind">
+                      <option value="single" data-i18n="selection.single">单体 / 屏幕框选</option>
+                      <option value="connected" data-i18n="selection.connected">连通同色区域</option>
+                      <option value="color" data-i18n="selection.color">所有同色体素</option>
+                    </select>
+                  </label>
+                  <label><span data-i18n="selection.depth">框选深度</span>
+                    <select id="box-selection-mode">
+                      <option value="visible" data-i18n="selection.visible">仅可见体素</option>
+                      <option value="through" data-i18n="selection.through">穿透选择</option>
+                    </select>
+                  </label>
+                  <div class="selection-actions">
+                    <button id="select-all" data-i18n="selection.all">全选</button>
+                    <button id="invert-selection" data-i18n="selection.invert">反选</button>
+                    <button id="clear-selection" data-i18n="common.cancel">取消</button>
+                  </div>
+                  <p><b id="selection-count">0</b> <span data-i18n="selection.count">个体素已选择</span></p>
+                  <div class="selection-transform-title label-with-help"><span data-i18n="selection.gizmo">交互式 Gizmo</span><ge-tooltip class="inline-help-tooltip" label="拖动 Gizmo 时会先显示幽灵预览；移动模式下按 Alt/Option 拖动可以复制选中体素。" data-i18n-label="hint.selectionGizmo" placement="right" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+                  <label><span data-i18n="common.mode">模式</span>
+                    <select id="selection-gizmo-mode">
+                      <option value="move" data-i18n="selection.moveDrag">拖动平移</option>
+                      <option value="duplicate" data-i18n="selection.duplicateDrag">复制拖动</option>
+                      <option value="rotate" data-i18n="selection.rotateRing">90° 旋转环</option>
+                      <option value="scale" data-i18n="selection.integerScale">包围盒整数缩放</option>
+                    </select>
+                  </label>
+                  <label><span data-i18n="selection.snap">吸附</span>
+                    <select id="selection-snap">
+                      <option value="1" data-i18n="selection.unit1">1 单位</option>
+                      <option value="5" data-i18n="selection.unit5">5 单位</option>
+                      <option value="10" data-i18n="selection.unit10">10 单位</option>
+                    </select>
+                  </label>
+                  <label><span>Pivot</span>
+                    <select id="selection-pivot-mode">
+                      <option value="center" data-i18n="selection.center">选区中心</option>
+                      <option value="minimum" data-i18n="selection.minimum">最小角点</option>
+                      <option value="custom" data-i18n="selection.custom">自定义坐标</option>
+                    </select>
+                  </label>
+                  <div class="selection-offset selection-pivot-inputs">
+                    <label>X<input id="selection-pivot-x" type="number" step="0.5" value="0" /></label>
+                    <label>Y<input id="selection-pivot-y" type="number" step="0.5" value="0" /></label>
+                    <label>Z<input id="selection-pivot-z" type="number" step="0.5" value="0" /></label>
+                  </div>
+                  <div class="selection-transform-title" data-i18n="selection.offset">偏移变换</div>
+                  <div class="selection-offset">
+                    <label>X<input id="selection-offset-x" type="number" value="1" /></label>
+                    <label>Y<input id="selection-offset-y" type="number" value="0" /></label>
+                    <label>Z<input id="selection-offset-z" type="number" value="0" /></label>
+                  </div>
+                  <div class="selection-actions two">
+                    <button id="move-selection" data-i18n="common.move">移动</button>
+                    <button id="duplicate-selection" data-i18n="selection.duplicateOffset">复制偏移</button>
+                  </div>
+                  <div class="selection-transform-title" data-i18n="selection.rotate90">旋转 90°</div>
+                  <div class="selection-actions">
+                    <button data-selection-rotate="x" data-i18n="selection.aroundX">绕 X</button>
+                    <button data-selection-rotate="y" data-i18n="selection.aroundY">绕 Y</button>
+                    <button data-selection-rotate="z" data-i18n="selection.aroundZ">绕 Z</button>
+                  </div>
+                  <div class="selection-transform-title" data-i18n="selection.flip">镜像翻转</div>
+                  <div class="selection-actions">
+                    <button data-selection-flip="x">X</button>
+                    <button data-selection-flip="y">Y</button>
+                    <button data-selection-flip="z">Z</button>
+                  </div>
+                  <div class="selection-actions four">
+                    <button id="copy-selection" data-i18n="common.copy">复制</button>
+                    <button id="cut-selection" data-i18n="selection.cut">剪切</button>
+                    <button id="paste-selection" data-i18n="selection.paste">粘贴</button>
+                    <button id="delete-selection" class="danger-mini" data-i18n="common.delete">删除</button>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div class="section-label" data-i18n="panel.currentColor">当前颜色</div>
+                <div class="color-editor">
+                  <input id="color-input" type="color" value="#69d2e7" aria-label="选择颜色" data-i18n-aria-label="material.colorAria" />
+                  <input id="color-hex" type="text" value="#69D2E7" maxlength="7" aria-label="十六进制颜色" data-i18n-aria-label="material.hexAria" />
+                </div>
+                <div class="palette" aria-label="预设调色板" data-i18n-aria-label="material.paletteAria">
+                  <button class="palette-swatch" style="--swatch:#f26b5e" data-color="#f26b5e" title="#F26B5E"></button>
+                  <button class="palette-swatch" style="--swatch:#f3a738" data-color="#f3a738" title="#F3A738"></button>
+                  <button class="palette-swatch" style="--swatch:#f5d547" data-color="#f5d547" title="#F5D547"></button>
+                  <button class="palette-swatch" style="--swatch:#7ec850" data-color="#7ec850" title="#7EC850"></button>
+                  <button class="palette-swatch selected" style="--swatch:#69d2e7" data-color="#69d2e7" title="#69D2E7"></button>
+                  <button class="palette-swatch" style="--swatch:#4f83e1" data-color="#4f83e1" title="#4F83E1"></button>
+                  <button class="palette-swatch" style="--swatch:#8d70d6" data-color="#8d70d6" title="#8D70D6"></button>
+                  <button class="palette-swatch" style="--swatch:#d86eb4" data-color="#d86eb4" title="#D86EB4"></button>
+                  <button class="palette-swatch" style="--swatch:#f3efe7" data-color="#f3efe7" title="#F3EFE7"></button>
+                  <button class="palette-swatch" style="--swatch:#aab4c3" data-color="#aab4c3" title="#AAB4C3"></button>
+                  <button class="palette-swatch" style="--swatch:#566175" data-color="#566175" title="#566175"></button>
+                  <button class="palette-swatch" style="--swatch:#242a36" data-color="#242a36" title="#242A36"></button>
+                </div>
+                <div class="pbr-material-editor">
+                  <label class="pbr-name"><span data-i18n="material.name">材质名</span><input id="pbr-material-name" type="text" maxlength="32" /></label>
+                  <div class="pbr-parameters">
+                    <label><span data-i18n="material.metallic">金属度</span><input id="pbr-metallic" type="number" min="0" max="1" step="0.01" value="0.04" /></label>
+                    <label><span data-i18n="material.roughness">粗糙度</span><input id="pbr-roughness" type="number" min="0.04" max="1" step="0.01" value="0.68" /></label>
+                  </div>
+                  <div class="pbr-actions">
+                    <button id="save-pbr-material" class="primary-inline" data-i18n="material.savePbr">保存 PBR</button>
+                    <button id="duplicate-pbr-material" data-i18n="material.duplicate">复制材质</button>
+                    <button id="delete-pbr-material" data-i18n="common.delete">删除</button>
+                  </div>
+                  <small id="pbr-material-usage" data-i18n="material.unused">当前材质未被使用</small>
+                </div>
+                <div class="replace-color-editor">
+                  <div class="selection-transform-title" data-i18n="paint.replaceTitle">替换颜色</div>
+                  <div class="replace-color-row">
+                    <input id="replace-source-color" type="color" value="#69d2e7" aria-label="要被替换的颜色" data-i18n-aria-label="paint.replaceSource" />
+                    <span data-i18n="paint.replaceWith">替换为</span>
+                    <span id="replace-target-color" class="replace-target-color" role="img" aria-label="替换后的当前颜色" data-i18n-aria-label="paint.replaceTarget"></span>
+                  </div>
+                  <label><span data-i18n="paint.scope">范围</span>
+                    <select id="replace-color-scope">
+                      <option value="global" data-i18n="paint.scopeGlobal">当前场景 / 模块</option>
+                      <option value="selection" data-i18n="paint.scopeSelection">仅当前选区</option>
+                    </select>
+                  </label>
+                  <button id="replace-color" class="primary-inline" data-i18n="paint.replaceAction">执行颜色替换</button>
+                </div>
+              </section>
+
+            </div>
+          </aside>
+
+          <section slot="second" class="panel viewport-panel">
+            <div class="panel-header viewport-header">
+              <div class="viewport-title"><span class="live-dot"></span><span id="projection-label" data-i18n="viewport.perspectiveView">透视视图</span></div>
+              <div class="viewport-actions">
+                <span id="tool-label" data-i18n="viewport.addVoxel">添加方块</span>
+                <div class="projection-switch" role="group" aria-label="投影模式" data-i18n-aria-label="viewport.projectionAria">
+                  <button id="projection-perspective" class="small-button projection-button active" aria-pressed="true" data-i18n="viewport.perspective">透视</button>
+                  <button id="projection-orthographic" class="small-button projection-button" aria-pressed="false" data-i18n="viewport.orthographic">正交</button>
+                </div>
+                <button id="camera-orbit" class="small-button" aria-pressed="false" title="切换环绕视角；也可以按住 Space 临时环绕" data-i18n="viewport.orbit" data-i18n-title="viewport.orbitTitle">环绕视角</button>
+                <button id="reset-camera" class="small-button" data-i18n="viewport.reset">重置视角</button>
+              </div>
+            </div>
+            <div class="viewport-wrap">
+              <canvas id="viewport" tabindex="0"></canvas>
+              <div id="drop-import-overlay" class="drop-import-overlay" aria-hidden="true">
+                <strong data-i18n="viewport.drop">拖放文件以导入</strong>
+                <span data-i18n="viewport.dropFormats">JSON / VOX 完整工程 · PNG / JPG / WebP / GIF 图片模块</span>
+              </div>
+              <div id="recovery-banner" class="recovery-banner" role="alert">
+                <div><strong data-i18n="recovery.found">发现自动恢复快照</strong><span id="recovery-message"></span></div>
+                <button id="restore-recovery" class="primary-inline" data-i18n="recovery.restore">恢复</button>
+                <button id="discard-recovery" data-i18n="recovery.ignore">忽略</button>
+              </div>
+              <div class="view-toolbar" role="toolbar" aria-label="标准视图与聚焦" data-i18n-aria-label="viewport.standardViews">
+                <div class="view-direction-group" role="group" aria-label="标准正交视图" data-i18n-aria-label="viewport.orthographicViews">
+                  <button data-camera-view="front" title="前视图" data-i18n="viewport.front" data-i18n-title="viewport.frontView">前</button>
+                  <button data-camera-view="back" title="后视图" data-i18n="viewport.back" data-i18n-title="viewport.backView">后</button>
+                  <button data-camera-view="left" title="左视图" data-i18n="viewport.left" data-i18n-title="viewport.leftView">左</button>
+                  <button data-camera-view="right" title="右视图" data-i18n="viewport.right" data-i18n-title="viewport.rightView">右</button>
+                  <button data-camera-view="top" title="顶视图" data-i18n="viewport.top" data-i18n-title="viewport.topView">顶</button>
+                  <button data-camera-view="bottom" title="底视图" data-i18n="viewport.bottom" data-i18n-title="viewport.bottomView">底</button>
+                </div>
+                <span class="view-toolbar-divider"></span>
+                <button id="frame-selected" title="聚焦选中体素（Frame Selected）" data-i18n="viewport.frameSelected" data-i18n-title="viewport.frameSelectedTitle">聚焦选择</button>
+                <button id="frame-all" title="显示全部模型（Frame All）" data-i18n="viewport.frameAll" data-i18n-title="viewport.frameAllTitle">显示全部</button>
+              </div>
+              <div id="loading" class="loading"><span class="loader"></span><strong data-i18n="viewport.initializing">正在初始化 WebGPU</strong><span data-i18n="viewport.preparing">准备体素工作区…</span></div>
+              <div id="toast" class="toast" role="status"></div>
+              <div id="export-progress" class="export-progress" role="status" aria-live="polite">
+                <div class="export-progress-copy">
+                  <strong id="export-progress-label" data-i18n="export.preparing">正在准备导出…</strong>
+                  <span id="export-progress-percent">0%</span>
+                </div>
+                <progress id="export-progress-bar" max="1" value="0"></progress>
+                <button id="cancel-export" type="button" data-i18n="export.cancel">取消导出</button>
+              </div>
+              <div id="selection-rect" class="selection-rect" aria-hidden="true"></div>
+              <div id="coordinate" class="cell-coordinate" data-i18n="viewport.coordinateEmpty">格子 —</div>
+              <svg id="camera-axis" class="axis-widget" viewBox="0 0 64 64" aria-label="相机方向坐标轴" data-i18n-aria-label="viewport.axisAria">
+                <g data-axis="x"><line x1="32" y1="32" x2="54" y2="32"></line><text x="59" y="35">X</text></g>
+                <g data-axis="y"><line x1="32" y1="32" x2="32" y2="10"></line><text x="29" y="7">Y</text></g>
+                <g data-axis="z"><line x1="32" y1="32" x2="32" y2="32"></line><text x="35" y="35">Z</text></g>
+                <circle cx="32" cy="32" r="2.6"></circle>
+              </svg>
+            </div>
+          </section>
+        </ge-split>
+
+        <aside slot="second" class="panel right-panel">
+          <div class="panel-header"><span data-i18n="panel.sceneSettings">场景设置</span><span class="muted">WORLD</span></div>
+          <div class="panel-body controls">
+            <section>
+              <div class="section-label label-with-help"><span data-i18n="scene.size">场景尺寸</span><ge-tooltip class="inline-help-tooltip" label="细网格间隔为 1 单位；每 5 单位使用中等强调线，每 10 单位使用更粗、更亮的线。" data-i18n-label="hint.grid" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <div class="dimension-row">
+                <label><span>X</span><input id="size-x" type="number" min="1" max="256" value="50" /></label>
+                <label><span>Y</span><input id="size-y" type="number" min="1" max="256" value="50" /></label>
+                <label><span>Z</span><input id="size-z" type="number" min="1" max="256" value="50" /></label>
+              </div>
+              <button id="apply-size" class="wide-button primary" data-i18n="scene.applySize">应用尺寸</button>
+            </section>
+
+            <section>
+              <div class="section-label" data-i18n="scene.background">场景背景色</div>
+              <div class="scene-background-editor">
+                <input id="scene-background-color" type="color" value="#090c11" aria-label="选择场景背景色" data-i18n-aria-label="scene.backgroundColorAria" />
+                <input id="scene-background-hex" type="text" value="#090C11" maxlength="7" spellcheck="false" aria-label="场景背景色十六进制值" data-i18n-aria-label="scene.backgroundHexAria" />
+                <button id="reset-scene-background" type="button" title="恢复默认背景色" data-i18n="scene.backgroundReset" data-i18n-title="scene.backgroundResetTitle">默认</button>
+              </div>
+            </section>
+
+            <section>
+              <div class="section-label module-section-title"><span class="label-with-help"><span data-i18n="slice.title">切片与工作平面</span><ge-tooltip class="inline-help-tooltip" label="拖动任一轴滑块会切换当前切片轴。启用工作平面后，添加笔刷会固定在对应层。" data-i18n-label="hint.slice" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></span><b>SLICE</b></div>
+              <div class="slice-axis-tabs" role="group" aria-label="当前切片轴" data-i18n-aria-label="slice.axisAria">
+                <button data-slice-axis="x" aria-pressed="false">X</button>
+                <button data-slice-axis="y" class="active" aria-pressed="true">Y</button>
+                <button data-slice-axis="z" aria-pressed="false">Z</button>
+              </div>
+              <div class="slice-sliders">
+                <label data-slice-row="x"><span>X</span><input id="slice-x" type="range" min="0" max="49" value="0" /><output id="slice-x-value">0</output></label>
+                <label data-slice-row="y" class="active"><span>Y</span><input id="slice-y" type="range" min="0" max="49" value="0" /><output id="slice-y-value">0</output></label>
+                <label data-slice-row="z"><span>Z</span><input id="slice-z" type="range" min="0" max="49" value="0" /><output id="slice-z-value">0</output></label>
+              </div>
+              <label class="generator-select slice-mode-row"><span data-i18n="slice.display">显示</span>
+                <select id="slice-mode">
+                  <option value="all" data-i18n="slice.all">全部体素</option>
+                  <option value="single" data-i18n="slice.single">仅当前层</option>
+                  <option value="context" data-i18n="slice.context">当前层 + 半透明上下文</option>
+                </select>
+              </label>
+              <label class="work-plane-toggle"><input id="work-plane-enabled" type="checkbox" /> <span data-i18n="slice.workPlane">启用可移动工作平面</span></label>
+            </section>
+
+            <section>
+              <div class="section-label label-with-help"><span data-i18n="shape.title">批量生成</span><ge-tooltip class="inline-help-tooltip" label="起点和终点都包含在生成范围内；范围内已有方块会更新为当前颜色。" data-i18n-label="hint.generator" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <label class="generator-select">
+                <span data-i18n="shape.kind">形状</span>
+                <select id="shape-kind">
+                  <option value="box" data-i18n="shape.box">填充立方体</option>
+                  <option value="box-shell" data-i18n="shape.boxShell">空心立方体</option>
+                  <option value="disk" data-i18n="shape.disk">圆盘（XZ）</option>
+                  <option value="ring" data-i18n="shape.ring">圆环（XZ）</option>
+                  <option value="sphere" data-i18n="shape.sphere">填充球体</option>
+                  <option value="sphere-shell" data-i18n="shape.sphereShell">空心球体</option>
+                  <option value="cylinder" data-i18n="shape.cylinder">圆柱体（Y 轴）</option>
+                </select>
+              </label>
+              <div class="bounds-grid">
+                <div class="bounds-row">
+                  <span data-i18n="shape.start">起点</span>
+                  <label>X<input id="shape-min-x" type="number" value="0" /></label>
+                  <label>Y<input id="shape-min-y" type="number" value="0" /></label>
+                  <label>Z<input id="shape-min-z" type="number" value="0" /></label>
+                </div>
+                <div class="bounds-row">
+                  <span data-i18n="shape.end">终点</span>
+                  <label>X<input id="shape-max-x" type="number" value="4" /></label>
+                  <label>Y<input id="shape-max-y" type="number" value="4" /></label>
+                  <label>Z<input id="shape-max-z" type="number" value="4" /></label>
+                </div>
+              </div>
+              <button id="generate-shape" class="wide-button primary" data-i18n="shape.generate">使用当前颜色生成</button>
+            </section>
+
+            <section>
+              <div class="section-label label-with-help"><span data-i18n="image.title">图片模块</span><ge-tooltip class="inline-help-tooltip" label="图片会经过最近邻缩放和颜色量化，再生成 X–Y 平面模块。透明像素会跳过，照片和渐变也不会生成海量材质。" data-i18n-label="hint.imageImport" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <div class="dimension-row two">
+                <label><span data-i18n="common.width">宽</span><input id="pixel-art-width" type="number" min="1" max="256" value="32" /></label>
+                <label><span data-i18n="common.height">高</span><input id="pixel-art-height" type="number" min="1" max="256" value="32" /></label>
+              </div>
+              <div class="image-import-options">
+                <label><span data-i18n="image.colorLimit">颜色上限</span><select id="pixel-art-colors">
+                  <option value="16" data-i18n="image.colors" data-i18n-count="16">16 色</option>
+                  <option value="32" data-i18n="image.colors" data-i18n-count="32">32 色</option>
+                  <option value="64" selected data-i18n="image.colors" data-i18n-count="64">64 色</option>
+                  <option value="128" data-i18n="image.colors" data-i18n-count="128">128 色</option>
+                  <option value="255" data-i18n="image.colors" data-i18n-count="255">255 色</option>
+                </select></label>
+                <div class="inline-checks"><label><input id="pixel-art-dither" type="checkbox" /> <span data-i18n="image.dither">抖动</span></label><label><input id="pixel-art-merge" type="checkbox" checked /> <span data-i18n="image.merge">合并近色</span></label></div>
+              </div>
+              <button id="import-image" class="wide-button primary" data-i18n="image.create">选择图片并创建模块</button>
+            </section>
+
+            <section>
+              <div class="section-label module-section-title"><span class="label-with-help"><span data-i18n="module.title">模块</span><ge-tooltip class="inline-help-tooltip" label="图层同时管理基础体素和模块实例。红色节点表示存在重合，可以查看冲突坐标并在视口中定位。" data-i18n-label="hint.layers" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></span><b id="edit-context" data-i18n="module.scene">主场景</b></div>
+              <div class="module-asset-toolbar">
+                <input id="module-search" type="search" placeholder="搜索模块…" aria-label="搜索模块" data-i18n-placeholder="module.search" data-i18n-aria-label="module.searchAria" />
+                <select id="module-sort" aria-label="模块排序" data-i18n-aria-label="module.sortAria">
+                  <option value="name-asc" data-i18n="module.nameAsc">名称 A–Z</option>
+                  <option value="name-desc" data-i18n="module.nameDesc">名称 Z–A</option>
+                </select>
+              </div>
+              <div id="module-assets" class="module-assets" aria-label="模块资产" data-i18n-aria-label="module.assetsAria"></div>
+              <select id="module-library" class="module-library" aria-label="模块库" data-i18n-aria-label="module.libraryAria">
+                <option value="" data-i18n="module.empty">尚未创建模块</option>
+              </select>
+              <div class="module-actions three">
+                <button id="new-module" data-i18n="module.new">新建</button>
+                <button id="edit-module" data-i18n="module.edit">编辑模块</button>
+                <button id="edit-scene" data-i18n="module.return">返回场景</button>
+              </div>
+              <div class="module-actions three">
+                <button id="rename-module" data-i18n="common.rename">重命名</button>
+                <button id="duplicate-module" data-i18n="module.duplicateDefinition">复制定义</button>
+                <button id="remove-unused-module" data-i18n="module.removeUnused">删除未使用</button>
+              </div>
+              <button id="locate-module-instances" class="wide-button" data-i18n="module.locate">定位该模块的所有实例</button>
+              <div class="section-label module-subtitle" data-i18n="layer.title">图层</div>
+              <select id="layer-library" class="module-library" aria-label="场景图层" data-i18n-aria-label="layer.sceneAria">
+                <option value="layer-1" data-i18n="layer.default">默认图层</option>
+              </select>
+              <div class="module-actions three">
+                <button id="new-layer" data-i18n="layer.new">新建图层</button>
+                <button id="rename-layer" data-i18n="common.rename">重命名</button>
+                <button id="remove-layer" data-i18n="layer.remove">删除图层</button>
+              </div>
+              <div class="module-actions">
+                <button id="toggle-layer-visibility" data-i18n="layer.hide">隐藏图层</button>
+                <button id="toggle-layer-lock" data-i18n="layer.lock">锁定图层</button>
+              </div>
+              <button id="assign-selection-layer" class="wide-button" data-i18n="layer.assign">将选中基础体素移至当前图层</button>
+              <div class="section-label module-subtitle" data-i18n="gizmo.instance">实例 Gizmo</div>
+              <select id="gizmo-mode" class="module-library" aria-label="Gizmo 模式" data-i18n-aria-label="gizmo.modeAria">
+                <option value="move" data-i18n="gizmo.move">移动 · 拖动轴</option>
+                <option value="rotate" data-i18n="gizmo.rotate">旋转 · 点击轴 90°</option>
+                <option value="scale" data-i18n="gizmo.scale">缩放 · 拖动轴</option>
+              </select>
+              <div class="section-label module-subtitle compact" data-i18n="module.position">位置 / 粘贴坐标</div>
+              <div class="dimension-row module-position">
+                <label><span>X</span><input id="module-pos-x" type="number" value="0" /></label>
+                <label><span>Y</span><input id="module-pos-y" type="number" value="0" /></label>
+                <label><span>Z</span><input id="module-pos-z" type="number" value="0" /></label>
+              </div>
+              <div class="section-label module-subtitle compact" data-i18n="module.rotation">旋转角度</div>
+              <div class="dimension-row module-position">
+                <label><span>X</span><input id="module-rot-x" type="number" step="90" value="0" /></label>
+                <label><span>Y</span><input id="module-rot-y" type="number" step="90" value="0" /></label>
+                <label><span>Z</span><input id="module-rot-z" type="number" step="90" value="0" /></label>
+              </div>
+              <div class="section-label module-subtitle compact" data-i18n="module.integerScale">整数缩放</div>
+              <div class="dimension-row module-position">
+                <label><span>X</span><input id="module-scale-x" type="number" min="1" max="16" value="1" /></label>
+                <label><span>Y</span><input id="module-scale-y" type="number" min="1" max="16" value="1" /></label>
+                <label><span>Z</span><input id="module-scale-z" type="number" min="1" max="16" value="1" /></label>
+              </div>
+              <button id="apply-instance-transform" class="wide-button" data-i18n="module.applyTransform">应用选中实例变换</button>
+              <button id="toggle-instance-visibility" class="wide-button" data-i18n="module.hideSelected">隐藏选中实例</button>
+              <div class="module-actions">
+                <button id="copy-module" data-i18n="module.copy">复制模块</button>
+                <button id="paste-module" class="primary-inline" data-i18n="module.paste">粘贴到场景</button>
+              </div>
+              <div class="section-label module-subtitle" data-i18n="module.tree">场景模块树</div>
+              <ge-tree id="module-tree" class="module-tree"></ge-tree>
+              <div id="module-conflict-details" class="module-conflict-details" data-i18n="module.noConflict">当前实例没有重合冲突。</div>
+              <button id="highlight-module-conflicts" class="wide-button" data-i18n="module.highlightConflict">定位并高亮冲突体素</button>
+              <button id="remove-module-instance" class="wide-button danger" data-i18n="module.removeInstance">删除选中的模块实例</button>
+            </section>
+
+            <section>
+              <div class="section-label module-section-title"><span data-i18n="animation.title">动画</span><b id="animation-frame-label" data-i18n="animation.frame" data-i18n-current="1" data-i18n-total="1">帧 1 / 1</b></div>
+              <select id="animation-library" class="module-library" aria-label="动画片段" data-i18n-aria-label="animation.libraryAria">
+                <option value="" data-i18n="animation.empty">尚未创建动画</option>
+              </select>
+              <div class="module-actions three">
+                <button id="new-animation" data-i18n="animation.new">新建动画</button>
+                <button id="duplicate-animation" data-i18n="animation.duplicate">复制片段</button>
+                <button id="remove-animation" data-i18n="animation.remove">删除动画</button>
+              </div>
+              <label class="generator-select"><span data-i18n="common.name">名称</span><input id="animation-name" type="text" maxlength="32" value="动画 1" /></label>
+              <div class="dimension-row two animation-settings">
+                <label><span>FPS</span><input id="animation-fps" type="number" min="1" max="60" value="12" /></label>
+                <label><span data-i18n="animation.frameCount">帧数</span><input id="animation-frame-count" type="number" min="1" max="10000" value="12" /></label>
+              </div>
+              <label class="animation-loop"><input id="animation-loop" type="checkbox" checked /> <span data-i18n="animation.loop">循环播放</span></label>
+              <div class="dimension-row two animation-settings">
+                <label><span data-i18n="animation.rangeStart">区间起点</span><input id="animation-range-start" type="number" min="1" max="1" value="1" /></label>
+                <label><span data-i18n="animation.rangeEnd">区间终点</span><input id="animation-range-end" type="number" min="1" max="1" value="1" /></label>
+              </div>
+              <button id="save-animation-settings" class="wide-button" data-i18n="animation.apply">应用动画设置</button>
+              <div class="animation-playback" role="group" aria-label="动画播放" data-i18n-aria-label="animation.playbackAria">
+                <button id="animation-prev" title="上一帧" data-i18n-title="animation.previous">◀</button>
+                <button id="animation-play" class="primary-inline" title="播放" data-i18n-title="animation.play">▶</button>
+                <button id="animation-next" title="下一帧" data-i18n-title="animation.next">▶|</button>
+              </div>
+              <input id="animation-frame" class="animation-range" type="range" min="0" max="0" value="0" />
+              <div class="animation-timeline-header">
+                <span data-i18n="animation.tracks">实例轨道</span>
+                <label><input id="onion-previous" type="checkbox" /> <span data-i18n="animation.previousOnion">前一帧</span></label>
+                <label><input id="onion-next" type="checkbox" /> <span data-i18n="animation.nextOnion">后一帧</span></label>
+              </div>
+              <div id="animation-timeline" class="animation-timeline" tabindex="0" aria-label="动画时间线" data-i18n-aria-label="animation.timelineAria"></div>
+              <div class="module-actions three animation-keyframe-actions">
+                <button id="copy-animation-keyframes" data-i18n="animation.copyKeys">复制关键帧</button>
+                <button id="paste-animation-keyframes" data-i18n="animation.pasteKeys">粘贴到当前帧</button>
+                <button id="remove-animation-keyframe" data-i18n="animation.removeKeys">删除选中</button>
+              </div>
+              <div class="module-actions">
+                <button id="set-animation-keyframe" class="primary-inline" data-i18n="animation.record">记录选中实例</button>
+                <button id="select-current-keyframe" data-i18n="animation.selectKey">选中当前关键帧</button>
+              </div>
+              <p id="animation-keyframe-status" class="animation-keyframe-status" data-i18n="animation.unsaved">○ 当前帧未保存</p>
+            </section>
+
+            <section>
+              <div class="section-label label-with-help"><span data-i18n="glb.title">GLB 输出</span><ge-tooltip class="inline-help-tooltip" label="静态合并适合追求最小运行时开销；保留模块实例会共享模块网格，并输出 STEP 变换、显隐和模块切换轨道。" data-i18n-label="hint.glb" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <label class="generator-select"><span data-i18n="glb.structure">场景结构</span>
+                <select id="glb-export-mode">
+                  <option value="merged" data-i18n="glb.merged">静态合并（当前帧）</option>
+                  <option value="instances" data-i18n="glb.instances">保留模块实例</option>
+                </select>
+              </label>
+              <label class="animation-loop"><input id="glb-include-animations" type="checkbox" checked /> <span data-i18n="glb.animations">输出实例动画轨道</span></label>
+            </section>
+
+            <section>
+              <div class="section-label label-with-help"><span data-i18n="sprite.title">Sprite 输出</span><ge-tooltip class="inline-help-tooltip" label="Sprite Sheet 会同时输出 atlas JSON，其中包含帧名、Pivot 和按不透明投影计算的碰撞框。结束帧设为 0 表示动画最后一帧。" data-i18n-label="hint.sprite" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <label class="generator-select"><span data-i18n="sprite.view">视角</span>
+                <select id="sprite-view">
+                  <option value="isometric" data-i18n="sprite.isometric">等距视角</option>
+                  <option value="front" data-i18n="sprite.front">正面</option>
+                  <option value="side" data-i18n="sprite.side">侧面</option>
+                  <option value="top" data-i18n="sprite.top">顶视</option>
+                </select>
+              </label>
+              <label class="generator-select"><span data-i18n="sprite.direction">方向输出</span>
+                <select id="sprite-direction-mode">
+                  <option value="single" data-i18n="sprite.current">当前视角</option>
+                  <option value="four" data-i18n="sprite.four">角色四方向</option>
+                  <option value="six" data-i18n="sprite.six">六方向</option>
+                </select>
+              </label>
+              <div class="dimension-row two">
+                <label><span data-i18n="common.width">宽</span><input id="sprite-width" type="number" min="8" max="2048" value="128" /></label>
+                <label><span data-i18n="common.height">高</span><input id="sprite-height" type="number" min="8" max="2048" value="128" /></label>
+              </div>
+              <label class="generator-select sprite-resolution-select" title="最终单帧尺寸等于宽、高乘以分辨率倍率；边距也会同比缩放。" data-i18n-title="sprite.resolutionHint"><span data-i18n="sprite.resolution">分辨率倍率</span>
+                <select id="sprite-resolution-scale">
+                  <option value="1" data-i18n="sprite.resolution1x">1× · 标准</option>
+                  <option value="2" selected data-i18n="sprite.resolution2x">2× · 高清</option>
+                  <option value="4" data-i18n="sprite.resolution4x">4× · 超高清</option>
+                  <option value="8" data-i18n="sprite.resolution8x">8× · 极清</option>
+                  <option value="16" data-i18n="sprite.resolution16x">16× · 最大</option>
+                </select>
+              </label>
+              <label class="generator-select"><span data-i18n="sprite.layout">排列</span>
+                <select id="sprite-layout">
+                  <option value="horizontal" data-i18n="sprite.horizontal">横向</option>
+                  <option value="vertical" data-i18n="sprite.vertical">纵向</option>
+                  <option value="grid" data-i18n="sprite.grid">网格</option>
+                </select>
+              </label>
+              <div class="dimension-row two">
+                <label><span data-i18n="sprite.padding">边距</span><input id="sprite-padding" type="number" min="0" max="128" value="6" /></label>
+                <label><span data-i18n="sprite.columns">列数</span><input id="sprite-columns" type="number" min="1" max="256" value="4" /></label>
+              </div>
+              <div class="dimension-row two">
+                <label><span data-i18n="sprite.start">起始帧</span><input id="sprite-frame-start" type="number" min="1" max="10000" value="1" /></label>
+                <label><span data-i18n="sprite.end">结束帧</span><input id="sprite-frame-end" type="number" min="0" max="10000" value="0" title="0 表示动画最后一帧" data-i18n-title="hint.lastFrame" /></label>
+              </div>
+              <div class="dimension-row two">
+                <label><span>Pivot X</span><input id="sprite-pivot-x" type="number" min="0" max="1" step="0.05" value="0.5" /></label>
+                <label><span>Pivot Y</span><input id="sprite-pivot-y" type="number" min="0" max="1" step="0.05" value="1" /></label>
+              </div>
+              <label class="animation-loop"><input id="sprite-transparent" type="checkbox" checked /> <span data-i18n="sprite.transparent">透明背景</span></label>
+              <div class="module-actions">
+                <button id="export-sprite-frame" data-i18n="sprite.currentPng">当前帧 PNG</button>
+                <button id="export-sprite-sheet" class="primary-inline" data-i18n="sprite.sheet">动画 Sprite Sheet</button>
+              </div>
+            </section>
+
+            <section class="danger-zone">
+              <button id="clear-scene" class="wide-button danger" data-i18n="scene.clear">清空场景</button>
+            </section>
+          </div>
+        </aside>
+      </ge-split>
+    </main>
+
+    <footer class="status-bar">
+      <span class="ready"><i></i>WebGPU</span>
+      <span class="footer-spacer"></span>
+      <span class="status-stat"><span data-i18n="stats.voxels">体素数量</span> <strong id="voxel-count">0</strong></span>
+      <span class="status-divider"></span>
+      <span data-i18n="status.grid">网格 1 unit · 强调 5 / 10 units</span>
+      <span class="status-divider"></span>
+      <span data-i18n="status.engine">海月引擎</span>
+    </footer>
+  </div>
+  <dialog id="editor-help-dialog" class="editor-dialog editor-help-dialog" aria-labelledby="editor-help-title" tabindex="-1">
+    <div class="editor-dialog-heading">
+      <h2 id="editor-help-title" data-i18n="help.title">操作帮助</h2>
+    </div>
+    <div class="editor-help-content">
+      <section>
+        <h3 data-i18n="help.editing">编辑</h3>
+        <div class="editor-help-row"><kbd data-i18n="help.tools">1 / 2 / 3 / 4 或 B / E / G / N</kbd><span data-i18n="help.toolsAction">切换添加、擦除、着色和选择工具</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.primaryPointer">左键单击或拖动</kbd><span data-i18n="help.primaryPointerAction">使用当前工具；拖动可连续绘制或框选</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.brushSize">[ / ]</kbd><span data-i18n="help.brushSizeAction">减小或增大笔刷尺寸</span></div>
+      </section>
+      <section>
+        <h3 data-i18n="help.viewport">视图导航</h3>
+        <div class="editor-help-row"><kbd data-i18n="help.orbit">Space + 左键拖动</kbd><span data-i18n="help.orbitAction">临时旋转视角</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.pan">右键拖动</kbd><span data-i18n="help.panAction">平移视角</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.zoom">鼠标滚轮</kbd><span data-i18n="help.zoomAction">缩放视角</span></div>
+      </section>
+      <section>
+        <h3 data-i18n="help.selectionHistory">选择与历史</h3>
+        <div class="editor-help-row"><kbd data-i18n="help.extendSelection">Shift / Alt + 选择</kbd><span data-i18n="help.extendSelectionAction">添加到选区 / 从选区减去</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.duplicateDrag">Alt + 拖动 Gizmo</kbd><span data-i18n="help.duplicateDragAction">复制并移动选中体素</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.undoRedo">Ctrl/⌘ Z · Ctrl/⌘ Shift Z</kbd><span data-i18n="help.undoRedoAction">撤销 / 重做</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.save">Ctrl/⌘ S</kbd><span data-i18n="help.saveAction">保存当前工程到浏览器</span></div>
+        <div class="editor-help-row"><kbd data-i18n="help.escape">Esc</kbd><span data-i18n="help.escapeAction">取消当前操作、清除选择或退出环绕</span></div>
+      </section>
+    </div>
+    <div class="editor-dialog-actions">
+      <button id="close-editor-help" type="button" data-i18n="help.done">知道了</button>
+    </div>
+  </dialog>
+  <dialog id="editor-settings-dialog" class="editor-dialog editor-settings-dialog" aria-labelledby="editor-settings-title">
+    <div class="editor-settings-heading">
+      <h2 id="editor-settings-title" data-i18n="settings.title">编辑器设置</h2>
+    </div>
+    <label class="editor-language-setting" for="editor-language">
+      <span data-i18n="settings.language">界面语言</span>
+      <select id="editor-language">
+        <option value="zh-CN">简体中文</option>
+        <option value="en-US">English</option>
+      </select>
+    </label>
+    <p data-i18n="settings.languageHint">语言设置会保存在当前浏览器中。</p>
+    <div class="editor-settings-actions">
+      <button id="close-editor-settings" type="button" data-i18n="settings.done">完成</button>
+    </div>
+  </dialog>
+  <script type="module" src="./pwa/register.js"></script>
+  <script type="module" src="./dist/main.js"></script>
+</body>
+</html>

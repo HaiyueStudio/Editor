@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>G09 Designer integration browser acceptance</title></head>
+<body>
+  <div id="progress">启动 G09 产品验收…</div><pre id="result"></pre>
+  <script type="module">
+    const progress = document.querySelector('#progress');
+    const result = document.querySelector('#result');
+    const longTasks = [];
+    const interactionLongTasks = [];
+    let phase = 'startup';
+    const observer = PerformanceObserver.supportedEntryTypes.includes('longtask')
+      ? new PerformanceObserver(list => longTasks.push(...list.getEntries().map(entry => ({
+        duration: entry.duration,
+        startTime: entry.startTime,
+        phase,
+      })))) : null;
+    try { observer?.observe({ type: 'longtask', buffered: false }); } catch { /* optional */ }
+    const heapBefore = performance.memory?.usedJSHeapSize ?? null;
+    let frame2d = null;
+    let frame3d = null;
+    try {
+      const start2d = performance.now();
+      frame2d = await openFrame('/AnimationEditor/', 1440, 960);
+      const doc2d = frame2d.contentDocument;
+      const win2d = frame2d.contentWindow;
+      await waitFor(() => doc2d.querySelector('#gpu-status')?.dataset.state === 'ready', '2D WebGPU ready', 30_000);
+      const startup2d = performance.now() - start2d;
+      longTasks.length = 0;
+
+      progress.textContent = '验证模板、能力帮助与 Tween exact preview';
+      phase = 'template-and-tween';
+      doc2d.querySelector('#capability-help').click();
+      await waitFor(() => doc2d.querySelector('#capability-dialog').open, 'capability dialog');
+      if (!/HYA 反向导入/u.test(doc2d.querySelector('.capability-help-copy').textContent)) throw new Error('能力帮助未公开限制。');
+      doc2d.querySelector('#capability-close').click();
+      doc2d.querySelector('#new-project').click();
+      await waitFor(() => doc2d.querySelector('#new-project-dialog').open, 'template dialog');
+      const templateIds = [...doc2d.querySelectorAll('[data-template-id]')].map(node => node.dataset.templateId);
+      if (templateIds.join(',') !== 'tween-ui,spritesheet,path-vector,particle,native3d-camera-object,gltf-character') {
+        throw new Error(`模板清单不完整：${templateIds.join(',')}`);
+      }
+      doc2d.querySelector('[data-template-id="tween-ui"]').click();
+      await waitFor(() => doc2d.querySelector('#project-name').textContent === 'Tween UI Motion', 'Tween template');
+      await waitFor(() => doc2d.querySelector('#preview-title').textContent === 'HYA Runtime 已连接', 'Tween exact runtime', 30_000);
+      const tweenPixel = await canvasHash(doc2d.querySelector('#preview-canvas'));
+      if (tweenPixel.painted < 100) throw new Error(`Tween WebGPU 像素为空：${JSON.stringify(tweenPixel)}`);
+
+      const viewport = doc2d.querySelector('#viewport-stage');
+      const canvasFrame = doc2d.querySelector('.canvas-frame');
+      if (viewport.getAttribute('role') !== 'application' || !/Shift/u.test(viewport.getAttribute('aria-label') ?? '')) {
+        throw new Error('画布缺少可访问交互说明。');
+      }
+      const transformBefore = canvasFrame.style.transform;
+      viewport.dispatchEvent(new win2d.WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true }));
+      await waitFor(() => canvasFrame.style.transform !== transformBefore, 'viewport zoom');
+      if (!/scale\(1\.[1-9]/u.test(canvasFrame.style.transform)) throw new Error(`画布缩放未生效：${canvasFrame.style.transform}`);
+
+      const transformBeforePan = canvasFrame.style.transform;
+      win2d.dispatchEvent(new win2d.KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+      viewport.dispatchEvent(new win2d.PointerEvent('pointerdown', {
+        pointerId: 41, button: 0, clientX: 100, clientY: 100, bubbles: true, cancelable: true,
+      }));
+      await waitFor(() => doc2d.querySelector('.viewport-guides')?.classList.contains('visible'), 'viewport guides');
+      win2d.dispatchEvent(new win2d.PointerEvent('pointermove', {
+        pointerId: 41, clientX: 137, clientY: 124, shiftKey: true, bubbles: true,
+      }));
+      await waitFor(() => canvasFrame.style.transform !== transformBeforePan, 'viewport pan');
+      const snappedTranslation = canvasFrame.style.transform.match(/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/u);
+      if (!snappedTranslation || [Number(snappedTranslation[1]), Number(snappedTranslation[2])].some(value => value % 10 !== 0)) {
+        throw new Error(`Shift 网格吸附未生效：${canvasFrame.style.transform}`);
+      }
+      win2d.dispatchEvent(new win2d.PointerEvent('pointerup', { pointerId: 41, bubbles: true }));
+      win2d.dispatchEvent(new win2d.KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+      await waitFor(() => !doc2d.querySelector('.viewport-guides')?.classList.contains('visible'), 'viewport guides hidden');
+
+      progress.textContent = '验证选择、锁定、隐藏与可访问 Inspector';
+      phase = 'inspector-and-visibility';
+      doc2d.querySelector('#hierarchy-tree').dispatchEvent(new win2d.CustomEvent('selection-change', {
+        detail: { selectedIds: ['ui-card'] }, bubbles: true,
+      }));
+      await waitFor(() => checkboxByLabel(doc2d, '锁定编辑'), 'node inspector selection');
+      clickCheckbox(checkboxByLabel(doc2d, '锁定编辑'));
+      await waitFor(() => checkboxByLabel(doc2d, '锁定编辑')?.checked === true, 'node lock');
+      if (!doc2d.querySelector('#inspector-content ge-input[disabled]')) throw new Error('节点锁定后 Inspector 仍可编辑。');
+      clickCheckbox(checkboxByLabel(doc2d, '锁定编辑'));
+      await waitFor(() => checkboxByLabel(doc2d, '锁定编辑')?.checked === false, 'node unlock');
+
+      const visiblePixel = await canvasHash(doc2d.querySelector('#preview-canvas'));
+      clickCheckbox(checkboxByLabel(doc2d, '在预览中隐藏'));
+      await waitFor(() => checkboxByLabel(doc2d, '在预览中隐藏')?.checked === true, 'node preview hide');
+      await delay(600);
+      await waitFor(() => doc2d.querySelector('#gpu-status')?.dataset.state === 'ready', 'hidden preview ready', 30_000);
+      const hiddenPixel = await canvasHash(doc2d.querySelector('#preview-canvas'));
+      if (hiddenPixel.hash === visiblePixel.hash) throw new Error('隐藏节点未改变 exact preview 像素。');
+      clickCheckbox(checkboxByLabel(doc2d, '在预览中隐藏'));
+      await waitFor(() => checkboxByLabel(doc2d, '在预览中隐藏')?.checked === false, 'node preview show');
+      await delay(600);
+      await waitFor(() => doc2d.querySelector('#gpu-status')?.dataset.state === 'ready', 'restored preview ready', 30_000);
+
+      progress.textContent = '验证 SpriteSheet 模板、重链接与 Undo/Redo';
+      phase = 'spritesheet-relink-history';
+      doc2d.querySelector('#new-project').click();
+      await waitFor(() => doc2d.querySelector('#new-project-dialog').open, 'second template dialog');
+      doc2d.querySelector('[data-template-id="spritesheet"]').click();
+      await waitFor(() => doc2d.querySelector('#project-name').textContent === 'SpriteSheet Sequence', 'SpriteSheet template');
+      await waitFor(() => /已从模板创建“SpriteSheet Sequence”/u.test(doc2d.querySelector('#status-message').textContent), 'SpriteSheet template activation');
+      await waitFor(() => /1 visuals/u.test(doc2d.querySelector('#preview-stats').textContent), 'SpriteSheet exact preview', 30_000);
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="1"><path fill="#0f0" d="M0 0h4v1H0z"/></svg>';
+      const transfer = new win2d.DataTransfer();
+      transfer.items.add(new win2d.File([svg], 'replacement-atlas.svg', { type: 'image/svg+xml' }));
+      const relink = doc2d.querySelector('.asset-relink');
+      relink.click();
+      const relinkInput = doc2d.querySelector('#relink-asset-file-input');
+      relinkInput.files = transfer.files;
+      relinkInput.dispatchEvent(new win2d.Event('change', { bubbles: true }));
+      await waitFor(() => doc2d.querySelector('.asset-copy strong')?.textContent === 'replacement-atlas.svg', 'asset relink');
+      await waitFor(() => !doc2d.querySelector('#undo-command').disabled, 'relink undo availability');
+      doc2d.querySelector('#undo-command').click();
+      await waitFor(() => doc2d.querySelector('.asset-copy strong')?.textContent === 'Template Atlas', 'relink undo', 15_000, () => ({
+        assetName: doc2d.querySelector('.asset-copy strong')?.textContent,
+        status: doc2d.querySelector('#status-message')?.textContent,
+        undoDisabled: doc2d.querySelector('#undo-command')?.disabled,
+        undoTitle: doc2d.querySelector('#undo-command')?.title,
+        redoDisabled: doc2d.querySelector('#redo-command')?.disabled,
+        redoTitle: doc2d.querySelector('#redo-command')?.title,
+      }));
+      doc2d.querySelector('#redo-command').click();
+      await waitFor(() => doc2d.querySelector('.asset-copy strong')?.textContent === 'replacement-atlas.svg', 'relink redo');
+      win2d.dispatchEvent(new win2d.KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: true, bubbles: true }));
+      await waitFor(() => doc2d.querySelector('.asset-copy strong')?.textContent === 'Template Atlas', 'shortcut undo');
+      win2d.dispatchEvent(new win2d.KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true, bubbles: true }));
+      await waitFor(() => doc2d.querySelector('.asset-copy strong')?.textContent === 'replacement-atlas.svg', 'shortcut redo');
+
+      progress.textContent = '验证保存、重开、裸 HYA、交付包与播放';
+      phase = 'save-reopen-export-play';
+      doc2d.querySelector('#save-project').click();
+      await waitFor(() => /已保存 .*\.hya-project\.json/u.test(doc2d.querySelector('#status-message').textContent), '2D save');
+      doc2d.querySelector('#export-hya').click();
+      await waitFor(() => /已导出 .*\.hya/u.test(doc2d.querySelector('#status-message').textContent), 'bare HYA');
+      doc2d.querySelector('#export-package').click();
+      await waitFor(() => /已导出 .*\.hya-package\.zip/u.test(doc2d.querySelector('#status-message').textContent), '2D package', 30_000);
+      doc2d.querySelector('#toggle-play').click();
+      await waitFor(() => doc2d.querySelector('#toggle-play').getAttribute('aria-pressed') === 'true', '2D runtime play');
+
+      const invalidTransfer = new win2d.DataTransfer();
+      invalidTransfer.items.add(new win2d.File([
+        JSON.stringify({ format: 'haiyue-animation-editor-project@1' }),
+      ], 'invalid.hya-project.json', { type: 'application/json' }));
+      const invalidInput = doc2d.querySelector('#project-file-input');
+      invalidInput.files = invalidTransfer.files;
+      invalidInput.dispatchEvent(new win2d.Event('change', { bubbles: true }));
+      await waitFor(() => doc2d.querySelector('#error-dialog').open, 'localized project error');
+      if (!doc2d.querySelector('#error-message').textContent.trim()) throw new Error('工程错误弹窗没有定位信息。');
+      doc2d.querySelector('#dismiss-error').click();
+
+      const reopen2d = await openFrame('/AnimationEditor/', 1000, 700);
+      await waitFor(() => reopen2d.contentDocument.querySelector('#project-name')?.textContent === 'SpriteSheet Sequence', '2D reopen');
+      await waitFor(() => reopen2d.contentDocument.querySelector('.asset-copy strong')?.textContent === 'replacement-atlas.svg', 'relinked asset reopen');
+      reopen2d.remove();
+
+      interactionLongTasks.push(...longTasks.filter(entry => entry.duration > 50));
+      longTasks.length = 0;
+
+      progress.textContent = '验证原生 3D 产品工作区';
+      phase = 'native3d-startup';
+      const start3d = performance.now();
+      frame3d = await openFrame('/AnimationEditor/native3d.html?template=native3d-camera-object', 1280, 900);
+      const doc3d = frame3d.contentDocument;
+      const win3d = frame3d.contentWindow;
+      win3d.confirm = () => true;
+      await waitFor(() => doc3d.querySelector('#gpu-status')?.textContent === 'WEBGPU READY', '3D WebGPU ready', 60_000);
+      const startup3d = performance.now() - start3d;
+      longTasks.length = 0;
+      const initialTime = doc3d.querySelector('#timecode').textContent;
+      doc3d.querySelector('#play').click();
+      await waitFor(() => doc3d.querySelector('#timecode').textContent !== initialTime, '3D runtime play');
+      const translation = doc3d.querySelector('.vector input');
+      translation.value = '2.25';
+      translation.dispatchEvent(new win3d.Event('change', { bubbles: true }));
+      await waitFor(() => !doc3d.querySelector('#undo').disabled, '3D edit');
+      doc3d.querySelector('#undo').click(); await waitFor(() => translationValue(doc3d) !== 2.25, '3D undo');
+      doc3d.querySelector('#redo').click(); await waitFor(() => translationValue(doc3d) === 2.25, '3D redo');
+      await waitFor(() => doc3d.querySelector('#gpu-status').textContent === 'WEBGPU READY', '3D hot swap', 30_000);
+      const nativePixel = await canvasHash(doc3d.querySelector('#preview-canvas'));
+      if (nativePixel.painted < 100) throw new Error(`Native 3D WebGPU 像素为空：${JSON.stringify(nativePixel)}`);
+
+      const nativeCreateObjectURL3d = win3d.URL.createObjectURL.bind(win3d.URL);
+      let saved3dProjectBlob = null;
+      win3d.URL.createObjectURL = blob => {
+        if (blob.type === 'application/vnd.haiyue.animation-project+json') saved3dProjectBlob = blob;
+        return nativeCreateObjectURL3d(blob);
+      };
+      doc3d.querySelector('#save-project').click();
+      await waitFor(() => /已保存 .*\.hya-project\.json/u.test(doc3d.querySelector('#status').textContent), '3D save');
+      if (!saved3dProjectBlob) throw new Error('3D 保存没有生成工程文件。');
+      const saved3dProjectText = await saved3dProjectBlob.text();
+      const dirtyTranslation = doc3d.querySelector('.vector input');
+      dirtyTranslation.value = '7';
+      dirtyTranslation.dispatchEvent(new win3d.Event('change', { bubbles: true }));
+      await waitFor(() => doc3d.querySelector('#project-name').textContent.startsWith('● '), '3D dirty state');
+      const reopenTransfer3d = new win3d.DataTransfer();
+      reopenTransfer3d.items.add(new win3d.File([saved3dProjectText], 'reopen.hya-project.json', {
+        type: 'application/vnd.haiyue.animation-project+json',
+      }));
+      const reopenInput3d = doc3d.querySelector('#project-file');
+      const reopenStatuses3d = [];
+      const reopenStatusObserver3d = new win3d.MutationObserver(() => {
+        reopenStatuses3d.push(doc3d.querySelector('#status').textContent);
+      });
+      reopenStatusObserver3d.observe(doc3d.querySelector('#status'), { childList: true, subtree: true, characterData: true });
+      reopenInput3d.files = reopenTransfer3d.files;
+      reopenInput3d.dispatchEvent(new win3d.Event('change', { bubbles: true }));
+      await waitFor(() => translationValue(doc3d) === 2.25, '3D reopen value');
+      await waitFor(() => !doc3d.querySelector('#project-name').textContent.startsWith('● '), '3D reopen saved baseline');
+      await waitFor(() => reopenStatuses3d.some(value => /已打开 reopen\.hya-project\.json/u.test(value)), '3D reopen status');
+      reopenStatusObserver3d.disconnect();
+      doc3d.querySelector('#export-hya').click(); await waitFor(() => /\.hya/u.test(doc3d.querySelector('#status').textContent), '3D HYA');
+      doc3d.querySelector('#export-package').click(); await waitFor(() => /\.hya-package\.zip/u.test(doc3d.querySelector('#status').textContent), '3D package', 30_000);
+      win3d.URL.createObjectURL = nativeCreateObjectURL3d;
+
+      const templateSelect = doc3d.querySelector('#template-select');
+      templateSelect.value = 'gltf-character';
+      doc3d.querySelector('#new-project').click();
+      await waitFor(() => doc3d.querySelector('#project-name').textContent.includes('glTF Character Sample'), 'glTF template');
+      await waitFor(() => doc3d.querySelector('#gpu-status').textContent === 'WEBGPU READY', 'glTF runtime', 60_000);
+      const gltfPixel = await canvasHash(doc3d.querySelector('#preview-canvas'));
+      if (gltfPixel.painted < 100) throw new Error(`glTF WebGPU 像素为空：${JSON.stringify(gltfPixel)}`);
+
+      const heapAfter = performance.memory?.usedJSHeapSize ?? null;
+      const heapGrowth = heapBefore === null || heapAfter === null ? null : Math.max(0, heapAfter - heapBefore);
+      const payload = {
+        status: 'passed', templates: templateIds.length, startup2d, startup3d,
+        pixels: { tween: tweenPixel, native: nativePixel, gltf: gltfPixel },
+        heapGrowth, longTasks: [...interactionLongTasks, ...longTasks.filter(entry => entry.duration > 50)],
+        lifecycle: { productFramesClosed: 2, delegatedOwnerChecks: 'G02-G08 browser fixtures' },
+      };
+      if (heapGrowth !== null && heapGrowth > 100663296) throw new Error(`内存预算失败：${JSON.stringify(payload)}`);
+      result.textContent = JSON.stringify(payload);
+      result.dataset.status = 'passed';
+      progress.textContent = 'Passed';
+    } catch (error) {
+      result.textContent = JSON.stringify({ status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error) });
+      result.dataset.status = 'failed'; progress.textContent = 'Failed';
+    } finally {
+      observer?.disconnect(); frame2d?.remove(); frame3d?.remove();
+    }
+
+    async function openFrame(src, width, height) {
+      const frame = document.createElement('iframe');
+      frame.style.cssText = `position:fixed;left:-3000px;top:0;width:${width}px;height:${height}px;border:0`;
+      frame.src = src; document.body.append(frame);
+      const expectedPath = new URL(src, location.href).pathname.replace(/\/$/u, '');
+      await waitFor(() => frame.contentDocument?.readyState === 'complete'
+        && frame.contentWindow.location.pathname.replace(/\/$/u, '') === expectedPath,
+      `load ${src}`, 30_000);
+      return frame;
+    }
+    function translationValue(doc) { return Number(doc.querySelector('.vector input')?.value); }
+    function checkboxByLabel(doc, label) {
+      return [...doc.querySelectorAll('#inspector-content ge-checkbox')].find(node => node.label === label) ?? null;
+    }
+    function clickCheckbox(checkbox) {
+      if (!checkbox) throw new Error('Inspector checkbox is missing.');
+      checkbox.shadowRoot.querySelector('input').click();
+    }
+    async function canvasHash(canvas) {
+      await frames(3);
+      const bitmap = await createImageBitmap(canvas);
+      const target = document.createElement('canvas'); target.width = 160; target.height = Math.max(1, Math.round(160 * canvas.height / canvas.width));
+      const context = target.getContext('2d', { willReadFrequently: true }); context.drawImage(bitmap, 0, 0); bitmap.close();
+      const data = context.getImageData(0, 0, target.width, target.height).data;
+      let hash = 0x811c9dc5, painted = 0;
+      for (let offset = 0; offset < data.length; offset += 4) {
+        const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+        if (r > 24 || g > 28 || b > 42) painted++;
+        hash ^= r; hash = Math.imul(hash, 0x01000193) >>> 0;
+        hash ^= g; hash = Math.imul(hash, 0x01000193) >>> 0;
+        hash ^= b; hash = Math.imul(hash, 0x01000193) >>> 0;
+      }
+      return { hash: hash.toString(16).padStart(8, '0'), painted };
+    }
+    async function frames(count) { for (let index = 0; index < count; index++) await new Promise(resolve => requestAnimationFrame(resolve)); }
+    async function delay(milliseconds) { await new Promise(resolve => setTimeout(resolve, milliseconds)); }
+    async function waitFor(predicate, label, timeout = 15_000, describe = null) {
+      const deadline = performance.now() + timeout;
+      while (performance.now() < deadline) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 40)); }
+      const detail = describe ? ` ${JSON.stringify(describe())}` : '';
+      throw new Error(`Timed out waiting for ${label}.${detail}`);
+    }
+  </script>
+</body>
+</html>

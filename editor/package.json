@@ -1,0 +1,49 @@
+{
+  "name": "@haiyue/editor",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HaiyueStudio/Editor.git",
+    "directory": "editor"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-editor.mjs",
+    "build:test": "node ../scripts/build-rollup-once.mjs rollup.test.config.js",
+    "bundle:report": "node scripts/bundle-report.mjs",
+    "bundle:check": "node scripts/bundle-report.mjs",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "dev": "rollup -c rollup.config.js --watch",
+    "test:e2e": "npm run build && node ../scripts/editor-e2e/createSaveExportPlay.mjs && node ../scripts/editor-e2e/gltfImportSaveExportPlay.mjs",
+    "test": "node ../scripts/build-rollup-once.mjs rollup.test.config.js && node scripts/check-boundaries.mjs && node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@haiyue/animation-spec": ">=0.1.0 <0.2.0",
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/language": "^6.10.2",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.33.0",
+    "@haiyue/extensions": ">=0.1.0 <0.2.0",
+    "@haiyue/shader-language": ">=0.1.0 <0.2.0",
+    "@haiyue/ui": ">=0.1.0 <0.2.0",
+    "@lezer/highlight": "^1.2.1",
+    "@lezer/javascript": "^1.5.4",
+    "codemirror": "^6.0.1",
+    "jszip": "^3.10.1",
+    "@haiyue/engine": ">=0.1.0 <0.2.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@webgpu/types": "^0.1.40",
+    "rollup": "^4.0.0",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "tslib": "^2.6.0",
+    "typescript": "^5.2.0"
+  }
+}

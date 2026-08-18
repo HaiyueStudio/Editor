@@ -1,0 +1,7619 @@
+{
+  "version": 1,
+  "name": "Hex Minesweeper Starter",
+  "globals": {
+    "designWidth": 390,
+    "designHeight": 844,
+    "clearColor": [
+      0.94,
+      0.96,
+      0.91,
+      1
+    ],
+    "parameters": {
+      "starterKit": "hex-minesweeper",
+      "layout": "responsive-mobile",
+      "description": "Hexagonal honeycomb Minesweeper starter scene. Six-neighbor rules, left click reveals, right click or ctrl/meta click flags, R restarts."
+    },
+    "inputMap": {
+      "Restart": [
+        "KeyR"
+      ]
+    }
+  },
+  "resources": {
+    "geometries": [],
+    "materials": [],
+    "textures": [],
+    "prefabs": [],
+    "scripts": [
+      {
+        "id": 9101,
+        "name": "Hex Minesweeper Controller",
+        "scripts": {
+          "onUpdate": "\nconst config = api.read.data() || {};\nconst state = component.state || (component.state = {});\nconst cols = Number(config.columns || 9);\nconst rows = Number(config.rows || 9);\nconst mineCount = Number(config.mines || 10);\nconst sqrt3 = Math.sqrt(3);\nconst colors = config.colors || {\n  hidden: [0.48, 0.67, 0.58, 1],\n  hiddenAlt: [0.42, 0.61, 0.52, 1],\n  revealed: [0.86, 0.82, 0.72, 1],\n  revealedAlt: [0.80, 0.76, 0.66, 1],\n  flag: [0.90, 0.28, 0.25, 1],\n  mine: [0.18, 0.20, 0.24, 1],\n  exploded: [0.76, 0.13, 0.18, 1],\n};\nconst numberColors = config.numberColors || {\n  1: '#2563eb',\n  2: '#15803d',\n  3: '#dc2626',\n  4: '#4338ca',\n  5: '#b91c1c',\n  6: '#0f766e'\n};\n\nfunction getComponent(entity, name) {\n  const direct = entity && entity.getComponent && entity.getComponent(name);\n  if (direct) return direct;\n  for (const item of entity && entity.components && entity.components.values ? entity.components.values() : []) {\n    if (item && (item.name === name || String(item.UniqueSymbol) === 'Symbol(' + name + ')')) return item;\n  }\n  return null;\n}\n\nfunction getCellEntity(x, y) { return api.read && api.read.find('Hex Minesweeper Cell ' + (y * cols + x)); }\nfunction getTextEntity(x, y) { return api.read && api.read.find('Hex Minesweeper Text ' + (y * cols + x)); }\nfunction cellAt(x, y) { return x >= 0 && y >= 0 && x < cols && y < rows ? state.cells[y][x] : null; }\n\nfunction makeCells() {\n  return Array.from({ length: rows }, function (_, y) {\n    return Array.from({ length: cols }, function (_, x) {\n      return { x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, exploded: false };\n    });\n  });\n}\n\nfunction neighbors(x, y) {\n  const odd = y % 2 === 1;\n  const offsets = odd\n    ? [[1,0],[-1,0],[0,-1],[1,-1],[0,1],[1,1]]\n    : [[1,0],[-1,0],[-1,-1],[0,-1],[-1,1],[0,1]];\n  const result = [];\n  for (const offset of offsets) {\n    const cell = cellAt(x + offset[0], y + offset[1]);\n    if (cell) result.push(cell);\n  }\n  return result;\n}\n\nfunction reset() {\n  state.cells = makeCells();\n  state.phase = 'ready';\n  state.generated = false;\n  state.revealedCount = 0;\n  state.flaggedCount = 0;\n}\n\nfunction generate(firstX, firstY) {\n  const excluded = new Set([firstY + ',' + firstX]);\n  for (const n of neighbors(firstX, firstY)) excluded.add(n.y + ',' + n.x);\n  const candidates = [];\n  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (!excluded.has(y + ',' + x)) candidates.push(state.cells[y][x]);\n  for (let i = candidates.length - 1; i > 0; i--) {\n    const j = Math.floor(Math.random() * (i + 1));\n    const tmp = candidates[i];\n    candidates[i] = candidates[j];\n    candidates[j] = tmp;\n  }\n  for (let i = 0; i < Math.min(mineCount, candidates.length); i++) candidates[i].mine = true;\n  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) state.cells[y][x].adjacent = neighbors(x, y).filter(function (cell) { return cell.mine; }).length;\n  state.generated = true;\n  state.phase = 'playing';\n}\n\nfunction revealAllMines() {\n  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (state.cells[y][x].mine) state.cells[y][x].revealed = true;\n}\n\nfunction reveal(x, y) {\n  if (state.phase === 'won' || state.phase === 'lost') return;\n  if (!state.generated) generate(x, y);\n  const start = cellAt(x, y);\n  if (!start || start.flagged || start.revealed) return;\n  if (start.mine) {\n    start.exploded = true;\n    state.phase = 'lost';\n    revealAllMines();\n    return;\n  }\n  const queue = [start];\n  while (queue.length) {\n    const cell = queue.shift();\n    if (!cell || cell.revealed || cell.flagged) continue;\n    cell.revealed = true;\n    state.revealedCount++;\n    if (cell.adjacent === 0) {\n      for (const next of neighbors(cell.x, cell.y)) if (!next.revealed && !next.flagged && !next.mine) queue.push(next);\n    }\n  }\n  if (state.revealedCount >= rows * cols - mineCount) {\n    state.phase = 'won';\n    for (let yy = 0; yy < rows; yy++) for (let xx = 0; xx < cols; xx++) if (state.cells[yy][xx].mine) state.cells[yy][xx].flagged = true;\n    state.flaggedCount = mineCount;\n  }\n}\n\nfunction toggleFlag(x, y) {\n  if (state.phase === 'won' || state.phase === 'lost') return;\n  const cell = cellAt(x, y);\n  if (!cell || cell.revealed) return;\n  cell.flagged = !cell.flagged;\n  state.flaggedCount += cell.flagged ? 1 : -1;\n  if (state.phase === 'ready') state.phase = 'playing';\n}\n\nfunction chordReveal(x, y) {\n  if (state.phase !== 'playing') return;\n  const cell = cellAt(x, y);\n  if (!cell || !cell.revealed || cell.mine || cell.adjacent <= 0) return;\n  const nearby = neighbors(x, y);\n  const flags = nearby.filter(function (item) { return item.flagged; }).length;\n  if (flags !== cell.adjacent) return;\n  for (const item of nearby) {\n    if (!item.revealed && !item.flagged) reveal(item.x, item.y);\n    if (state.phase === 'lost') return;\n  }\n}\n\nfunction setColor(material, color) {\n  if (!material || !material.color || !material.color.set) return;\n  material.color.set(color[0], color[1], color[2], color[3] == null ? 1 : color[3]);\n}\n\nfunction hexCenter(x, y) {\n  const layout = state.layout;\n  const cx = layout.boardX + (x + (y % 2 ? 0.5 : 0)) * sqrt3 * layout.size;\n  const cy = layout.boardY + (rows - 1 - y) * 1.5 * layout.size;\n  return { x: cx, y: cy };\n}\n\nfunction getViewportMetrics() {\n  const canvas = document.getElementById('player-canvas');\n  const rect = canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };\n  const fallbackWidth = Math.max(1, canvas && canvas.clientWidth || rect.width || window.innerWidth || 390);\n  const fallbackHeight = Math.max(1, canvas && canvas.clientHeight || rect.height || window.innerHeight || 844);\n  const cameras = api.read && api.read.findByComponent ? api.read.findByComponent('Camera2D') : [];\n  const cameraEntity = cameras && cameras[0];\n  const camera = cameraEntity && cameraEntity.getComponent && cameraEntity.getComponent('Camera2D');\n  const width = Math.max(1, Number(camera && camera.width) || fallbackWidth);\n  const height = Math.max(1, Number(camera && camera.height) || fallbackHeight);\n  return { canvas: canvas, rect: rect, width: width, height: height };\n}\n\nfunction updateLayout() {\n  const viewport = getViewportMetrics();\n  const width = viewport.width;\n  const height = viewport.height;\n  const portrait = height >= width;\n  const margin = portrait ? 18 : 36;\n  const hudReserve = portrait ? 150 : 92;\n  const boardWidthUnit = sqrt3 * (cols + 0.5);\n  const boardHeightUnit = 1.5 * (rows - 1) + 2;\n  const size = Math.max(14, Math.floor(Math.min((width - margin * 2) / boardWidthUnit, (height - hudReserve) / boardHeightUnit, portrait ? 31 : 38)));\n  const boardWidth = boardWidthUnit * size;\n  const boardHeight = boardHeightUnit * size;\n  const boardX = -boardWidth / 2 + sqrt3 * size / 2;\n  const boardY = portrait ? -boardHeight / 2 + size : -boardHeight / 2 + size - 12;\n  state.layout = { size: size, boardX: boardX, boardY: boardY, boardWidth: boardWidth, boardHeight: boardHeight };\n\n  const status = api.read && api.read.find('Hex Minesweeper Status Text');\n  const minesText = api.read && api.read.find('Hex Minesweeper Mines Text');\n  const panelWidth = Math.min(width - 36, Math.max(230, boardWidth));\n  const panelHeight = Math.max(26, Math.floor(size * 0.9));\n  setText(status, statusLabel(), -panelWidth / 2, boardY + boardHeight + 18, panelWidth, panelHeight, Math.max(14, Math.floor(size * 0.46)), state.phase === 'lost' ? '#dc2626' : state.phase === 'won' ? '#15803d' : '#334155');\n  setText(minesText, 'MINES ' + Math.max(0, mineCount - state.flaggedCount), -panelWidth / 2, boardY + boardHeight + 18 + panelHeight + 4, panelWidth, panelHeight, Math.max(13, Math.floor(size * 0.42)), '#334155');\n}\n\nfunction setText(entity, value, x, y, width, height, fontSize, color) {\n  if (!entity) return;\n  entity.disabled = !value;\n  const transform = getComponent(entity, 'Transform2D');\n  if (transform) { transform.x = x; transform.y = y; }\n  const text = getComponent(entity, 'CanvasTextComponent');\n  if (!text) return;\n  text.text = String(value || '');\n  const style = text.style || {};\n  const next = { ...style, width: Math.max(1, Math.floor(width)), height: Math.max(1, Math.floor(height)), resolutionScale: Number(config.textResolutionScale || 2), backgroundColor: 'rgba(0,0,0,0)', borderWidth: 0, padding: 0, textAlign: 'center', verticalAlign: 'middle', fontSize: Math.max(8, Math.floor(fontSize)), fontFamily: 'system-ui, sans-serif', fontWeight: '900', lineHeight: 1, color: color || '#111827', whiteSpace: 'pre-line' };\n  if (style.width !== next.width || style.height !== next.height || style.fontSize !== next.fontSize || style.color !== next.color || style.resolutionScale !== next.resolutionScale) text.style = next;\n}\n\nfunction worldToCell(clientX, clientY) {\n  const viewport = getViewportMetrics();\n  const rect = viewport.rect;\n  const layout = state.layout;\n  if (!layout || rect.width <= 0 || rect.height <= 0) return null;\n  const worldX = ((clientX - rect.left) / rect.width - 0.5) * viewport.width;\n  const worldY = (0.5 - (clientY - rect.top) / rect.height) * viewport.height;\n  let best = null;\n  let bestD = Infinity;\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      const center = hexCenter(x, y);\n      const dx = worldX - center.x;\n      const dy = worldY - center.y;\n      const adx = Math.abs(dx) / layout.size;\n      const ady = Math.abs(dy) / layout.size;\n      const inside = ady <= 1 && sqrt3 * adx + ady <= 2;\n      const d = dx * dx + dy * dy;\n      if (inside && d < bestD) { best = { x: x, y: y }; bestD = d; }\n    }\n  }\n  return best;\n}\n\nfunction isSecondaryPointer(event) {\n  return event.button === 2 || (event.buttons & 2) === 2 || event.ctrlKey || event.metaKey;\n}\n\nfunction runSecondaryAction(cell) {\n  const target = cellAt(cell.x, cell.y);\n  if (target && target.revealed && target.adjacent > 0) chordReveal(cell.x, cell.y);\n  else toggleFlag(cell.x, cell.y);\n}\n\nfunction installPointerInput() {\n  const canvas = document.getElementById('player-canvas');\n  if (!canvas || !canvas.addEventListener) return;\n  if (state.pointerReady && state.pointerCanvas === canvas) return;\n  if (state.pointerCanvas && state.contextMenuHandler && state.pointerDownHandler && state.pointerUpHandler && state.pointerCancelHandler && state.pointerCanvas.removeEventListener) {\n    state.pointerCanvas.removeEventListener('contextmenu', state.contextMenuHandler);\n    state.pointerCanvas.removeEventListener('pointerdown', state.pointerDownHandler);\n    state.pointerCanvas.removeEventListener('pointerup', state.pointerUpHandler);\n    state.pointerCanvas.removeEventListener('pointercancel', state.pointerCancelHandler);\n  }\n  state.contextMenuHandler = function (event) { event.preventDefault(); };\n  state.pointerCancelHandler = function () {\n    state.suppressNextPointerUp = false;\n    state.pointerDownCell = null;\n  };\n  state.pointerDownHandler = function (event) {\n    const cell = worldToCell(event.clientX, event.clientY);\n    state.pointerDownCell = cell;\n    state.suppressNextPointerUp = false;\n    if (!cell || !isSecondaryPointer(event)) return;\n    event.preventDefault();\n    state.suppressNextPointerUp = true;\n    runSecondaryAction(cell);\n  };\n  state.pointerUpHandler = function (event) {\n    if (state.suppressNextPointerUp) {\n      state.suppressNextPointerUp = false;\n      state.pointerDownCell = null;\n      event.preventDefault();\n      return;\n    }\n    const cell = worldToCell(event.clientX, event.clientY) || state.pointerDownCell;\n    state.pointerDownCell = null;\n    if (!cell) return;\n    event.preventDefault();\n    if (isSecondaryPointer(event)) runSecondaryAction(cell);\n    else reveal(cell.x, cell.y);\n  };\n  api.debug.listen(canvas, 'contextmenu', state.contextMenuHandler);\n  api.debug.listen(canvas, 'pointerdown', state.pointerDownHandler);\n  api.debug.listen(canvas, 'pointerup', state.pointerUpHandler);\n  api.debug.listen(canvas, 'pointercancel', state.pointerCancelHandler);\n  state.pointerCanvas = canvas;\n  state.pointerReady = true;\n  api.debug.addDisposer(function () {\n    state.pointerReady = false;\n    state.pointerCanvas = null;\n    state.pointerStart = null;\n  });\n}\n\nfunction statusLabel() {\n  if (state.phase === 'ready') return 'Click a hex to start';\n  if (state.phase === 'won') return 'Cleared! Press R';\n  if (state.phase === 'lost') return 'Mine hit! Press R';\n  return 'Left reveal / right flag';\n}\n\nfunction draw() {\n  updateLayout();\n  const layout = state.layout;\n  const fontSize = Math.max(13, Math.floor(layout.size * 0.72));\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      const cell = state.cells[y][x];\n      const entity = getCellEntity(x, y);\n      const mesh = getComponent(entity, 'Mesh2D');\n      const transform = getComponent(entity, 'Transform2D');\n      const center = hexCenter(x, y);\n      if (transform) { transform.x = center.x; transform.y = center.y; transform.scaleX = layout.size * 0.95; transform.scaleY = layout.size * 0.95; }\n      let color = (x + y) % 2 ? colors.hiddenAlt : colors.hidden;\n      let label = '';\n      let labelColor = '#111827';\n      if (cell.revealed) {\n        color = cell.exploded ? colors.exploded : cell.mine ? colors.mine : ((x + y) % 2 ? colors.revealedAlt : colors.revealed);\n        if (cell.mine) { label = '*'; labelColor = cell.exploded ? '#ffffff' : '#f8fafc'; }\n        else if (cell.adjacent > 0) { label = String(cell.adjacent); labelColor = numberColors[cell.adjacent] || '#111827'; }\n      } else if (cell.flagged) {\n        color = colors.flag;\n        label = 'F';\n        labelColor = '#ffffff';\n      }\n      if (mesh) setColor(mesh.material, color);\n      setText(getTextEntity(x, y), label, center.x - layout.size * 0.55, center.y - layout.size * 0.5, layout.size * 1.1, layout.size, fontSize, labelColor);\n    }\n  }\n}\n\nif (!state.ready) {\n  reset();\n  state.ready = true;\n  api.debug.console.log('Hex Minesweeper ready.');\n}\ninstallPointerInput();\nif (api.input.wasPressed('Restart') || api.input.wasPressed('KeyR')) reset();\ndraw();\n",
+          "onEntityAddComponent": "",
+          "onEntityRemoveComponent": "",
+          "onEntityAddToWorld": "",
+          "onEntityRemoveFromWorld": ""
+        },
+        "fileName": "hex-minesweeper-controller.js",
+        "fileSize": 12009
+      }
+    ]
+  },
+  "entities": [
+    {
+      "name": "Hex Minesweeper Camera2D",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Camera2D",
+          "width": 390,
+          "height": 844,
+          "near": -100,
+          "far": 100,
+          "zoom": 1
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Input",
+      "disabled": false,
+      "components": [
+        {
+          "type": "KeyboardComponent"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper GameManager",
+      "disabled": false,
+      "components": [
+        {
+          "type": "DataComponent",
+          "data": {
+            "columns": 9,
+            "rows": 9,
+            "mines": 10,
+            "textResolutionScale": 2
+          }
+        },
+        {
+          "type": "ScriptComponent",
+          "scriptId": 9101,
+          "scripts": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Status Text",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": -150,
+          "y": 310,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "Click a hex to start",
+          "style": {
+            "width": 300,
+            "height": 32,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#334155",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Mines Text",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": -150,
+          "y": 344,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "MINES 10",
+          "style": {
+            "width": 300,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#334155",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 15,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 0",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 0",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 1",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 1",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 2",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 2",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 3",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 3",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 4",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 4",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 5",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 5",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 6",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 6",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 7",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 7",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 8",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 8",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 9",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 9",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 10",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 10",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 11",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 11",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 12",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 12",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 13",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 13",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 14",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 14",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 15",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 15",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 16",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 16",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 17",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 17",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 18",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 18",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 19",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 19",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 20",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 20",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 21",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 21",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 22",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 22",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 23",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 23",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 24",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 24",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 25",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 25",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 26",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 26",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 27",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 27",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 28",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 28",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 29",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 29",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 30",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 30",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 31",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 31",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 32",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 32",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 33",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 33",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 34",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 34",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 35",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 35",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 36",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 36",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 37",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 37",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 38",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 38",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 39",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 39",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 40",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 40",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 41",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 41",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 42",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 42",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 43",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 43",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 44",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 44",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 45",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 45",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 46",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 46",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 47",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 47",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 48",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 48",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 49",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 49",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 50",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 50",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 51",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 51",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 52",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 52",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 53",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 53",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 54",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 54",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 55",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 55",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 56",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 56",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 57",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 57",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 58",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 58",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 59",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 59",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 60",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 60",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 61",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 61",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 62",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 62",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 63",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 63",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 64",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 64",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 65",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 65",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 66",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 66",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 67",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 67",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 68",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 68",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 69",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 69",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 70",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 70",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 71",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 71",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 72",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 72",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 73",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 73",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 74",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 74",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 75",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 75",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 76",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 76",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 77",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 77",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 78",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 78",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 79",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.42,
+            0.61,
+            0.52,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 79",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Cell 80",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 22,
+          "scaleY": 22
+        },
+        {
+          "type": "Mesh2D",
+          "positions": [
+            6.123233995736766e-17,
+            -1,
+            0.8660254037844386,
+            -0.5,
+            0.8660254037844387,
+            0.49999999999999983,
+            6.123233995736766e-17,
+            1,
+            -0.8660254037844385,
+            0.5000000000000003,
+            -0.8660254037844386,
+            -0.5000000000000001
+          ],
+          "indices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            0,
+            3,
+            4,
+            0,
+            4,
+            5
+          ],
+          "indexType": "uint16",
+          "topology": null,
+          "color": [
+            0.48,
+            0.67,
+            0.58,
+            1
+          ],
+          "blending": "none"
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Hex Minesweeper Text 80",
+      "disabled": true,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "",
+          "style": {
+            "width": 32,
+            "height": 30,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(0,0,0,0)",
+            "borderColor": "rgba(0,0,0,0)",
+            "borderWidth": 0,
+            "borderRadius": 0,
+            "padding": 0,
+            "color": "#111827",
+            "fontFamily": "system-ui, sans-serif",
+            "fontSize": 16,
+            "fontWeight": "800",
+            "lineHeight": 1.05,
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "whiteSpace": "pre-line"
+          }
+        }
+      ],
+      "children": []
+    }
+  ]
+}

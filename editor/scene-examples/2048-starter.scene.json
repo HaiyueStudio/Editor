@@ -1,0 +1,3238 @@
+{
+  "version": 1,
+  "name": "2048 Starter Mobile",
+  "globals": {
+    "designWidth": 390,
+    "designHeight": 844,
+    "clearColor": [
+      0.98,
+      0.96,
+      0.91,
+      1
+    ],
+    "parameters": {
+      "starterKit": "2048",
+      "layout": "responsive-mobile",
+      "description": "Importable 2048 starter scene. Board scales from preview size; arrow/WASD and swipe controls are supported. Tile colors represent tile values."
+    },
+    "inputMap": {
+      "MoveLeft": [
+        "ArrowLeft",
+        "KeyA"
+      ],
+      "MoveRight": [
+        "ArrowRight",
+        "KeyD"
+      ],
+      "MoveUp": [
+        "ArrowUp",
+        "KeyW"
+      ],
+      "MoveDown": [
+        "ArrowDown",
+        "KeyS"
+      ],
+      "Restart": [
+        "KeyR"
+      ]
+    }
+  },
+  "resources": {
+    "geometries": [],
+    "materials": [],
+    "textures": [],
+    "prefabs": [],
+    "scripts": [
+      {
+        "id": 1,
+        "name": "2048 GameManager",
+        "scripts": {
+          "onUpdate": "\nfunction getTilemap(entity) {\n  const direct = entity && entity.getComponent && entity.getComponent(\"Tilemap2DComponent\");\n  if (direct) return direct;\n  for (const item of entity && entity.components && entity.components.values ? entity.components.values() : []) {\n    if (item && (item.name === \"Tilemap2DComponent\" || String(item.UniqueSymbol) === \"Symbol(Tilemap2DComponent)\")) return item;\n  }\n  return null;\n}\n\nconst config = api.read.data() || {};\nconst boardEntity = api.read && api.read.find(\"2048 Board\");\nconst board = getTilemap(boardEntity);\nconst scoreHud = getTilemap(api.read && api.read.find(\"2048 Score\"));\nconst bestHud = getTilemap(api.read && api.read.find(\"2048 Best\"));\nconst statusHud = getTilemap(api.read && api.read.find(\"2048 Status\"));\nconst tileTextEntities = [];\nconst tileVisualEntities = [];\nfor (let i = 0; i < 16; i++) {\n  tileTextEntities.push(api.read && api.read.find(\"2048 Tile \" + i));\n  tileVisualEntities.push(api.read && api.read.find(\"2048 Tile Visual \" + i));\n}\nconst scoreTextEntity = api.read && api.read.find(\"2048 Score Text\");\nconst bestTextEntity = api.read && api.read.find(\"2048 Best Text\");\nconst statusTextEntity = api.read && api.read.find(\"2048 Status Text\");\n\nfunction getCanvasText(entity) {\n  const direct = entity && entity.getComponent && entity.getComponent(\"CanvasTextComponent\");\n  if (direct) return direct;\n  for (const item of entity && entity.components && entity.components.values ? entity.components.values() : []) {\n    if (item && (item.name === \"CanvasTextComponent\" || String(item.UniqueSymbol) === \"Symbol(CanvasTextComponent)\")) return item;\n  }\n  return null;\n}\n\nfunction setStableText(entity, key, value) {\n  if (!entity) return;\n  entity.disabled = !value;\n  const text = getCanvasText(entity);\n  if (text) text.text = String(value || \"\");\n  else api.scene && api.scene.setText(key, String(value || \"\"));\n}\n\nif (!board) {\n  api.debug.console.warn(\"2048 Starter Kit requires 2048 Board with Tilemap2DComponent.\");\n  return;\n}\n\nconst state = component.state || (component.state = {});\nconst rows = Number(config.rows || 4);\nconst cols = Number(config.columns || 4);\nconst target = Number(config.target || 2048);\nconst emptyIndex = Number(config.emptyPaletteIndex || 1);\nconst valuePalette = config.valuePalette || {\n  2: 2,\n  4: 3,\n  8: 4,\n  16: 5,\n  32: 6,\n  64: 7,\n  128: 8,\n  256: 9,\n  512: 10,\n  1024: 11,\n  2048: 12,\n  4096: 13,\n  8192: 14\n};\nconst digits = {\n  0: [\"111\", \"101\", \"101\", \"101\", \"111\"],\n  1: [\"010\", \"110\", \"010\", \"010\", \"111\"],\n  2: [\"111\", \"001\", \"111\", \"100\", \"111\"],\n  3: [\"111\", \"001\", \"111\", \"001\", \"111\"],\n  4: [\"101\", \"101\", \"111\", \"001\", \"001\"],\n  5: [\"111\", \"100\", \"111\", \"001\", \"111\"],\n  6: [\"111\", \"100\", \"111\", \"101\", \"111\"],\n  7: [\"111\", \"001\", \"001\", \"001\", \"001\"],\n  8: [\"111\", \"101\", \"111\", \"101\", \"111\"],\n  9: [\"111\", \"101\", \"111\", \"001\", \"111\"]\n};\n\nfunction makeGrid() {\n  return Array.from({ length: rows }, function () { return Array(cols).fill(0); });\n}\n\nfunction randomSpawnValue() {\n  const values = config.spawnValues || [2, 2, 2, 2, 2, 2, 2, 2, 2, 4];\n  return Number(values[Math.floor(Math.random() * values.length)] || 2);\n}\n\nfunction emptyCells() {\n  const cells = [];\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      if (!state.grid[y][x]) cells.push({ x: x, y: y });\n    }\n  }\n  return cells;\n}\n\nfunction spawnTile() {\n  const cells = emptyCells();\n  if (!cells.length) return null;\n  const cell = cells[Math.floor(Math.random() * cells.length)];\n  state.grid[cell.y][cell.x] = randomSpawnValue();\n  return cell;\n}\n\nfunction reset() {\n  state.grid = makeGrid();\n  state.score = 0;\n  state.best = Math.max(Number(state.best || 0), Number(config.best || 0));\n  state.phase = \"playing\";\n  state.won = false;\n  state.movedAt = 0;\n  state.transitions = [];\n  state.animationToken = (state.animationToken || 0) + 1;\n  const startTiles = Math.max(1, Number(config.startTiles || 2));\n  for (let i = 0; i < startTiles; i++) {\n    const spawned = spawnTile();\n    if (spawned) state.transitions.push({ value: state.grid[spawned.y][spawned.x], fromX: spawned.x, fromY: spawned.y, toX: spawned.x, toY: spawned.y, spawn: true });\n  }\n}\n\nfunction valuesEqual(a, b) {\n  return Number(a || 0) === Number(b || 0);\n}\n\nfunction canMove() {\n  if (emptyCells().length) return true;\n  for (let y = 0; y < rows; y++) {\n    for (let x = 0; x < cols; x++) {\n      const value = state.grid[y][x];\n      if (x + 1 < cols && valuesEqual(value, state.grid[y][x + 1])) return true;\n      if (y + 1 < rows && valuesEqual(value, state.grid[y + 1][x])) return true;\n    }\n  }\n  return false;\n}\n\nfunction lineCoords(direction, index) {\n  const result = [];\n  if (direction === \"left\") for (let x = 0; x < cols; x++) result.push({ x: x, y: index });\n  if (direction === \"right\") for (let x = cols - 1; x >= 0; x--) result.push({ x: x, y: index });\n  if (direction === \"up\") for (let y = 0; y < rows; y++) result.push({ x: index, y: y });\n  if (direction === \"down\") for (let y = rows - 1; y >= 0; y--) result.push({ x: index, y: y });\n  return result;\n}\n\nfunction slideEntries(entries) {\n  const packed = entries.filter(function (entry) { return entry.value; });\n  const out = [];\n  let gained = 0;\n  for (let i = 0; i < packed.length; i++) {\n    if (i + 1 < packed.length && packed[i].value === packed[i + 1].value) {\n      const merged = packed[i].value * 2;\n      out.push({ value: merged, sources: [packed[i], packed[i + 1]] });\n      gained += merged;\n      i++;\n    } else {\n      out.push({ value: packed[i].value, sources: [packed[i]] });\n    }\n  }\n  while (out.length < entries.length) out.push({ value: 0, sources: [] });\n  return { entries: out, gained: gained };\n}\n\nfunction move(direction) {\n  if (state.phase !== \"playing\") return false;\n  let changed = false;\n  let gained = 0;\n  const transitions = [];\n  const count = direction === \"left\" || direction === \"right\" ? rows : cols;\n  for (let i = 0; i < count; i++) {\n    const coords = lineCoords(direction, i);\n    const before = coords.map(function (cell) { return { value: state.grid[cell.y][cell.x], x: cell.x, y: cell.y }; });\n    const result = slideEntries(before);\n    for (let j = 0; j < coords.length; j++) {\n      const cell = coords[j];\n      const nextValue = result.entries[j].value;\n      if (state.grid[cell.y][cell.x] !== nextValue) changed = true;\n      state.grid[cell.y][cell.x] = nextValue;\n      for (const source of result.entries[j].sources) {\n        transitions.push({ value: source.value, fromX: source.x, fromY: source.y, toX: cell.x, toY: cell.y, mergedTo: nextValue });\n      }\n    }\n    gained += result.gained;\n  }\n  if (!changed) return false;\n  state.score += gained;\n  state.best = Math.max(state.best, state.score);\n  state.movedAt = (state.movedAt || 0) + 1;\n  if (state.grid.some(function (row) { return row.some(function (value) { return value >= target; }); })) {\n    state.phase = \"won\";\n    state.won = true;\n  }\n  const spawned = spawnTile();\n  if (spawned) transitions.push({ value: state.grid[spawned.y][spawned.x], fromX: spawned.x, fromY: spawned.y, toX: spawned.x, toY: spawned.y, spawn: true });\n  state.transitions = transitions;\n  state.animationToken = (state.animationToken || 0) + 1;\n  if (!canMove()) state.phase = \"lost\";\n  return true;\n}\n\nfunction setTilemapTransform(entity, x, y) {\n  const transform = entity && entity.getComponent && entity.getComponent(\"Transform2D\");\n  if (!transform) return;\n  transform.x = x;\n  transform.y = y;\n}\n\nfunction setTextBox(entity, x, y, width, height, fontSize, color) {\n  const transform = entity && entity.getComponent && entity.getComponent(\"Transform2D\");\n  if (transform) {\n    transform.x = x;\n    transform.y = y;\n  }\n  const text = getCanvasText(entity);\n  if (!text) return;\n  const style = text.style || {};\n  const next = {\n    ...style,\n    width: Math.max(1, Math.floor(width)),\n    height: Math.max(1, Math.floor(height)),\n    resolutionScale: Number(config.textResolutionScale || 2),\n    backgroundColor: \"rgba(255,255,255,0)\",\n    borderWidth: 0,\n    padding: 0,\n    textAlign: \"center\",\n    verticalAlign: \"middle\",\n    fontSize: Math.max(8, Math.floor(fontSize)),\n    fontFamily: \"system-ui, sans-serif\",\n    fontWeight: \"800\",\n    lineHeight: 1,\n    whiteSpace: \"pre-line\",\n    color: color || \"#f9f6f2\"\n  };\n  if (\n    style.width !== next.width ||\n    style.height !== next.height ||\n    style.fontSize !== next.fontSize ||\n    style.color !== next.color ||\n    style.resolutionScale !== next.resolutionScale\n  ) {\n    text.style = next;\n  }\n}\n\nfunction layoutTilemap(tilemap, cellWidth, cellHeight, gap) {\n  if (!tilemap) return;\n  tilemap.cellWidth = cellWidth;\n  tilemap.cellHeight = cellHeight;\n  tilemap.gap = gap;\n}\n\nfunction getPosition(entity) {\n  const transform = entity && entity.getComponent && entity.getComponent(\"Transform2D\");\n  return transform ? { x: transform.x, y: transform.y } : { x: 0, y: 0 };\n}\n\nfunction cellPosition(column, row) {\n  const layout = state.layout || { boardX: 0, boardY: 0, cell: 64, tileInset: 4, rows: rows };\n  return {\n    x: layout.boardX + column * layout.cell + layout.tileInset,\n    y: layout.boardY + (layout.rows - 1 - row) * layout.cell + layout.tileInset,\n  };\n}\n\nfunction setVisualTile(slot, value, x, y, size) {\n  const entity = tileVisualEntities[slot];\n  const tilemap = getTilemap(entity);\n  if (!tilemap) return;\n  layoutTilemap(tilemap, size, size, 0);\n  tilemap.setCell(0, 0, value ? Number(valuePalette[value] || valuePalette[target] || 12) : 0);\n  setTilemapTransform(entity, x, y);\n}\n\nfunction addTween(entity, from, to, duration, scaleFrom, scaleTo) {\n  if (!entity || !api.read.components || !api.read.components.Tween2DComponent) return;\n  const tweenTo = { x: to.x, y: to.y };\n  const tweenFrom = { x: from.x, y: from.y };\n  if (scaleFrom !== undefined || scaleTo !== undefined) {\n    tweenFrom.scaleX = scaleFrom ?? 1;\n    tweenFrom.scaleY = scaleFrom ?? 1;\n    tweenTo.scaleX = scaleTo ?? 1;\n    tweenTo.scaleY = scaleTo ?? 1;\n  }\n  entity.addComponent(new api.read.components.Tween2DComponent({\n    from: tweenFrom,\n    to: tweenTo,\n    duration: duration,\n    easing: config.tileMoveEasing || \"cubicOut\",\n    removeOnComplete: true,\n  }));\n}\n\nfunction updateLayout() {\n  const canvas = document.getElementById(\"player-canvas\");\n  const width = Math.max(1, canvas && canvas.clientWidth || window.innerWidth || 390);\n  const height = Math.max(1, canvas && canvas.clientHeight || window.innerHeight || 844);\n  const portrait = height >= width;\n  const margin = portrait ? 18 : 30;\n  const availableWidth = portrait ? width - margin * 2 : Math.min(width * 0.55, width - 320);\n  const availableHeight = portrait ? height - 220 : height - margin * 2;\n  const cell = Math.max(44, Math.floor(Math.min(availableWidth / cols, availableHeight / rows, portrait ? 86 : 108)));\n  const gap = Math.max(3, Math.floor(cell * 0.07));\n  const boardWidth = cols * cell;\n  const boardHeight = rows * cell;\n  const boardX = portrait ? -boardWidth / 2 : -boardWidth / 2 - Math.min(140, width * 0.12);\n  const boardY = portrait ? -boardHeight / 2 - 8 : -boardHeight / 2;\n  layoutTilemap(board, cell, cell, gap);\n  setTilemapTransform(boardEntity, boardX, boardY);\n\n  const digitCell = Math.max(6, Math.floor(cell * (portrait ? 0.18 : 0.16)));\n  if (scoreHud) {\n    layoutTilemap(scoreHud, digitCell, digitCell, Math.max(1, Math.floor(digitCell * 0.18)));\n    const scoreWidth = scoreHud.columns * digitCell;\n    const x = portrait ? -scoreWidth / 2 : boardX + boardWidth + 48;\n    const y = portrait ? boardY + boardHeight + Math.max(18, digitCell * 2) : boardY + boardHeight - scoreHud.rows * digitCell;\n    setTilemapTransform(api.read && api.read.find(\"2048 Score\"), x, y);\n  }\n  if (bestHud) {\n    layoutTilemap(bestHud, digitCell, digitCell, Math.max(1, Math.floor(digitCell * 0.18)));\n    const bestWidth = bestHud.columns * digitCell;\n    const x = portrait ? -bestWidth / 2 : boardX + boardWidth + 48;\n    const y = portrait ? boardY + boardHeight + Math.max(58, digitCell * 8) : boardY + boardHeight - bestHud.rows * digitCell - Math.max(42, digitCell * 7);\n    setTilemapTransform(api.read && api.read.find(\"2048 Best\"), x, y);\n  }\n\n  const tileInset = Math.max(4, Math.floor(cell * 0.08));\n  const tileFont = Math.max(14, Math.floor(cell * 0.36));\n  state.layout = { boardX: boardX, boardY: boardY, cell: cell, tileInset: tileInset, tileSize: cell - tileInset * 2, rows: rows };\n  layoutTiles();\n  const panelWidth = portrait ? Math.min(width - 36, boardWidth) : Math.min(220, Math.max(160, width * 0.18));\n  const panelHeight = Math.max(26, Math.floor(cell * 0.42));\n  const panelFont = Math.max(13, Math.floor(cell * 0.22));\n  setTextBox(scoreTextEntity, portrait ? -panelWidth / 2 : boardX + boardWidth + 42, portrait ? boardY + boardHeight + 18 : boardY + boardHeight - panelHeight, panelWidth, panelHeight, panelFont, \"#f9f6f2\");\n  setTextBox(bestTextEntity, portrait ? -panelWidth / 2 : boardX + boardWidth + 42, portrait ? boardY + boardHeight + 18 + panelHeight + 8 : boardY + boardHeight - panelHeight * 2 - 12, panelWidth, panelHeight, panelFont, \"#f9f6f2\");\n  setTextBox(statusTextEntity, portrait ? -panelWidth / 2 : boardX + boardWidth + 42, portrait ? boardY - panelHeight - 16 : boardY + 10, panelWidth, panelHeight, panelFont, state.phase === \"playing\" ? \"#776e65\" : state.phase === \"won\" ? \"#edc22e\" : \"#f65e3b\");\n\n  if (statusHud) {\n    const statusCell = Math.max(12, Math.floor(cell * 0.22));\n    layoutTilemap(statusHud, statusCell, statusCell, Math.max(1, Math.floor(statusCell * 0.14)));\n    const statusWidth = statusHud.columns * statusCell;\n    const x = portrait ? -statusWidth / 2 : boardX + boardWidth + 48;\n    const y = portrait ? boardY - Math.max(42, statusCell * 3) : boardY + Math.max(14, statusCell);\n    setTilemapTransform(api.read && api.read.find(\"2048 Status\"), x, y);\n  }\n}\n\nfunction drawNumberHud(tilemap, value) {\n  if (!tilemap) return;\n  tilemap.clear(0);\n  const text = String(Math.min(999999, Math.max(0, Math.floor(value || 0)))).padStart(6, \"0\");\n  for (let i = 0; i < text.length; i++) {\n    const pattern = digits[text[i]] || digits[0];\n    const ox = i * 4;\n    for (let y = 0; y < pattern.length; y++) {\n      for (let x = 0; x < pattern[y].length; x++) {\n        if (pattern[y][x] === \"1\") tilemap.setCell(ox + x, tilemap.rows - 1 - y, 1);\n      }\n    }\n  }\n}\n\nfunction drawStatus() {\n  if (!statusHud) return;\n  const value = state.phase === \"playing\" ? 1 : state.phase === \"won\" ? 2 : 3;\n  statusHud.clear(value);\n}\n\nfunction layoutTiles() {\n  const layout = state.layout;\n  if (!layout) return;\n  let transitions = state.transitions || [];\n  let slot = 0;\n  const moveDuration = Number(config.tileMoveDuration || 150);\n  const spawnDuration = Number(config.tileSpawnDuration || 110);\n  const token = state.animationToken || 0;\n  const shouldTween = state.lastTweenToken !== token;\n  if (transitions.length && state.transitionTimerToken !== token) {\n    state.transitionTimerToken = token;\n    state.transitionStartedAt = performance.now();\n  }\n  if (transitions.length && performance.now() - (state.transitionStartedAt || 0) > Math.max(moveDuration, spawnDuration) + 40) {\n    state.transitions = [];\n    transitions = [];\n  }\n  const active = transitions.length ? transitions : [];\n\n  if (active.length) {\n    for (const transition of active) {\n      if (slot >= tileVisualEntities.length) break;\n      const from = cellPosition(transition.fromX, transition.fromY);\n      const to = cellPosition(transition.toX, transition.toY);\n      const value = transition.value;\n      setVisualTile(slot, value, to.x, to.y, layout.tileSize);\n      setTextBox(tileTextEntities[slot], to.x, to.y, layout.tileSize, layout.tileSize, Math.max(14, Math.floor(layout.cell * 0.36)), value <= 4 ? \"#776e65\" : \"#f9f6f2\");\n      setStableText(tileTextEntities[slot], \"2048 Tile \" + slot, value ? String(value) : \"\");\n      if (shouldTween) {\n        const scaleFrom = transition.spawn ? 0.2 : 1;\n        const duration = transition.spawn ? spawnDuration : moveDuration;\n        addTween(tileVisualEntities[slot], from, to, duration, scaleFrom, 1);\n        addTween(tileTextEntities[slot], from, to, duration, scaleFrom, 1);\n      }\n      slot++;\n    }\n  } else {\n    for (let y = 0; y < rows; y++) {\n      for (let x = 0; x < cols; x++) {\n        const value = state.grid[y][x];\n        if (!value || slot >= tileVisualEntities.length) continue;\n        const position = cellPosition(x, y);\n        setVisualTile(slot, value, position.x, position.y, layout.tileSize);\n        setTextBox(tileTextEntities[slot], position.x, position.y, layout.tileSize, layout.tileSize, Math.max(14, Math.floor(layout.cell * 0.36)), value <= 4 ? \"#776e65\" : \"#f9f6f2\");\n        setStableText(tileTextEntities[slot], \"2048 Tile \" + slot, String(value));\n        slot++;\n      }\n    }\n  }\n\n  for (; slot < tileVisualEntities.length; slot++) {\n    setVisualTile(slot, 0, 0, 0, layout.tileSize);\n    setStableText(tileTextEntities[slot], \"2048 Tile \" + slot, \"\");\n  }\n  if (shouldTween) state.lastTweenToken = token;\n}\n\nfunction drawText() {\n  setStableText(scoreTextEntity, \"2048 Score Text\", \"SCORE \" + state.score);\n  setStableText(bestTextEntity, \"2048 Best Text\", \"BEST \" + state.best);\n  setStableText(statusTextEntity, \"2048 Status Text\", state.phase === \"playing\" ? \"Swipe / Arrow Keys\" : state.phase === \"won\" ? \"2048! Press R\" : \"Game Over - Press R\");\n}\n\nfunction drawBoard() {\n  updateLayout();\n  board.clear(emptyIndex);\n  drawNumberHud(scoreHud, state.score);\n  drawNumberHud(bestHud, state.best);\n  drawStatus();\n  drawText();\n}\n\nfunction installPointerInput() {\n  if (state.pointerReady) return;\n  const canvas = document.getElementById(\"player-canvas\");\n  if (!canvas || !canvas.addEventListener) return;\n  state.pointerReady = true;\n  api.debug.addDisposer(function () {\n    state.pointerReady = false;\n    state.pointerCanvas = null;\n    state.pointerStart = null;\n  });\n  state.pointerStart = null;\n  api.debug.listen(canvas, \"pointerdown\", function (event) {\n    state.pointerStart = { x: event.clientX, y: event.clientY };\n  });\n  api.debug.listen(canvas, \"pointerup\", function (event) {\n    if (!state.pointerStart) return;\n    const dx = event.clientX - state.pointerStart.x;\n    const dy = event.clientY - state.pointerStart.y;\n    state.pointerStart = null;\n    const threshold = Number(config.swipeThreshold || 24);\n    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) return;\n    state.pendingDirection = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? \"left\" : \"right\") : (dy < 0 ? \"up\" : \"down\");\n  });\n}\n\nif (!state.ready) {\n  reset();\n  state.ready = true;\n  api.debug.console.log(\"2048 Starter Kit ready.\");\n}\ninstallPointerInput();\n\nif (api.input.wasPressed(\"Restart\") || api.input.wasPressed(\"KeyR\")) reset();\nlet direction = null;\nif (api.input.wasPressed(\"MoveLeft\") || api.input.wasPressed(\"ArrowLeft\") || api.input.wasPressed(\"KeyA\")) direction = \"left\";\nelse if (api.input.wasPressed(\"MoveRight\") || api.input.wasPressed(\"ArrowRight\") || api.input.wasPressed(\"KeyD\")) direction = \"right\";\nelse if (api.input.wasPressed(\"MoveUp\") || api.input.wasPressed(\"ArrowUp\") || api.input.wasPressed(\"KeyW\")) direction = \"up\";\nelse if (api.input.wasPressed(\"MoveDown\") || api.input.wasPressed(\"ArrowDown\") || api.input.wasPressed(\"KeyS\")) direction = \"down\";\nif (!direction && state.pendingDirection) {\n  direction = state.pendingDirection;\n  state.pendingDirection = null;\n}\nif (direction) {\n  if (state.phase === \"won\" && config.continueAfterWin) state.phase = \"playing\";\n  move(direction);\n}\n\ndrawBoard();\n",
+          "onEntityAddComponent": "",
+          "onEntityRemoveComponent": "",
+          "onEntityAddToWorld": "",
+          "onEntityRemoveFromWorld": ""
+        }
+      }
+    ]
+  },
+  "entities": [
+    {
+      "name": "2048 Starter Kit",
+      "disabled": false,
+      "components": [],
+      "children": [
+        {
+          "name": "2048 Camera2D",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Camera2D",
+              "width": 390,
+              "height": 844,
+              "near": -1000,
+              "far": 1000,
+              "zoom": 1
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Board",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -156,
+              "y": -156,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 4,
+              "rows": 4,
+              "cellWidth": 78,
+              "cellHeight": 78,
+              "originX": 0,
+              "originY": 0,
+              "gap": 6,
+              "cells": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Score",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -72,
+              "y": 188,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 23,
+              "rows": 5,
+              "cellWidth": 12,
+              "cellHeight": 12,
+              "originX": 0,
+              "originY": 0,
+              "gap": 2,
+              "cells": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.9764705882352941,
+                  0.9647058823529412,
+                  0.9490196078431372,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Best",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -72,
+              "y": 246,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 23,
+              "rows": 5,
+              "cellWidth": 12,
+              "cellHeight": 12,
+              "originX": 0,
+              "originY": 0,
+              "gap": 2,
+              "cells": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.9764705882352941,
+                  0.9647058823529412,
+                  0.9490196078431372,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Status",
+          "disabled": true,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -84,
+              "y": -224,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 6,
+              "rows": 1,
+              "cellWidth": 24,
+              "cellHeight": 24,
+              "originX": 0,
+              "originY": 0,
+              "gap": 3,
+              "cells": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.47058823529411764,
+                  0.8196078431372549,
+                  0.5607843137254902,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 0",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 1",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 2",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 3",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 4",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 5",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 6",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 7",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 8",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 9",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 10",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 11",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 12",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 13",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 14",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile Visual 15",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 1,
+              "rows": 1,
+              "cellWidth": 64,
+              "cellHeight": 64,
+              "originX": 0,
+              "originY": 0,
+              "gap": 0,
+              "cells": [
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.803921568627451,
+                  0.7568627450980392,
+                  0.7058823529411765,
+                  1
+                ],
+                [
+                  0.9333333333333333,
+                  0.8941176470588236,
+                  0.8549019607843137,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8784313725490196,
+                  0.7843137254901961,
+                  1
+                ],
+                [
+                  0.9490196078431372,
+                  0.6941176470588235,
+                  0.4745098039215686,
+                  1
+                ],
+                [
+                  0.9607843137254902,
+                  0.5843137254901961,
+                  0.38823529411764707,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.48627450980392156,
+                  0.37254901960784315,
+                  1
+                ],
+                [
+                  0.9647058823529412,
+                  0.3686274509803922,
+                  0.23137254901960785,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8117647058823529,
+                  0.4470588235294118,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.8,
+                  0.3803921568627451,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7843137254901961,
+                  0.3137254901960784,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7725490196078432,
+                  0.24705882352941178,
+                  1
+                ],
+                [
+                  0.9294117647058824,
+                  0.7607843137254902,
+                  0.1803921568627451,
+                  1
+                ],
+                [
+                  0.23529411764705882,
+                  0.22745098039215686,
+                  0.19607843137254902,
+                  1
+                ],
+                [
+                  0.15294117647058825,
+                  0.1450980392156863,
+                  0.12156862745098039,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 0",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 1",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 2",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 3",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 4",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 5",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 6",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 7",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 8",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 9",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 10",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 11",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 12",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 13",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 14",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Tile 15",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "",
+              "style": {
+                "width": 64,
+                "height": 64,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 24,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Score Text",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -110,
+              "y": 316,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "SCORE 0",
+              "style": {
+                "width": 220,
+                "height": 32,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 17,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Best Text",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -110,
+              "y": 356,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "BEST 0",
+              "style": {
+                "width": 220,
+                "height": 32,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 17,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#f9f6f2",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 Status Text",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -110,
+              "y": -258,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "CanvasTextComponent",
+              "text": "Swipe / Arrow Keys",
+              "style": {
+                "width": 220,
+                "height": 32,
+                "resolutionScale": 2,
+                "backgroundColor": "rgba(255,255,255,0)",
+                "borderWidth": 0,
+                "padding": 0,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "fontSize": 16,
+                "fontFamily": "system-ui, sans-serif",
+                "fontWeight": "800",
+                "lineHeight": 1,
+                "color": "#776e65",
+                "whiteSpace": "pre-line"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "2048 GameManager",
+          "disabled": false,
+          "components": [
+            {
+              "type": "KeyboardComponent"
+            },
+            {
+              "type": "DataComponent",
+              "data": {
+                "rows": 4,
+                "columns": 4,
+                "target": 2048,
+                "startTiles": 2,
+                "spawnValues": [
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  4
+                ],
+                "emptyPaletteIndex": 1,
+                "best": 0,
+                "continueAfterWin": false,
+                "swipeThreshold": 24,
+                "valuePalette": {
+                  "2": 2,
+                  "4": 3,
+                  "8": 4,
+                  "16": 5,
+                  "32": 6,
+                  "64": 7,
+                  "128": 8,
+                  "256": 9,
+                  "512": 10,
+                  "1024": 11,
+                  "2048": 12,
+                  "4096": 13,
+                  "8192": 14
+                },
+                "tileMoveDuration": 150,
+                "tileSpawnDuration": 110,
+                "tileMoveEasing": "cubicOut"
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "scriptId": 1,
+              "scripts": {
+                "onUpdate": "",
+                "onEntityAddComponent": "",
+                "onEntityRemoveComponent": "",
+                "onEntityAddToWorld": "",
+                "onEntityRemoveFromWorld": ""
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

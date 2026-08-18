@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Editor release lifecycle browser E2E</title>
+</head>
+<body>
+  <pre id="progress">loading editor test bundle…</pre>
+  <pre id="result"></pre>
+  <script type="module">
+    import {
+      OptionalEditorCapabilityLoader,
+      PlaySession,
+      ResourcePool,
+    } from '../../dist-test/testing.js';
+
+    const progress = document.querySelector('#progress');
+    const resultNode = document.querySelector('#result');
+    const assert = (condition, message) => {
+      if (!condition) throw new Error(message);
+    };
+
+    try {
+      progress.textContent = 'verifying optional capability isolation…';
+      const installed = [];
+      const failures = [];
+      let spineAttempts = 0;
+      const loader = new OptionalEditorCapabilityLoader({
+        installPlugin: plugin => installed.push(plugin.name),
+        reportFailure: (capability, error) => failures.push({ capability, message: error.message }),
+        factories: {
+          gltf: async () => ({ name: 'browser/gltf', version: '1.0.0' }),
+          spine: async () => {
+            spineAttempts++;
+            if (spineAttempts === 1) throw new Error('browser fixture spine unavailable');
+            return { name: 'browser/spine', version: '1.0.0' };
+          },
+          tilemap: async () => ({ name: 'browser/tilemap', version: '1.0.0' }),
+          tween: async () => ({ name: 'browser/tween', version: '1.0.0' }),
+        },
+      });
+      let optionalFailure = '';
+      try {
+        await loader.activateForProject({
+          entities: [{ components: [
+            { type: 'GltfModelComponent' },
+            { type: 'Spine2DComponent' },
+            { type: 'Tilemap2DComponent' },
+          ] }],
+        });
+      } catch (error) {
+        optionalFailure = error.message;
+      }
+      assert(optionalFailure.includes('spine'), 'optional failure must identify only spine');
+      assert(loader.isActive('gltf') && loader.isActive('tilemap'), 'unrelated optional capabilities must remain active');
+      assert(!loader.isActive('spine'), 'failed optional capability must remain inactive');
+      assert(await loader.activate('spine'), 'transient optional capability failure must be retryable');
+
+      progress.textContent = 'verifying stable resource replacement…';
+      const pool = new ResourcePool({
+        getResourceName: (_resource, fallback) => fallback,
+        getPrefabId: () => null,
+        componentResourceExtensions: [],
+      });
+      pool.registerModel('old.glb', { id: 21, name: 'Old model' });
+      pool.consumeChanges();
+      pool.unregisterModel(21);
+      assert(!pool.models.has(21), 'old unreferenced model must be removable');
+      const replacement = pool.registerModel('replacement.glb', { id: 21, name: 'Replacement model' });
+      const replacementChanges = pool.consumeChanges();
+      assert(replacement.id === 21 && replacement.src === 'replacement.glb', 'replacement must preserve stable resource identity');
+      assert(JSON.stringify(replacementChanges.updated) === '["model:21"]', 'replacement must emit one updated resource');
+      assert(replacementChanges.added.length === 0 && replacementChanges.removed.length === 0, 'replacement must not leak add/remove events');
+
+      progress.textContent = 'verifying play-session teardown…';
+      const overlay = document.createElement('section');
+      const frame = document.createElement('iframe');
+      document.body.append(overlay, frame);
+      let unsubscribed = 0;
+      const session = new PlaySession({
+        overlay,
+        frame,
+        pauseButton: null,
+        output: { clear() {}, append() {} },
+        serializeScene: async () => ({ version: 1, format: 'haiyue-editor-scene', entities: [] }),
+        getDevicePixelRatio: () => 1,
+        getOrigin: () => location.origin,
+        subscribeSelectedEntityId: () => () => { unsubscribed++; },
+      });
+      session.open(await session.prepare({}));
+      assert(JSON.stringify(session.diagnostics) === JSON.stringify({
+        messageListeners: 1,
+        selectionSubscriptions: 1,
+        sceneReferences: 1,
+      }), 'play session must own one listener, subscription and scene while open');
+      session.close();
+      session.close();
+      const teardown = session.diagnostics;
+      assert(teardown.messageListeners === 0, 'play-session message listener residual must be zero');
+      assert(teardown.selectionSubscriptions === 0, 'play-session subscription residual must be zero');
+      assert(teardown.sceneReferences === 0, 'play-session scene residual must be zero');
+      assert(unsubscribed === 1 && overlay.hidden && frame.srcdoc === '', 'play-session close must be idempotent and clear its frame');
+      frame.remove();
+      overlay.remove();
+
+      const result = {
+        schemaVersion: 1,
+        suite: 'editor.release-lifecycle.browser-e2e',
+        status: 'passed',
+        optionalCapabilityFailure: {
+          unavailable: ['spine'],
+          unaffected: ['gltf', 'tilemap'],
+          retryPassed: true,
+          failureCount: failures.length,
+        },
+        resourceReplacement: {
+          stableId: replacement.id,
+          updated: replacementChanges.updated,
+          addRemoveResidual: replacementChanges.added.length + replacementChanges.removed.length,
+        },
+        teardown: {
+          ...teardown,
+          ownerResidualCount: teardown.messageListeners
+            + teardown.selectionSubscriptions
+            + teardown.sceneReferences,
+          unsubscribeCount: unsubscribed,
+        },
+        gpuValidationErrors: 0,
+        unclassifiedFailureCount: 0,
+      };
+      progress.textContent = 'passed';
+      resultNode.textContent = JSON.stringify(result);
+      resultNode.dataset.status = 'passed';
+    } catch (error) {
+      progress.textContent = 'failed';
+      resultNode.textContent = JSON.stringify({
+        schemaVersion: 1,
+        suite: 'editor.release-lifecycle.browser-e2e',
+        status: 'failed',
+        error: error instanceof Error ? error.stack ?? error.message : String(error),
+      });
+      resultNode.dataset.status = 'failed';
+    }
+  </script>
+</body>
+</html>

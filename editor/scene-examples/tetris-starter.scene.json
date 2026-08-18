@@ -1,0 +1,893 @@
+{
+  "version": 1,
+  "name": "Tetris Starter Mobile",
+  "globals": {
+    "designWidth": 390,
+    "designHeight": 844,
+    "clearColor": [
+      0.03,
+      0.04,
+      0.06,
+      1
+    ],
+    "parameters": {
+      "starterKit": "tetris",
+      "layout": "responsive-mobile",
+      "description": "Responsive Tetris starter scene. Board and HUD scale from display height; use Play device presets for mobile/PC preview."
+    },
+    "inputMap": {
+      "MoveLeft": [
+        "ArrowLeft",
+        "KeyA"
+      ],
+      "MoveRight": [
+        "ArrowRight",
+        "KeyD"
+      ],
+      "SoftDrop": [
+        "ArrowDown",
+        "KeyS"
+      ],
+      "HardDrop": [
+        "Space"
+      ],
+      "Rotate": [
+        "ArrowUp",
+        "KeyW",
+        "KeyX"
+      ],
+      "RotateCW": [
+        "ArrowUp",
+        "KeyW",
+        "KeyX"
+      ],
+      "RotateCCW": [
+        "KeyZ"
+      ],
+      "Pause": [
+        "KeyP",
+        "Escape"
+      ],
+      "Restart": [
+        "KeyR"
+      ]
+    }
+  },
+  "resources": {
+    "geometries": [],
+    "materials": [],
+    "textures": [],
+    "prefabs": [],
+    "scripts": [
+      {
+        "id": 1,
+        "name": "Tetris GameManager",
+        "scripts": {
+          "onUpdate": "\nconst components = api.read.components || {};\nfunction getTilemap(entity) {\n  const direct = entity?.getComponent?.('Tilemap2DComponent');\n  if (direct) return direct;\n  for (const component of entity?.components?.values?.() || []) {\n    if (component?.name === 'Tilemap2DComponent' || String(component?.UniqueSymbol) === 'Symbol(Tilemap2DComponent)') {\n      return component;\n    }\n  }\n  return null;\n}\n\nlet boardEntity = api.read?.find('Tetris Board');\nlet board = getTilemap(boardEntity);\nif (!board) {\n  for (const entity of api.read?.findAll?.() || []) {\n    const tilemap = getTilemap(entity);\n    if (!tilemap || tilemap.columns !== 10 || tilemap.rows !== 20) continue;\n    boardEntity = entity;\n    board = tilemap;\n    break;\n  }\n}\nconst config = api.read.data() || {};\n\nif (!board) {\n  api.debug.console.warn('Tetris Starter Kit requires Tetris Board with Tilemap2DComponent.');\n  return;\n}\n\nconst state = component.state || (component.state = {});\nconst shapes = config.shapes || {\n  I: [[0,1],[1,1],[2,1],[3,1]],\n  J: [[0,0],[0,1],[1,1],[2,1]],\n  L: [[2,0],[0,1],[1,1],[2,1]],\n  O: [[1,0],[2,0],[1,1],[2,1]],\n  S: [[1,0],[2,0],[0,1],[1,1]],\n  T: [[1,0],[0,1],[1,1],[2,1]],\n  Z: [[0,0],[1,0],[1,1],[2,1]],\n};\nconst kinds = config.kinds || ['I','J','L','O','S','T','Z'];\nconst palette = config.paletteIndex || { I: 1, J: 2, L: 3, O: 4, S: 5, T: 6, Z: 7 };\nconst scoreByLines = [0, 100, 300, 500, 800];\nconst scoreHud = getTilemap(api.read?.find('Tetris Scoreboard'));\nconst nextHud = getTilemap(api.read?.find('Tetris Next Preview'));\nconst statusHud = getTilemap(api.read?.find('Tetris Status'));\nconst digits = {\n  0: ['111','101','101','101','111'],\n  1: ['010','110','010','010','111'],\n  2: ['111','001','111','100','111'],\n  3: ['111','001','111','001','111'],\n  4: ['101','101','111','001','001'],\n  5: ['111','100','111','001','111'],\n  6: ['111','100','111','101','111'],\n  7: ['111','001','001','001','001'],\n  8: ['111','101','111','101','111'],\n  9: ['111','101','111','001','111'],\n};\n\nfunction cloneGrid() {\n  return Array.from({ length: board.rows }, () => Array(board.columns).fill(0));\n}\n\nfunction randomKind() {\n  return kinds[Math.floor(Math.random() * kinds.length)] || 'T';\n}\n\nfunction makePiece(kind) {\n  return { kind, x: Math.floor(board.columns / 2) - 2, y: 0, r: 0 };\n}\n\nfunction cells(piece) {\n  const source = shapes[piece.kind] || shapes.T;\n  return source.map(([x, y]) => {\n    let px = x;\n    let py = y;\n    for (let i = 0; i < piece.r % 4; i++) {\n      const nextX = 3 - py;\n      py = px;\n      px = nextX;\n    }\n    return { x: piece.x + px, y: piece.y + py };\n  });\n}\n\nfunction collides(piece) {\n  for (const cell of cells(piece)) {\n    if (cell.x < 0 || cell.x >= board.columns || cell.y >= board.rows) return true;\n    if (cell.y >= 0 && state.grid[cell.y][cell.x]) return true;\n  }\n  return false;\n}\n\nfunction spawn() {\n  state.current = makePiece(state.next || randomKind());\n  state.next = randomKind();\n  if (collides(state.current)) state.phase = 'gameover';\n}\n\nfunction reset() {\n  state.grid = cloneGrid();\n  state.current = makePiece(randomKind());\n  state.next = randomKind();\n  state.score = 0;\n  state.lines = 0;\n  state.level = 1;\n  state.drop = 0;\n  state.phase = 'playing';\n  if (collides(state.current)) state.phase = 'gameover';\n}\n\nfunction move(dx, dy) {\n  const next = { ...state.current, x: state.current.x + dx, y: state.current.y + dy };\n  if (collides(next)) return false;\n  state.current = next;\n  return true;\n}\n\nfunction rotate(dir) {\n  const next = { ...state.current, r: (state.current.r + dir + 4) % 4 };\n  const kicks = [0, -1, 1, -2, 2];\n  for (const kick of kicks) {\n    const kicked = { ...next, x: next.x + kick };\n    if (!collides(kicked)) {\n      state.current = kicked;\n      return;\n    }\n  }\n}\n\nfunction lock() {\n  for (const cell of cells(state.current)) {\n    if (cell.y >= 0 && cell.y < board.rows && cell.x >= 0 && cell.x < board.columns) {\n      state.grid[cell.y][cell.x] = palette[state.current.kind] || 1;\n    }\n  }\n  let cleared = 0;\n  state.grid = state.grid.filter(row => {\n    const full = row.every(Boolean);\n    if (full) cleared++;\n    return !full;\n  });\n  while (state.grid.length < board.rows) state.grid.unshift(Array(board.columns).fill(0));\n  if (cleared) {\n    state.lines += cleared;\n    state.level = Math.floor(state.lines / 10) + 1;\n    state.score += (scoreByLines[cleared] || cleared * 200) * state.level;\n  }\n  spawn();\n}\n\nfunction hardDrop() {\n  while (move(0, 1)) state.score += 2;\n  lock();\n}\n\nfunction setTilemapTransform(entity, x, y) {\n  const transform = entity?.getComponent?.('Transform2D');\n  if (!transform) return;\n  transform.x = x;\n  transform.y = y;\n}\n\nfunction layoutTilemap(tilemap, cellWidth, cellHeight, gap) {\n  if (!tilemap) return;\n  tilemap.cellWidth = cellWidth;\n  tilemap.cellHeight = cellHeight;\n  tilemap.gap = gap;\n}\n\nfunction updateLayout() {\n  const canvas = document.getElementById('player-canvas');\n  const width = Math.max(1, canvas?.clientWidth || window.innerWidth || 1280);\n  const height = Math.max(1, canvas?.clientHeight || window.innerHeight || 720);\n  const portrait = height >= width;\n  const margin = portrait ? 16 : 28;\n  const hudReserve = portrait ? 220 : 80;\n  const sideReserve = portrait ? margin * 2 : Math.min(300, Math.max(220, width * 0.28));\n  const cell = Math.max(10, Math.floor(Math.min(\n    (height - hudReserve) / board.rows,\n    (width - sideReserve) / board.columns,\n    portrait ? 31 : 36,\n  )));\n  const gap = Math.max(1, Math.floor(cell * 0.08));\n  const boardWidth = board.columns * cell;\n  const boardHeight = board.rows * cell;\n  const boardX = portrait ? -boardWidth / 2 : -boardWidth / 2 - Math.min(130, width * 0.12);\n  const boardY = portrait ? -boardHeight / 2 - 8 : -boardHeight / 2;\n  layoutTilemap(board, cell, cell, gap);\n  setTilemapTransform(boardEntity, boardX, boardY);\n\n  if (scoreHud) {\n    const scoreCell = Math.max(5, Math.floor(cell * 0.32));\n    layoutTilemap(scoreHud, scoreCell, scoreCell, Math.max(1, Math.floor(scoreCell * 0.18)));\n    const scoreWidth = scoreHud.columns * scoreCell;\n    const x = portrait ? -scoreWidth / 2 : boardX + boardWidth + 40;\n    const y = portrait ? Math.min(height / 2 - scoreHud.rows * scoreCell - 12, boardY + boardHeight + Math.max(58, cell * 1.8)) : boardY + boardHeight - scoreHud.rows * scoreCell;\n    setTilemapTransform(api.read?.find('Tetris Scoreboard'), x, y);\n  }\n\n  if (nextHud) {\n    const previewCell = Math.max(10, Math.floor(cell * (portrait ? 0.48 : 0.82)));\n    layoutTilemap(nextHud, previewCell, previewCell, Math.max(1, Math.floor(previewCell * 0.08)));\n    const previewWidth = nextHud.columns * previewCell;\n    const x = portrait ? -previewWidth / 2 - Math.min(135, width * 0.34) : boardX + boardWidth + 70;\n    const y = portrait ? boardY + boardHeight + 12 : boardY + boardHeight * 0.42;\n    setTilemapTransform(api.read?.find('Tetris Next Preview'), x, y);\n  }\n\n  if (statusHud) {\n    const statusCell = Math.max(9, Math.floor(cell * (portrait ? 0.34 : 0.55)));\n    layoutTilemap(statusHud, statusCell, statusCell, Math.max(1, Math.floor(statusCell * 0.12)));\n    const statusWidth = statusHud.columns * statusCell;\n    const x = portrait ? -statusWidth / 2 + Math.min(150, width * 0.38) : boardX + boardWidth + 62;\n    const y = portrait ? boardY + boardHeight + 12 : boardY + boardHeight * 0.24;\n    setTilemapTransform(api.read?.find('Tetris Status'), x, y);\n  }\n}\n\nfunction drawScoreHud() {\n  if (!scoreHud) return;\n  scoreHud.clear(0);\n  const text = String(Math.min(999999, state.score)).padStart(6, '0');\n  for (let i = 0; i < text.length; i++) {\n    const pattern = digits[text[i]] || digits[0];\n    const ox = i * 4;\n    for (let y = 0; y < pattern.length; y++) {\n      for (let x = 0; x < pattern[y].length; x++) {\n        if (pattern[y][x] === '1') scoreHud.setCell(ox + x, scoreHud.rows - 1 - y, 1);\n      }\n    }\n  }\n}\n\nfunction drawNextHud() {\n  if (!nextHud) return;\n  nextHud.clear(0);\n  const preview = makePiece(state.next);\n  preview.x = 0;\n  preview.y = 0;\n  preview.r = 0;\n  for (const cell of cells(preview)) {\n    if (cell.x >= 0 && cell.x < nextHud.columns && cell.y >= 0 && cell.y < nextHud.rows) {\n      nextHud.setCell(cell.x, nextHud.rows - 1 - cell.y, palette[state.next] || 1);\n    }\n  }\n}\n\nfunction drawStatusHud() {\n  if (!statusHud) return;\n  const value = state.phase === 'playing' ? 1 : state.phase === 'paused' ? 4 : 7;\n  statusHud.clear(value);\n}\n\nfunction draw() {\n  updateLayout();\n  board.clear(8);\n  for (let y = 0; y < board.rows; y++) {\n    for (let x = 0; x < board.columns; x++) {\n      const value = state.grid[y][x];\n      if (value) board.setCell(x, board.rows - 1 - y, value);\n    }\n  }\n  if (state.phase !== 'gameover') {\n    for (const cell of cells(state.current)) {\n      if (cell.y >= 0) board.setCell(cell.x, board.rows - 1 - cell.y, palette[state.current.kind] || 1);\n    }\n  }\n  api.scene?.setText('Tetris Score', 'Score ' + state.score + '\\\\nLines ' + state.lines + '\\\\nLevel ' + state.level);\n  api.scene?.setText('Tetris Next', 'Next\\\\n' + state.next);\n  api.scene?.setText('Tetris Status', state.phase === 'playing' ? 'Playing' : state.phase === 'paused' ? 'Paused' : 'Game Over\\\\nPress R');\n  drawScoreHud();\n  drawNextHud();\n  drawStatusHud();\n}\n\nif (!state.ready) {\n  reset();\n  state.ready = true;\n  api.debug.console.log('Tetris Starter Kit ready.');\n}\n\nif (api.input.wasPressed('Restart')) reset();\nif (api.input.wasPressed('Pause')) state.phase = state.phase === 'paused' ? 'playing' : state.phase === 'playing' ? 'paused' : state.phase;\n\nif (state.phase === 'playing') {\n  if (api.input.wasPressed('MoveLeft')) move(-1, 0);\n  if (api.input.wasPressed('MoveRight')) move(1, 0);\n  if (api.input.wasPressed('Rotate') || api.input.wasPressed('RotateCW')) rotate(1);\n  if (api.input.wasPressed('RotateCCW')) rotate(-1);\n  if (api.input.wasPressed('HardDrop')) hardDrop();\n  state.drop += delta * (api.input.isPressed('SoftDrop') ? 12 : 1);\n  const interval = Math.max(110, Number(config.dropMs || 650) - (state.level - 1) * 42);\n  if (state.drop >= interval) {\n    state.drop = 0;\n    if (!move(0, 1)) lock();\n  }\n}\n\ndraw();\n",
+          "onEntityAddComponent": "",
+          "onEntityRemoveComponent": "",
+          "onEntityAddToWorld": "",
+          "onEntityRemoveFromWorld": ""
+        }
+      }
+    ]
+  },
+  "entities": [
+    {
+      "name": "Tetris Starter Kit",
+      "disabled": false,
+      "components": [],
+      "children": [
+        {
+          "name": "Tetris Camera2D",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Camera2D",
+              "width": 390,
+              "height": 844,
+              "near": -1000,
+              "far": 1000,
+              "zoom": 1
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Tetris Board",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -155,
+              "y": -318,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 10,
+              "rows": 20,
+              "cellWidth": 31,
+              "cellHeight": 31,
+              "originX": 0,
+              "originY": 0,
+              "gap": 2,
+              "cells": [
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8,
+                8
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.13,
+                  0.83,
+                  0.93,
+                  1
+                ],
+                [
+                  0.15,
+                  0.39,
+                  0.92,
+                  1
+                ],
+                [
+                  0.98,
+                  0.45,
+                  0.1,
+                  1
+                ],
+                [
+                  0.98,
+                  0.8,
+                  0.18,
+                  1
+                ],
+                [
+                  0.2,
+                  0.78,
+                  0.35,
+                  1
+                ],
+                [
+                  0.65,
+                  0.33,
+                  0.92,
+                  1
+                ],
+                [
+                  0.94,
+                  0.24,
+                  0.34,
+                  1
+                ],
+                [
+                  0.07,
+                  0.1,
+                  0.15,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Tetris Scoreboard",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -103,
+              "y": 360,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 23,
+              "rows": 5,
+              "cellWidth": 9,
+              "cellHeight": 9,
+              "originX": 0,
+              "originY": 0,
+              "gap": 1,
+              "cells": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.8,
+                  0.92,
+                  1,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Tetris Next Preview",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": -162,
+              "y": 314,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 4,
+              "rows": 4,
+              "cellWidth": 14,
+              "cellHeight": 14,
+              "originX": 0,
+              "originY": 0,
+              "gap": 1,
+              "cells": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.13,
+                  0.83,
+                  0.93,
+                  1
+                ],
+                [
+                  0.15,
+                  0.39,
+                  0.92,
+                  1
+                ],
+                [
+                  0.98,
+                  0.45,
+                  0.1,
+                  1
+                ],
+                [
+                  0.98,
+                  0.8,
+                  0.18,
+                  1
+                ],
+                [
+                  0.2,
+                  0.78,
+                  0.35,
+                  1
+                ],
+                [
+                  0.65,
+                  0.33,
+                  0.92,
+                  1
+                ],
+                [
+                  0.94,
+                  0.24,
+                  0.34,
+                  1
+                ],
+                [
+                  0.07,
+                  0.1,
+                  0.15,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Tetris Status",
+          "disabled": false,
+          "components": [
+            {
+              "type": "Transform2D",
+              "x": 111,
+              "y": 314,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            {
+              "type": "Tilemap2DComponent",
+              "columns": 6,
+              "rows": 1,
+              "cellWidth": 10,
+              "cellHeight": 10,
+              "originX": 0,
+              "originY": 0,
+              "gap": 1,
+              "cells": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "palette": [
+                [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0.2,
+                  0.78,
+                  0.35,
+                  1
+                ],
+                [
+                  0.15,
+                  0.39,
+                  0.92,
+                  1
+                ],
+                [
+                  0.98,
+                  0.45,
+                  0.1,
+                  1
+                ],
+                [
+                  0.98,
+                  0.8,
+                  0.18,
+                  1
+                ],
+                [
+                  0.2,
+                  0.78,
+                  0.35,
+                  1
+                ],
+                [
+                  0.65,
+                  0.33,
+                  0.92,
+                  1
+                ],
+                [
+                  0.94,
+                  0.24,
+                  0.34,
+                  1
+                ]
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Tetris GameManager",
+          "disabled": false,
+          "components": [
+            {
+              "type": "KeyboardComponent"
+            },
+            {
+              "type": "DataComponent",
+              "data": {
+                "dropMs": 650,
+                "kinds": [
+                  "I",
+                  "J",
+                  "L",
+                  "O",
+                  "S",
+                  "T",
+                  "Z"
+                ],
+                "paletteIndex": {
+                  "I": 1,
+                  "J": 2,
+                  "L": 3,
+                  "O": 4,
+                  "S": 5,
+                  "T": 6,
+                  "Z": 7
+                },
+                "shapes": {
+                  "I": [
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ],
+                    [
+                      3,
+                      1
+                    ]
+                  ],
+                  "J": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "L": [
+                    [
+                      2,
+                      0
+                    ],
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "O": [
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      2,
+                      0
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "S": [
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      2,
+                      0
+                    ],
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1
+                    ]
+                  ],
+                  "T": [
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      0,
+                      1
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "Z": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      1,
+                      1
+                    ],
+                    [
+                      2,
+                      1
+                    ]
+                  ]
+                }
+              }
+            },
+            {
+              "type": "ScriptComponent",
+              "scriptId": 1,
+              "scripts": {
+                "onUpdate": "",
+                "onEntityAddComponent": "",
+                "onEntityRemoveComponent": "",
+                "onEntityAddToWorld": "",
+                "onEntityRemoveFromWorld": ""
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

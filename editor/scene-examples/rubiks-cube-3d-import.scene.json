@@ -1,0 +1,666 @@
+{
+  "version": 1,
+  "name": "Rubiks Cube 3D Import Scene",
+  "globals": {
+    "designWidth": 1280,
+    "designHeight": 720,
+    "clearColor": [
+      0.78,
+      0.8,
+      0.84,
+      1
+    ],
+    "reverseZ": true,
+    "parameters": {
+      "starterKit": "rubiks-cube-3d",
+      "runScriptsInEditor": true,
+      "description": "Importable 3x3 Rubiks cube scene. Uses six instanced rounded-square face batches. Drag cube rows or columns, scramble, and auto restore."
+    },
+    "inputMap": {}
+  },
+  "systems": [],
+  "resources": {
+    "geometries": [
+      {
+        "id": 1,
+        "name": "Rounded Sticker Plane",
+        "positions": [
+          0,
+          0,
+          0,
+          0.5,
+          0.33999999999999997,
+          0,
+          0.49216904260722455,
+          0.38944271909999156,
+          0,
+          0.4694427190999916,
+          0.43404564036679566,
+          0,
+          0.43404564036679566,
+          0.4694427190999916,
+          0,
+          0.38944271909999156,
+          0.49216904260722455,
+          0,
+          0.33999999999999997,
+          0.5,
+          0,
+          -0.33999999999999997,
+          0.5,
+          0,
+          -0.38944271909999156,
+          0.49216904260722455,
+          0,
+          -0.43404564036679566,
+          0.4694427190999916,
+          0,
+          -0.4694427190999916,
+          0.4340456403667957,
+          0,
+          -0.49216904260722455,
+          0.38944271909999156,
+          0,
+          -0.5,
+          0.33999999999999997,
+          0,
+          -0.5,
+          -0.33999999999999997,
+          0,
+          -0.49216904260722455,
+          -0.3894427190999915,
+          0,
+          -0.4694427190999916,
+          -0.43404564036679566,
+          0,
+          -0.4340456403667957,
+          -0.4694427190999916,
+          0,
+          -0.38944271909999156,
+          -0.49216904260722455,
+          0,
+          -0.34,
+          -0.5,
+          0,
+          0.3399999999999999,
+          -0.5,
+          0,
+          0.3894427190999915,
+          -0.49216904260722455,
+          0,
+          0.4340456403667956,
+          -0.4694427190999916,
+          0,
+          0.4694427190999916,
+          -0.4340456403667957,
+          0,
+          0.49216904260722455,
+          -0.3894427190999916,
+          0,
+          0.5,
+          -0.34,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "textureCoordinates": [
+          {
+            "set": 0,
+            "data": [
+              0.5,
+              0.5,
+              1,
+              0.16000000000000003,
+              0.9921690426072245,
+              0.11055728090000844,
+              0.9694427190999916,
+              0.06595435963320434,
+              0.9340456403667956,
+              0.03055728090000842,
+              0.8894427190999916,
+              0.00783095739277545,
+              0.84,
+              0,
+              0.16000000000000003,
+              0,
+              0.11055728090000844,
+              0.00783095739277545,
+              0.06595435963320434,
+              0.03055728090000842,
+              0.03055728090000842,
+              0.06595435963320428,
+              0.00783095739277545,
+              0.11055728090000844,
+              0,
+              0.16000000000000003,
+              0,
+              0.84,
+              0.00783095739277545,
+              0.8894427190999915,
+              0.03055728090000842,
+              0.9340456403667956,
+              0.06595435963320428,
+              0.9694427190999916,
+              0.11055728090000844,
+              0.9921690426072245,
+              0.15999999999999998,
+              1,
+              0.8399999999999999,
+              1,
+              0.8894427190999915,
+              0.9921690426072245,
+              0.9340456403667956,
+              0.9694427190999916,
+              0.9694427190999916,
+              0.9340456403667957,
+              0.9921690426072245,
+              0.8894427190999916,
+              1,
+              0.8400000000000001
+            ]
+          }
+        ],
+        "textureCoordinateLayout": [
+          0
+        ],
+        "indices": [
+          0,
+          1,
+          2,
+          0,
+          2,
+          3,
+          0,
+          3,
+          4,
+          0,
+          4,
+          5,
+          0,
+          5,
+          6,
+          0,
+          6,
+          7,
+          0,
+          7,
+          8,
+          0,
+          8,
+          9,
+          0,
+          9,
+          10,
+          0,
+          10,
+          11,
+          0,
+          11,
+          12,
+          0,
+          12,
+          13,
+          0,
+          13,
+          14,
+          0,
+          14,
+          15,
+          0,
+          15,
+          16,
+          0,
+          16,
+          17,
+          0,
+          17,
+          18,
+          0,
+          18,
+          19,
+          0,
+          19,
+          20,
+          0,
+          20,
+          21,
+          0,
+          21,
+          22,
+          0,
+          22,
+          23,
+          0,
+          23,
+          24,
+          0,
+          24,
+          1
+        ],
+        "indexType": "uint16",
+        "topology": "triangle-list",
+        "cullMode": "back",
+        "frontFace": "ccw"
+      }
+    ],
+    "materials": [],
+    "textures": [],
+    "scripts": [
+      {
+        "id": 1,
+        "name": "Rubiks Cube Runtime",
+        "scripts": {
+          "onUpdate": "\nconst C = api.read.components;\nconst state = component.__rubiks || (component.__rubiks = {});\n\nconst SIZE = 3;\nconst BODY_SIZE = 0.96;\nconst BASE_CUBIE_GAP = 0.12;\nconst CUBIE_GAP = BASE_CUBIE_GAP * 0.3;\nconst SPACING = BODY_SIZE + CUBIE_GAP;\nconst BODY_RADIUS = 0.12;\nconst STICKER = BODY_SIZE - BODY_RADIUS * BODY_SIZE;\nconst STICKER_RADIUS = 0.16;\nconst STICKER_SEGMENTS = 10;\nconst FACE_OFFSET = 0.496;\nconst CUBE_BOUND = SPACING + FACE_OFFSET + 0.08;\nconst TURN_MS = 185;\nconst AUTO_DELAY = 40;\nconst SCRAMBLE_COUNT = 24;\nconst FACE_COLORS = [\n  [1.00, 1.00, 1.00, 1], // +X white\n  [1.00, 0.88, 0.05, 1], // -X yellow\n  [0.10, 0.42, 1.00, 1], // +Y blue\n  [0.10, 0.78, 0.30, 1], // -Y green\n  [1.00, 0.16, 0.10, 1], // +Z red\n  [1.00, 0.52, 0.05, 1], // -Z orange\n];\nconst FACE_DEFS = [\n  { name: '+X', normal: [1, 0, 0], rot: [0, Math.PI / 2, 0] },\n  { name: '-X', normal: [-1, 0, 0], rot: [0, -Math.PI / 2, 0] },\n  { name: '+Y', normal: [0, 1, 0], rot: [-Math.PI / 2, 0, 0] },\n  { name: '-Y', normal: [0, -1, 0], rot: [Math.PI / 2, 0, 0] },\n  { name: '+Z', normal: [0, 0, 1], rot: [0, 0, 0] },\n  { name: '-Z', normal: [0, 0, -1], rot: [0, Math.PI, 0] },\n];\nconst BUTTONS = [\n  { id: 'scramble', label: 'Scramble', x: 418, y: 650, w: 140, h: 46 },\n  { id: 'solve', label: 'Auto Solve', x: 570, y: 650, w: 154, h: 46 },\n  { id: 'reset', label: 'Reset', x: 742, y: 650, w: 140, h: 46 },\n];\n\nfunction vdot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }\nfunction vcross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }\nfunction vlen(a) { return Math.hypot(a[0], a[1], a[2]) || 1; }\nfunction vnorm(a) { const l = vlen(a); return [a[0] / l, a[1] / l, a[2] / l]; }\nfunction vscale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }\nfunction vadd(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }\nfunction vsub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }\nfunction clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }\nfunction axisIndex(axis) { return axis === 'x' ? 0 : axis === 'y' ? 1 : 2; }\nfunction axisNameFromVector(v) {\n  const ax = Math.abs(v[0]), ay = Math.abs(v[1]), az = Math.abs(v[2]);\n  if (ax >= ay && ax >= az) return 'x';\n  if (ay >= az) return 'y';\n  return 'z';\n}\nfunction axisVector(axis, sign = 1) {\n  return axis === 'x' ? [sign, 0, 0] : axis === 'y' ? [0, sign, 0] : [0, 0, sign];\n}\nfunction axisVectorByIndex(index, sign = 1) {\n  return index === 0 ? [sign, 0, 0] : index === 1 ? [0, sign, 0] : [0, 0, sign];\n}\nfunction identity3() { return [1,0,0, 0,1,0, 0,0,1]; }\nfunction rot3(axis, quarter) {\n  const q = ((quarter % 4) + 4) % 4;\n  if (q === 0) return identity3();\n  if (axis === 'x') return q === 1 ? [1,0,0, 0,0,-1, 0,1,0] : q === 2 ? [1,0,0, 0,-1,0, 0,0,-1] : [1,0,0, 0,0,1, 0,-1,0];\n  if (axis === 'y') return q === 1 ? [0,0,1, 0,1,0, -1,0,0] : q === 2 ? [-1,0,0, 0,1,0, 0,0,-1] : [0,0,-1, 0,1,0, 1,0,0];\n  return q === 1 ? [0,-1,0, 1,0,0, 0,0,1] : q === 2 ? [-1,0,0, 0,-1,0, 0,0,1] : [0,1,0, -1,0,0, 0,0,1];\n}\nfunction mul3(a, b) {\n  return [\n    a[0]*b[0]+a[1]*b[3]+a[2]*b[6], a[0]*b[1]+a[1]*b[4]+a[2]*b[7], a[0]*b[2]+a[1]*b[5]+a[2]*b[8],\n    a[3]*b[0]+a[4]*b[3]+a[5]*b[6], a[3]*b[1]+a[4]*b[4]+a[5]*b[7], a[3]*b[2]+a[4]*b[5]+a[5]*b[8],\n    a[6]*b[0]+a[7]*b[3]+a[8]*b[6], a[6]*b[1]+a[7]*b[4]+a[8]*b[7], a[6]*b[2]+a[7]*b[5]+a[8]*b[8],\n  ];\n}\nfunction apply3(m, p) {\n  return [\n    m[0] * p[0] + m[1] * p[1] + m[2] * p[2],\n    m[3] * p[0] + m[4] * p[1] + m[5] * p[2],\n    m[6] * p[0] + m[7] * p[1] + m[8] * p[2],\n  ];\n}\nfunction rotAxisAngle(axis, angle) {\n  const c = Math.cos(angle), s = Math.sin(angle);\n  if (axis === 'x') return [1,0,0, 0,c,-s, 0,s,c];\n  if (axis === 'y') return [c,0,s, 0,1,0, -s,0,c];\n  return [c,-s,0, s,c,0, 0,0,1];\n}\nfunction composeMatrix(position, rotation3, scale = STICKER) {\n  return new Float32Array([\n    rotation3[0] * scale, rotation3[3] * scale, rotation3[6] * scale, 0,\n    rotation3[1] * scale, rotation3[4] * scale, rotation3[7] * scale, 0,\n    rotation3[2] * scale, rotation3[5] * scale, rotation3[8] * scale, 0,\n    position[0], position[1], position[2], 1,\n  ]);\n}\nfunction hiddenMatrix() {\n  return composeMatrix([99999, 99999, 99999], identity3(), 0);\n}\nfunction euler3(rx, ry, rz) {\n  return mul3(mul3(rotAxisAngle('z', rz), rotAxisAngle('y', ry)), rotAxisAngle('x', rx));\n}\nfunction faceBasis(face) {\n  const n = face.normal;\n  if (n[2] === 1) return { u: [1,0,0], v: [0,1,0] };\n  if (n[2] === -1) return { u: [-1,0,0], v: [0,1,0] };\n  if (n[0] === 1) return { u: [0,0,-1], v: [0,1,0] };\n  if (n[0] === -1) return { u: [0,0,1], v: [0,1,0] };\n  if (n[1] === 1) return { u: [1,0,0], v: [0,0,-1] };\n  return { u: [1,0,0], v: [0,0,1] };\n}\nfunction updateHud(text) {\n  api.scene.setText('Rubiks Status', text);\n}\nfunction createRoundedGeometry() {\n  const half = 0.5;\n  const r = Math.min(STICKER_RADIUS, half);\n  const centers = [\n    [half - r, half - r, 0],\n    [-(half - r), half - r, Math.PI / 2],\n    [-(half - r), -(half - r), Math.PI],\n    [half - r, -(half - r), Math.PI * 1.5],\n  ];\n  const outline = [];\n  for (const [cx, cy, start] of centers) {\n    for (let i = 0; i <= STICKER_SEGMENTS; i++) {\n      const a = start + (i / STICKER_SEGMENTS) * Math.PI * 0.5;\n      outline.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);\n    }\n  }\n  const positions = [0, 0, 0];\n  const normals = [0, 0, 1];\n  const uvs = [0.5, 0.5];\n  for (const [x, y] of outline) {\n    positions.push(x, y, 0);\n    normals.push(0, 0, 1);\n    uvs.push(x + 0.5, 0.5 - y);\n  }\n  const indices = [];\n  for (let i = 1; i <= outline.length; i++) indices.push(0, i, i === outline.length ? 1 : i + 1);\n  return new C.Geometry3D({\n    positions: new Float32Array(positions),\n    normals: new Float32Array(normals),\n    textureCoordinates: [{ set: 0, data: new Float32Array(uvs) }],\n    indices: new Uint16Array(indices),\n    cullMode: 'back',\n  });\n}\nfunction createCubies() {\n  const cubies = [];\n  for (let x = -1; x <= 1; x++) {\n    for (let y = -1; y <= 1; y++) {\n      for (let z = -1; z <= 1; z++) {\n        cubies.push({ home: [x, y, z], coord: [x, y, z], orient: identity3() });\n      }\n    }\n  }\n  return cubies;\n}\nfunction hasSticker(cubie, face) {\n  const n = face.normal;\n  if (n[0] !== 0) return cubie.home[0] === n[0];\n  if (n[1] !== 0) return cubie.home[1] === n[1];\n  return cubie.home[2] === n[2];\n}\nfunction ensureInstancedScene() {\n  const camera = api.read.find('Rubiks Camera');\n  if (!api.read.getSystem('InstancedMesh3DRenderSystem')) {\n    world.addSystem(new C.InstancedMesh3DRenderSystem(api.read.engine, camera, { loadOp: 'load', priority: 2 }));\n  }\n  state.hiddenTransform = hiddenMatrix();\n  const bodyGeometry = C.createRoundedBox3D({\n    width: 1,\n    height: 1,\n    depth: 1,\n    radius: BODY_RADIUS,\n    segments: 4,\n  });\n  state.bodyMaterial = new C.InstancedMaterial(27);\n  for (let i = 0; i < 27; i++) state.bodyMaterial.setColor(i, 0.005, 0.006, 0.008, 1);\n  state.bodyEntity = api.scene.createEntity('Rubiks Black Rounded Body Instances');\n  state.bodyEntity.addComponent(new C.InstancedMesh3D(bodyGeometry, state.bodyMaterial));\n\n  const geometry = createRoundedGeometry();\n  state.materials = [];\n  state.faceEntities = [];\n  for (let f = 0; f < FACE_DEFS.length; f++) {\n    const material = new C.InstancedMaterial(27);\n    const color = FACE_COLORS[f];\n    for (let i = 0; i < 27; i++) material.setColor(i, color[0], color[1], color[2], color[3]);\n    const e = api.scene.createEntity('Rubiks Face Instances ' + FACE_DEFS[f].name);\n    e.addComponent(new C.InstancedMesh3D(geometry, material));\n    state.materials.push(material);\n    state.faceEntities.push(e);\n  }\n}\nfunction renderCubies() {\n  let active = state.activeMove;\n  if (active) {\n    const k = clamp((api.debug.performance.now() - active.startTime) / active.duration, 0, 1);\n    if (k >= 1) {\n      finishMove();\n      active = null;\n    }\n  }\n  for (let i = 0; i < state.cubies.length; i++) {\n    const cubie = state.cubies[i];\n    let coord = cubie.coord;\n    let orient = cubie.orient;\n    if (active && cubie.coord[axisIndex(active.axis)] === active.layer) {\n      const k = clamp((api.debug.performance.now() - active.startTime) / active.duration, 0, 1);\n      const eased = k * k * (3 - 2 * k);\n      const angle = active.quarter * Math.PI * 0.5 * eased;\n      const r = rotAxisAngle(active.axis, angle);\n      coord = apply3(r, cubie.coord);\n      orient = mul3(r, cubie.orient);\n    }\n    const base = vscale(coord, SPACING);\n    state.bodyMaterial.setTransform(i, composeMatrix(base, orient, BODY_SIZE));\n    for (let f = 0; f < FACE_DEFS.length; f++) {\n      const face = FACE_DEFS[f];\n      if (!hasSticker(cubie, face)) {\n        state.materials[f].setTransform(i, state.hiddenTransform);\n        continue;\n      }\n      const localRot = euler3(face.rot[0], face.rot[1], face.rot[2]);\n      const rot = mul3(orient, localRot);\n      const faceNormal = apply3(orient, face.normal);\n      const pos = vadd(base, vscale(faceNormal, FACE_OFFSET));\n      state.materials[f].setTransform(i, composeMatrix(pos, rot, STICKER));\n    }\n  }\n}\nfunction finishMove() {\n  const m = state.activeMove;\n  if (!m) return;\n  const r = rot3(m.axis, m.quarter);\n  for (const cubie of state.cubies) {\n    if (cubie.coord[axisIndex(m.axis)] !== m.layer) continue;\n    const next = apply3(r, cubie.coord).map(v => Math.round(v));\n    cubie.coord = next;\n    cubie.orient = mul3(r, cubie.orient);\n  }\n  state.activeMove = null;\n  if (m.record) state.history.push({ axis: m.axis, layer: m.layer, quarter: m.quarter });\n}\nfunction queueMove(axis, layer, quarter, record = true) {\n  if (state.activeMove) return false;\n  state.activeMove = { axis, layer, quarter, record, startTime: api.debug.performance.now(), duration: TURN_MS };\n  return true;\n}\nfunction resetCube() {\n  state.cubies = createCubies();\n  state.history = [];\n  state.solveQueue = [];\n  state.activeMove = null;\n  state.mode = 'manual';\n  updateHud('Ready: drag a row or column to turn it.');\n  renderCubies();\n}\nfunction randomMove(prev) {\n  const axes = ['x', 'y', 'z'];\n  let axis = axes[Math.floor(Math.random() * axes.length)];\n  if (prev && prev.axis === axis) axis = axes[(axes.indexOf(axis) + 1 + Math.floor(Math.random() * 2)) % 3];\n  const layer = Math.random() < 0.5 ? -1 : 1;\n  const quarter = Math.random() < 0.5 ? -1 : 1;\n  return { axis, layer, quarter };\n}\nfunction scramble() {\n  if (state.activeMove) return;\n  state.solveQueue = [];\n  let prev = null;\n  for (let i = 0; i < SCRAMBLE_COUNT; i++) {\n    const m = randomMove(prev);\n    state.solveQueue.push({ ...m, record: true });\n    prev = m;\n  }\n  state.mode = 'scramble';\n  updateHud('Scrambling...');\n}\nfunction autoSolve() {\n  if (state.activeMove) return;\n  state.solveQueue = state.history.slice().reverse().map(m => ({ axis: m.axis, layer: m.layer, quarter: -m.quarter, record: false }));\n  state.mode = 'solve';\n  updateHud(state.solveQueue.length ? 'Auto restoring...' : 'Already solved.');\n}\nfunction runQueuedMoves() {\n  if (state.activeMove || !state.solveQueue.length) {\n    if (!state.activeMove && (state.mode === 'solve' || state.mode === 'scramble') && !state.solveQueue.length) {\n      state.mode = 'manual';\n      if (isSolved()) updateHud('Solved.');\n      else updateHud('Ready.');\n    }\n    return;\n  }\n  const m = state.solveQueue.shift();\n  queueMove(m.axis, m.layer, m.quarter, m.record);\n}\nfunction isSolved() {\n  return state.cubies.every(c => c.coord[0] === c.home[0] && c.coord[1] === c.home[1] && c.coord[2] === c.home[2] && c.orient.every((v, i) => v === identity3()[i]));\n}\nfunction canvasPoint(event) {\n  const rect = api.read.canvas.element.getBoundingClientRect();\n  return {\n    x: (event.clientX - rect.left) / rect.width * 1280,\n    y: (event.clientY - rect.top) / rect.height * 720,\n  };\n}\nfunction hitButton(p) {\n  return BUTTONS.find(b => p.x >= b.x - b.w * 0.5 && p.x <= b.x + b.w * 0.5 && p.y >= b.y - b.h * 0.5 && p.y <= b.y + b.h * 0.5) || null;\n}\nfunction getCameraBasis() {\n  const orbit = state.cameraOrbit;\n  const eye = orbit.eyePosition || [6, 5, 6];\n  const target = orbit.target || [0, 0, 0];\n  const forward = vnorm(vsub(target, eye));\n  let right = vnorm(vcross(forward, [0, 1, 0]));\n  if (vlen(right) < 0.001) right = [1, 0, 0];\n  const up = vnorm(vcross(right, forward));\n  return { eye, forward, right, up };\n}\nfunction pointerRay(event) {\n  const rect = api.read.canvas.element.getBoundingClientRect();\n  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;\n  const ndcY = 1 - ((event.clientY - rect.top) / rect.height) * 2;\n  const basis = getCameraBasis();\n  const aspect = rect.width / rect.height;\n  const tan = Math.tan(Math.PI / 8);\n  const dir = vnorm(vadd(vadd(basis.forward, vscale(basis.right, ndcX * tan * aspect)), vscale(basis.up, ndcY * tan)));\n  return { origin: basis.eye, dir };\n}\nfunction intersectCubeBounds(origin, dir) {\n  let tMin = -Infinity;\n  let tMax = Infinity;\n  let normal = [0, 0, 1];\n  for (let axis = 0; axis < 3; axis++) {\n    if (Math.abs(dir[axis]) < 0.00001) {\n      if (origin[axis] < -CUBE_BOUND || origin[axis] > CUBE_BOUND) return null;\n      continue;\n    }\n    let t1 = (-CUBE_BOUND - origin[axis]) / dir[axis];\n    let t2 = ( CUBE_BOUND - origin[axis]) / dir[axis];\n    let n1 = axisVectorByIndex(axis, -1);\n    let n2 = axisVectorByIndex(axis,  1);\n    if (t1 > t2) {\n      const t = t1; t1 = t2; t2 = t;\n      const n = n1; n1 = n2; n2 = n;\n    }\n    if (t1 > tMin) {\n      tMin = t1;\n      normal = n1;\n    }\n    tMax = Math.min(tMax, t2);\n    if (tMin > tMax) return null;\n  }\n  const dist = tMin > 0 ? tMin : tMax;\n  if (dist <= 0) return null;\n  return { dist, normal };\n}\nfunction pickCube(event) {\n  const ray = pointerRay(event);\n  const hitInfo = intersectCubeBounds(ray.origin, ray.dir);\n  if (!hitInfo) return null;\n  const hit = vadd(ray.origin, vscale(ray.dir, hitInfo.dist));\n  const normal = hitInfo.normal;\n  const face = FACE_DEFS.find(f => f.normal[0] === normal[0] && f.normal[1] === normal[1] && f.normal[2] === normal[2]) || FACE_DEFS[4];\n  const fb = faceBasis(face);\n  return { hit, normal, face, u: fb.u, v: fb.v };\n}\nfunction projectWorld(p) {\n  const basis = getCameraBasis();\n  const rel = vsub(p, basis.eye);\n  const z = vdot(rel, basis.forward);\n  if (z <= 0.001) return [0, 0];\n  const f = 1 / Math.tan(Math.PI / 8);\n  return [vdot(rel, basis.right) * f / z, vdot(rel, basis.up) * f / z];\n}\nfunction beginDrag(event) {\n  const hit = pickCube(event);\n  if (hit && !state.activeMove && state.mode === 'manual') {\n    state.drag = { type: 'cube', startX: event.clientX, startY: event.clientY, hit };\n  } else {\n    state.drag = {\n      type: 'orbit',\n      startX: event.clientX,\n      startY: event.clientY,\n      lastX: event.clientX,\n      lastY: event.clientY,\n      theta: state.cameraOrbit.theta,\n      phi: state.cameraOrbit.phi,\n    };\n  }\n}\nfunction updateDrag(event) {\n  if (!state.drag) return;\n  if (state.drag.type === 'orbit') {\n    const dx = event.clientX - state.drag.lastX;\n    const dy = event.clientY - state.drag.lastY;\n    state.cameraOrbit.theta -= dx * 0.006;\n    state.cameraOrbit.phi = clamp(state.cameraOrbit.phi - dy * 0.005, 0.16, Math.PI - 0.16);\n    state.drag.lastX = event.clientX;\n    state.drag.lastY = event.clientY;\n    event.preventDefault();\n    return;\n  }\n  if (state.activeMove) return;\n  const dx = event.clientX - state.drag.startX;\n  const dy = event.clientY - state.drag.startY;\n  if (Math.hypot(dx, dy) < 18) return;\n  const hit = state.drag.hit;\n  const origin = hit.hit;\n  const pu = projectWorld(vadd(origin, hit.u));\n  const pv = projectWorld(vadd(origin, hit.v));\n  const p0 = projectWorld(origin);\n  const su = [pu[0] - p0[0], -(pu[1] - p0[1])];\n  const sv = [pv[0] - p0[0], -(pv[1] - p0[1])];\n  const du = dx * su[0] + dy * su[1];\n  const dv = dx * sv[0] + dy * sv[1];\n  const useU = Math.abs(du) >= Math.abs(dv);\n  const tangent = vscale(useU ? hit.u : hit.v, Math.sign(useU ? du : dv) || 1);\n  const axisVec = vnorm(vcross(hit.normal, tangent));\n  const axis = axisNameFromVector(axisVec);\n  const layerCoord = hit.hit[axisIndex(axis)] / SPACING;\n  const layer = clamp(Math.round(layerCoord), -1, 1);\n  const quarter = axisVec[axisIndex(axis)] >= 0 ? 1 : -1;\n  state.drag = null;\n  queueMove(axis, layer, quarter, true);\n  updateHud('Turn ' + axis.toUpperCase() + ' layer ' + layer);\n}\nfunction bindInput() {\n  if (state.inputBound) return;\n  state.inputBound = true;\n  api.debug.addDisposer(() => {\n    state.inputBound = false;\n    state.drag = null;\n  });\n  const canvas = api.read.canvas.element;\n  api.debug.listen(canvas, 'pointerdown', event => {\n    const p = canvasPoint(event);\n    const button = hitButton(p);\n    if (button) {\n      if (button.id === 'scramble') scramble();\n      else if (button.id === 'solve') autoSolve();\n      else resetCube();\n      event.preventDefault();\n      return;\n    }\n    beginDrag(event);\n    canvas.setPointerCapture?.(event.pointerId);\n    event.preventDefault();\n  });\n  api.debug.listen(canvas, 'pointermove', event => {\n    updateDrag(event);\n  });\n  api.debug.listen(canvas, 'pointerup', event => {\n    state.drag = null;\n    canvas.releasePointerCapture?.(event.pointerId);\n  });\n  api.debug.listen(canvas, 'pointercancel', event => {\n    state.drag = null;\n    canvas.releasePointerCapture?.(event.pointerId);\n  });\n  api.debug.listen(window, 'keydown', event => {\n    if (event.key.toLowerCase() === 's') scramble();\n    if (event.key.toLowerCase() === 'r') resetCube();\n    if (event.key === ' ') autoSolve();\n  });\n}\n\nif (!state.initialized) {\n  state.initialized = true;\n  state.cameraOrbit = api.read.find('Rubiks Camera').getComponent(C.SphericalTransform3D);\n  state.history = [];\n  state.solveQueue = [];\n  state.mode = 'manual';\n  state.cubies = createCubies();\n  ensureInstancedScene();\n  updateHud('Ready: drag a row or column. S scramble, Space solve, R reset.');\n  renderCubies();\n}\nbindInput();\n\nrunQueuedMoves();\nrenderCubies();\n",
+          "onEntityAddComponent": "",
+          "onEntityRemoveComponent": "",
+          "onEntityAddToWorld": "",
+          "onEntityRemoveFromWorld": ""
+        }
+      }
+    ],
+    "prefabs": []
+  },
+  "entities": [
+    {
+      "name": "Rubiks Camera",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Camera3D",
+          "projectionType": "perspective",
+          "fov": 0.7853981633974483,
+          "aspect": 1.7777777777777777,
+          "near": 0.1,
+          "far": 1000,
+          "orthoLeft": -10,
+          "orthoRight": 10,
+          "orthoTop": 10,
+          "orthoBottom": -10,
+          "reverseZ": true
+        },
+        {
+          "type": "SphericalTransform3D",
+          "radius": 8.4,
+          "theta": 0.7539822368615503,
+          "phi": 1.0053096491487339,
+          "target": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks HUD Camera2D",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Camera2D",
+          "width": 1280,
+          "height": 720,
+          "near": -1000,
+          "far": 1000,
+          "zoom": 1
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Ambient Light",
+      "disabled": false,
+      "components": [
+        {
+          "type": "AmbientLight",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": 0.55
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Key Light",
+      "disabled": false,
+      "components": [
+        {
+          "type": "CartesianTransform3D",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "anchor": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "type": "DirectionalLight",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "intensity": 1.45,
+          "direction": [
+            -0.4,
+            -0.75,
+            -0.55
+          ]
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Title",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 640,
+          "y": 42,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "3x3 Rubiks Cube",
+          "style": {
+            "width": 360,
+            "height": 42,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(2, 6, 23, 0.48)",
+            "borderColor": "rgba(148, 163, 184, 0.35)",
+            "borderWidth": 1,
+            "borderRadius": 10,
+            "padding": [
+              8,
+              12
+            ],
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "fontSize": 22,
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            "fontWeight": "700",
+            "lineHeight": 1.15,
+            "color": "#f8fafc",
+            "whiteSpace": "normal"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Status",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 640,
+          "y": 94,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "Loading...",
+          "style": {
+            "width": 680,
+            "height": 42,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(2, 6, 23, 0.48)",
+            "borderColor": "rgba(148, 163, 184, 0.35)",
+            "borderWidth": 1,
+            "borderRadius": 10,
+            "padding": [
+              8,
+              12
+            ],
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "fontSize": 16,
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            "fontWeight": "700",
+            "lineHeight": 1.15,
+            "color": "#dbeafe",
+            "whiteSpace": "normal"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Button Scramble",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 418,
+          "y": 650,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "Scramble",
+          "style": {
+            "width": 140,
+            "height": 46,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(15, 23, 42, 0.84)",
+            "borderColor": "rgba(148, 163, 184, 0.35)",
+            "borderWidth": 1,
+            "borderRadius": 10,
+            "padding": [
+              8,
+              12
+            ],
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "fontSize": 16,
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            "fontWeight": "700",
+            "lineHeight": 1.15,
+            "color": "#f8fafc",
+            "whiteSpace": "normal"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Button Solve",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 570,
+          "y": 650,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "Auto Solve",
+          "style": {
+            "width": 154,
+            "height": 46,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(15, 23, 42, 0.84)",
+            "borderColor": "rgba(148, 163, 184, 0.35)",
+            "borderWidth": 1,
+            "borderRadius": 10,
+            "padding": [
+              8,
+              12
+            ],
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "fontSize": 16,
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            "fontWeight": "700",
+            "lineHeight": 1.15,
+            "color": "#f8fafc",
+            "whiteSpace": "normal"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Button Reset",
+      "disabled": false,
+      "components": [
+        {
+          "type": "Transform2D",
+          "x": 742,
+          "y": 650,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        {
+          "type": "CanvasTextComponent",
+          "text": "Reset",
+          "style": {
+            "width": 140,
+            "height": 46,
+            "resolutionScale": 2,
+            "backgroundColor": "rgba(15, 23, 42, 0.84)",
+            "borderColor": "rgba(148, 163, 184, 0.35)",
+            "borderWidth": 1,
+            "borderRadius": 10,
+            "padding": [
+              8,
+              12
+            ],
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "fontSize": 16,
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            "fontWeight": "700",
+            "lineHeight": 1.15,
+            "color": "#f8fafc",
+            "whiteSpace": "normal"
+          }
+        }
+      ],
+      "children": []
+    },
+    {
+      "name": "Rubiks Game Controller",
+      "disabled": false,
+      "components": [
+        {
+          "type": "ScriptComponent",
+          "scriptId": 1,
+          "scripts": {}
+        },
+        {
+          "type": "DataComponent",
+          "data": {
+            "note": "Runtime builds six InstancedMesh3D rounded-square face batches. Default colors represent replaceable face textures: white, yellow, blue, green, red, orange."
+          }
+        }
+      ],
+      "children": []
+    }
+  ]
+}

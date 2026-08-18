@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G02 timeline browser interaction fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.4 system-ui, sans-serif; background: #090d14; color: #d7dde8; }
+      body { margin: 0; padding: 20px; }
+      main { display: grid; grid-template-columns: repeat(2, minmax(0, 600px)); gap: 18px; }
+      section { min-width: 0; padding: 12px; border: 1px solid #293142; border-radius: 8px; background: #0e141f; }
+      h1 { grid-column: 1 / -1; margin: 0; font-size: 18px; }
+      h2 { margin: 0 0 8px; font-size: 13px; color: #aab6ca; }
+      canvas { display: block; width: 100%; height: 180px; border: 1px solid #364159; border-radius: 4px; }
+      #timeline, #graph { width: 600px; max-width: 100%; }
+      #timeline { height: 60px; }
+      #dense { width: 800px; max-width: 100%; height: 30px; }
+      #result { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="failed"] { color: #ff7b86; }
+      [data-status="passed"] { color: #73dc9d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G02 Tween / curve / timeline / viewport browser fixture</h1>
+      <section><h2>Multi-track dope sheet</h2><canvas id="timeline"></canvas></section>
+      <section><h2>Value curve</h2><canvas id="graph"></canvas></section>
+      <section><h2>2D motion path and gizmo</h2><canvas id="viewport-2d"></canvas></section>
+      <section><h2>G01-native 3D gizmo</h2><canvas id="viewport-3d"></canvas></section>
+      <section><h2>10,000-key virtualized surface</h2><canvas id="dense"></canvas></section>
+      <div id="progress">Loading G02 adapters…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.timeline-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('Missing generated G02 browser bundle. Run run-timeline-browser-interaction.mjs.');
+      }
+      const {
+        TimelineCanvasAdapter,
+        TimelineGraphEditorAdapter,
+        TimelineViewportTweenAdapter,
+      } = await import(`./${bundleDirectory}/timeline-adapters.js`);
+      const {
+        computeVisibleTimelineKeyframes,
+        planTimelineEdit,
+        sampleTimelineCurrentValues,
+        selectTimelineKeyframesInRect,
+      } = await import(`./${bundleDirectory}/timeline-production.js`);
+      const {
+        cloneAnimationEditorProject,
+        compileAnimationEditorProject,
+        createBasicAnimationNode,
+        createCoreTransformTrack,
+        createEmptyAnimationEditorProject,
+      } = await import('../dist-test/testing.js');
+
+      const result = document.querySelector('#result');
+      const progress = document.querySelector('#progress');
+      const adapters = [];
+
+      try {
+        const longTasks = [];
+        const longTaskObserver = PerformanceObserver.supportedEntryTypes.includes('longtask')
+          ? new PerformanceObserver(entries => longTasks.push(...entries.getEntries().map(entry => entry.duration)))
+          : null;
+        longTaskObserver?.observe({ type: 'longtask', buffered: true });
+        let project = multiTrackProject();
+        let exactCompiles = 0;
+        let timelinePreviews = 0;
+        let timelineCommits = 0;
+        let undoRequests = 0;
+        const timelineCanvas = document.querySelector('#timeline');
+        const timeline = new TimelineCanvasAdapter(timelineCanvas, {
+          timeStart: 0, timeEnd: 3, trackStart: 0, trackEnd: 2, width: 600, laneHeight: 30,
+        }, {
+          project: () => project,
+          label: 'Production dope sheet fixture',
+          onPreview: () => { timelinePreviews++; },
+          onCommit: next => { project = next; timelineCommits++; },
+          onExactPreviewRequested: () => { compileAnimationEditorProject(project); exactCompiles++; },
+          onUndo: () => { undoRequests++; },
+        });
+        adapters.push(timeline);
+        assert(timelineCanvas.getAttribute('role') === 'grid', 'dope sheet grid role');
+        assert(timelineCanvas.tabIndex === 0, 'dope sheet keyboard focus');
+
+        progress.textContent = 'Marquee selection and multi-track drag';
+        pointer(timelineCanvas, 'pointerdown', 190, 2, 1);
+        pointer(timelineCanvas, 'pointermove', 210, 58, 1);
+        pointer(timelineCanvas, 'pointerup', 210, 58, 1);
+        assert(timeline.selection.length === 2, 'marquee selected keys on two tracks');
+        pointer(timelineCanvas, 'pointerdown', 200, 15, 2);
+        pointer(timelineCanvas, 'pointermove', 250, 15, 2);
+        pointer(timelineCanvas, 'pointerup', 250, 15, 2);
+        assert(project.timeline.tracks.every(track => close(track.keyframes[1].time, 1.25)), 'multi-track drag committed once');
+        assert(timelineCommits === 1 && exactCompiles === 1 && timelinePreviews === 1, 'preview stayed detached until exact commit');
+
+        const beforeCancel = project;
+        pointer(timelineCanvas, 'pointerdown', 250, 15, 3);
+        pointer(timelineCanvas, 'pointermove', 270, 15, 3);
+        pointer(timelineCanvas, 'pointercancel', 270, 15, 3);
+        assert(project === beforeCancel && timelineCommits === 1, 'pointer cancellation rolled back');
+        pointer(timelineCanvas, 'pointerdown', 250, 15, 31);
+        pointer(timelineCanvas, 'pointermove', 265, 15, 31);
+        project = { ...project, name: 'Project replaced while dragging' };
+        pointer(timelineCanvas, 'pointerup', 265, 15, 31);
+        assert(timelineCommits === 1 && project.name === 'Project replaced while dragging', 'late drag cannot overwrite a replaced project');
+        timelineCanvas.focus();
+        timelineCanvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        assert(timelineCanvas === document.activeElement, 'timeline retains keyboard focus');
+        assert(timelineCommits === 2 && exactCompiles === 2, 'keyboard nudge is one exact transaction');
+        timelineCanvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }));
+        assert(undoRequests === 1, 'timeline keyboard routes undo to the host transaction owner');
+
+        progress.textContent = 'Graph numeric, preset and curve drag';
+        let graphCommits = 0;
+        const graphCanvas = document.querySelector('#graph');
+        const graph = new TimelineGraphEditorAdapter(graphCanvas, {
+          project: () => project,
+          trackId: 'position',
+          channel: 0,
+          view: { timeStart: 0, timeEnd: 3, valueMin: 0, valueMax: 300, width: 600, height: 180, samples: 121 },
+          label: 'Production graph editor fixture',
+          onCommit: next => { project = next; graphCommits++; },
+          onExactPreviewRequested: () => { compileAnimationEditorProject(project); exactCompiles++; },
+        });
+        adapters.push(graph);
+        graph.applyPreset({ trackId: 'position', keyframeId: 'position-0' }, 'ease-in-out');
+        graph.setNumericValue({ trackId: 'position', keyframeId: 'position-1' }, 120);
+        const graphTime = project.timeline.tracks[0].keyframes[1].time;
+        const graphX = graphTime / 3 * 600;
+        pointer(graphCanvas, 'pointerdown', graphX, 108, 4);
+        pointer(graphCanvas, 'pointermove', graphX, 84, 4);
+        pointer(graphCanvas, 'pointerup', graphX, 84, 4);
+        assert(close(project.timeline.tracks[0].keyframes[1].value[0], 160), 'curve key drag synchronized numeric value');
+        assert(graphCommits === 3 && graph.metrics.previewUpdates === 1, 'graph preset, numeric and pointer edits committed');
+        assert(graphCanvas.getAttribute('role') === 'application' && graphCanvas.getAttribute('aria-valuetext'), 'graph ARIA state');
+
+        progress.textContent = '2D motion path and direct viewport editing';
+        let viewport2dCommits = 0;
+        const viewport2dCanvas = document.querySelector('#viewport-2d');
+        const viewport2d = new TimelineViewportTweenAdapter(viewport2dCanvas, {
+          mode: { kind: '2d', coordinateSystem: 'screen-y-down' },
+          project: () => project,
+          nodeId: 'rectangle',
+          time: () => graphTime,
+          autoKey: () => true,
+          positionTrackId: () => 'position',
+          label: '2D motion path fixture',
+          onCommit: next => { project = next; viewport2dCommits++; },
+          onExactPreviewRequested: () => { compileAnimationEditorProject(project); exactCompiles++; },
+        });
+        adapters.push(viewport2d);
+        pointer(viewport2dCanvas, 'pointerdown', 160, 50, 5);
+        pointer(viewport2dCanvas, 'pointermove', 180, 70, 5);
+        pointer(viewport2dCanvas, 'pointerup', 180, 70, 5);
+        assert(project.timeline.tracks[0].keyframes[1].value[0] === 180, 'motion path key is directly editable');
+        assert(viewport2dCommits === 1 && viewport2d.metrics.exactPreviewRequests === 1, '2D exact preview after gesture');
+
+        progress.textContent = 'G01-native 3D gizmo';
+        let transform = { translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] };
+        const viewport3dCanvas = document.querySelector('#viewport-3d');
+        const viewport3d = new TimelineViewportTweenAdapter(viewport3dCanvas, {
+          mode: { kind: '3d', handedness: 'right', upAxis: '+y', forwardAxis: '-z', unit: 'meter' },
+          transform: () => transform,
+          label: '3D transform fixture',
+          onCommit: next => { transform = next; },
+        });
+        adapters.push(viewport3d);
+        viewport3d.setTool('translate', 'y');
+        pointer(viewport3dCanvas, 'pointerdown', 300, 90, 6);
+        pointer(viewport3dCanvas, 'pointermove', 300, 40, 6);
+        pointer(viewport3dCanvas, 'pointerup', 300, 40, 6);
+        assert(transform.translation[1] > 0, '3D upward drag maps to native +Y');
+
+        progress.textContent = '10,000-key visible clipping and candidate budget';
+        const denseProject = tenThousandKeyProject();
+        const denseView = { timeStart: 80, timeEnd: 82, trackStart: 0, trackEnd: 1, width: 800, laneHeight: 30 };
+        const denseCanvas = document.querySelector('#dense');
+        const dense = new TimelineCanvasAdapter(denseCanvas, denseView, {
+          project: () => denseProject,
+          onCommit: () => { throw new Error('dense collision preview must not commit'); },
+        });
+        adapters.push(dense);
+        dense.renderNow();
+        await nextFrame();
+        const longTaskBaseline = longTasks.length;
+        const timings = {};
+        let started = performance.now();
+        sampleTimelineCurrentValues(denseProject, 83.333);
+        timings.scrub = performance.now() - started;
+        started = performance.now();
+        const visible = computeVisibleTimelineKeyframes(denseProject, denseView);
+        const selection = selectTimelineKeyframesInRect(denseProject, denseView, { left: 0, top: 0, right: 800, bottom: 30 });
+        timings.selection = performance.now() - started;
+        started = performance.now();
+        const collision = planTimelineEdit(denseProject, selection.slice(0, 60), { kind: 'move', deltaTime: 0.25 });
+        timings.drag = performance.now() - started;
+        await nextFrame();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const interactionLongTasks = longTasks.slice(longTaskBaseline).filter(duration => duration > 50);
+        assert(visible.length < 200 && dense.metrics.renderedKeyframes < 200, 'dense surface only renders visible keys');
+        assert(!collision.valid && collision.collisions.length > 0, 'dense drag previews collisions without commit');
+
+        progress.textContent = 'Export sampling consistency and lifecycle cleanup';
+        const compilation = compileAnimationEditorProject(project);
+        const sourceTrack = project.timeline.tracks.find(track => track.id === 'position');
+        const deliveredTrack = compilation.parsed.tracks.find(track => track.node === 'rectangle' && track.property === 'position');
+        assert(sourceTrack && deliveredTrack, 'compiled position track exists');
+        for (const keyframe of sourceTrack.keyframes) {
+          const index = [...deliveredTrack.times].findIndex(time => close(time, keyframe.time, 1e-5));
+          assert(index >= 0, `compiled time exists for ${keyframe.id}`);
+          assert(close(deliveredTrack.values[index * 2], keyframe.value[0], 1e-5), `compiled sample matches ${keyframe.id}`);
+        }
+        const commitsBeforeDispose = timelineCommits;
+        timeline.dispose();
+        pointer(timelineCanvas, 'pointerdown', 253, 15, 7);
+        pointer(timelineCanvas, 'pointermove', 270, 15, 7);
+        pointer(timelineCanvas, 'pointerup', 270, 15, 7);
+        assert(timelineCommits === commitsBeforeDispose, 'disposed adapter ignores late project-close input');
+
+        const payload = {
+          status: 'passed',
+          timeline: timeline.metrics,
+          graph: graph.metrics,
+          viewport2d: viewport2d.metrics,
+          viewport3d: viewport3d.metrics,
+          dense: dense.metrics,
+          timings,
+          interactionLongTasks,
+          exactCompiles,
+          undoRequests,
+          finalPosition: project.timeline.tracks[0].keyframes[1].value,
+          native3dTranslation: transform.translation,
+          aria: {
+            timeline: timelineCanvas.getAttribute('aria-valuetext'),
+            graph: graphCanvas.getAttribute('aria-valuetext'),
+          },
+        };
+        window.timelineFixture = { project, payload, adapters };
+        longTaskObserver?.disconnect();
+        result.textContent = JSON.stringify(payload);
+        result.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        for (const adapter of adapters) adapter.dispose();
+        result.textContent = JSON.stringify({ status: 'failed', message: error instanceof Error ? error.message : String(error) });
+        result.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      }
+
+      function pointer(canvas, type, x, y, pointerId) {
+        const bounds = canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId,
+          pointerType: 'mouse',
+          button: 0,
+          buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
+          clientX: bounds.left + x,
+          clientY: bounds.top + y,
+        }));
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      function close(left, right, epsilon = 1e-8) {
+        return Math.abs(left - right) <= epsilon;
+      }
+
+      function nextFrame() {
+        return new Promise(resolve => requestAnimationFrame(() => resolve()));
+      }
+
+      function multiTrackProject() {
+        const project = cloneAnimationEditorProject(createEmptyAnimationEditorProject({ duration: 3, frameRate: 60 }));
+        const node = createBasicAnimationNode(project, 'rectangle');
+        node.id = 'rectangle';
+        node.name = 'Rectangle';
+        node.transform.position = [0, 0];
+        node.transform.opacity = 0;
+        project.nodes.push(node);
+        const position = createCoreTransformTrack(project, node.id, 'position', 0);
+        position.id = 'position';
+        position.keyframes[0].id = 'position-0';
+        position.keyframes[0].value = [0, 0];
+        position.keyframes.push(
+          { id: 'position-1', time: 1, value: [100, 50], interpolation: 'linear' },
+          { id: 'position-2', time: 2, value: [200, 200], interpolation: 'linear' },
+        );
+        project.timeline.tracks.push(position);
+        const opacity = createCoreTransformTrack(project, node.id, 'opacity', 0);
+        opacity.id = 'opacity';
+        opacity.keyframes[0].id = 'opacity-0';
+        opacity.keyframes[0].value = [0];
+        opacity.keyframes.push(
+          { id: 'opacity-1', time: 1, value: [0.5], interpolation: 'linear' },
+          { id: 'opacity-2', time: 2, value: [1], interpolation: 'linear' },
+        );
+        project.timeline.tracks.push(opacity);
+        return project;
+      }
+
+      function tenThousandKeyProject() {
+        const project = cloneAnimationEditorProject(createEmptyAnimationEditorProject({ duration: 200, frameRate: 60 }));
+        const node = createBasicAnimationNode(project, 'rectangle');
+        node.id = 'rectangle';
+        project.nodes.push(node);
+        const track = createCoreTransformTrack(project, node.id, 'opacity', 0);
+        track.id = 'opacity-10k';
+        track.keyframes = Array.from({ length: 10_000 }, (_unused, index) => ({
+          id: `key-${index}`,
+          time: index / 60,
+          value: [index / 10_000],
+          interpolation: 'linear',
+        }));
+        project.timeline.tracks.push(track);
+        return project;
+      }
+    </script>
+  </body>
+</html>

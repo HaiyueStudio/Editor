@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "initialEntries": [
+    "editor.js"
+  ],
+  "secondaryEntries": [
+    "player.js"
+  ],
+  "eagerDynamicModules": []
+}

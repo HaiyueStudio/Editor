@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Voxel editor IndexedDB persistence smoke</title>
+  <style>
+    html, body, iframe { width: 100%; height: 100%; margin: 0; border: 0; }
+    #result { display: none; }
+  </style>
+</head>
+<body>
+  <iframe id="editor"></iframe>
+  <pre id="result"></pre>
+  <script type="module">
+    const result = document.querySelector('#result');
+    const editor = document.querySelector('#editor');
+    const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    const waitFor = async (read, label, timeout = 20_000) => {
+      const deadline = performance.now() + timeout;
+      while (performance.now() < deadline) {
+        const value = read();
+        if (value) return value;
+        await delay(50);
+      }
+      throw new Error(`Timed out waiting for ${label}.`);
+    };
+    const loadEditor = async () => {
+      const loaded = new Promise((resolve, reject) => {
+        editor.addEventListener('load', resolve, { once: true });
+        editor.addEventListener('error', () => reject(new Error('Editor iframe failed to load.')), { once: true });
+      });
+      if (!editor.getAttribute('src')) editor.src = '../../index.html';
+      else editor.contentWindow.location.reload();
+      await loaded;
+      await waitFor(
+        () => editor.contentDocument.querySelector('#loading')?.classList.contains('hidden'),
+        'WebGPU editor startup',
+      );
+    };
+
+    try {
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('haiyue-voxel-editor');
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => reject(new Error('IndexedDB reset was blocked.'));
+      });
+      await loadEditor();
+      let editorDocument = editor.contentDocument;
+      for (const id of ['shape-min-x', 'shape-min-y', 'shape-min-z', 'shape-max-x', 'shape-max-y', 'shape-max-z']) {
+        editorDocument.getElementById(id).value = '0';
+      }
+      editorDocument.getElementById('generate-shape').click();
+      await waitFor(() => editorDocument.getElementById('voxel-count').textContent === '1', 'voxel creation');
+      editorDocument.getElementById('save-project').click();
+      await waitFor(() => editorDocument.getElementById('project-unsaved').hidden, 'browser save');
+
+      await loadEditor();
+      editorDocument = editor.contentDocument;
+      await waitFor(() => editorDocument.getElementById('voxel-count').textContent === '1', 'saved project restoration');
+      if (!editorDocument.getElementById('recovery-banner').classList.contains('visible')) {
+        result.textContent = JSON.stringify({
+          fixture: 'voxel-editor-persistence-smoke',
+          restoredVoxelCount: 1,
+          restoredAutomatically: true,
+        });
+        result.dataset.status = 'passed';
+      } else {
+        throw new Error('A clean saved project incorrectly opened the crash-recovery prompt.');
+      }
+    } catch (error) {
+      result.textContent = JSON.stringify({
+        fixture: 'voxel-editor-persistence-smoke',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      result.dataset.status = 'failed';
+    }
+  </script>
+</body>
+</html>

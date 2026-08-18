@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voxel editor viewport smoke</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0e131b; }
+    #viewport { display: block; width: 800px; height: 600px; }
+    #result { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="viewport" width="800" height="600"></canvas>
+  <pre id="result"></pre>
+  <script type="module">
+    import { VoxelDocument, voxelKey } from '../../dist/model.js';
+    import { VoxelRenderer } from '../../dist/voxel-renderer.js';
+
+    const result = document.querySelector('#result');
+    const canvas = document.querySelector('#viewport');
+    const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+    const fail = message => { throw new Error(message); };
+
+    try {
+      const project = new VoxelDocument({ x: 12, y: 12, z: 12 });
+      project.setVoxels([
+        { x: 4, y: 0, z: 4 },
+        { x: 5, y: 0, z: 4 },
+        { x: 4, y: 3, z: 4 },
+        { x: 2, y: 2, z: 2 },
+        { x: 2, y: 2, z: 8 },
+        { x: 6, y: 0, z: 6 },
+      ], '#69d2e7');
+      const module = project.createModule('Smoke module', { x: 2, y: 2, z: 2 });
+      project.setVoxels([
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ], '#f26b5e');
+      project.editScene();
+      const instance = project.addModuleInstance(module.id, { x: 6, y: 0, z: 6 });
+
+      const renderer = await VoxelRenderer.create(canvas, project);
+      await frame();
+      await frame();
+
+      const conflicts = project.getModuleInstanceCollisions(instance.id);
+      if (conflicts.length !== 1 || conflicts[0].x !== 6 || conflicts[0].y !== 0 || conflicts[0].z !== 6) {
+        fail('Module conflict coordinates were not composed correctly.');
+      }
+      renderer.setConflictHighlights(conflicts);
+      renderer.refreshVoxels();
+      const conflictState = renderer._renderedVoxels.get('6,0,6');
+      if (!conflictState?.conflicted) fail('Conflict highlight was not uploaded to the rendered voxel state.');
+      renderer.setConflictHighlights([]);
+      renderer.refreshVoxels();
+      renderer.setOnionSkin([{ x: 5, y: 0, z: 5 }], [{ x: 7, y: 0, z: 7 }]);
+      if (renderer._onionPreviousBatch.material.activeInstanceCount !== 1
+        || renderer._onionNextBatch.material.activeInstanceCount !== 1) {
+        fail('Onion Skin overlays were not uploaded to their independent render batches.');
+      }
+      renderer.clearOnionSkin();
+
+      renderer.setPrimaryDragEditing(false);
+      const cameraBefore = {
+        theta: renderer.cameraTransform.theta,
+        phi: renderer.cameraTransform.phi,
+      };
+      // Synthetic pointer events are not registered as active OS pointers in headless Chrome.
+      // Keep pointer capture from rejecting them while still exercising the real event listeners.
+      canvas.setPointerCapture = () => {};
+      canvas.releasePointerCapture = () => {};
+      canvas.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 400, clientY: 300,
+      }));
+      canvas.dispatchEvent(new PointerEvent('pointermove', {
+        pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: 510, clientY: 245,
+      }));
+      canvas.dispatchEvent(new PointerEvent('pointerup', {
+        pointerId: 7, pointerType: 'mouse', button: 0, buttons: 0, clientX: 510, clientY: 245,
+      }));
+      await frame();
+      const cameraMoved = Math.abs(renderer.cameraTransform.theta - cameraBefore.theta) > 1e-5
+        || Math.abs(renderer.cameraTransform.phi - cameraBefore.phi) > 1e-5;
+      if (!cameraMoved) fail('Pointer orbit did not update the camera transform.');
+
+      renderer.setCameraPreset('front');
+      if (renderer.projectionType !== 'orthographic') fail('Preset view did not switch to orthographic projection.');
+      if (Math.abs(renderer.cameraTransform.theta) > 1e-5) fail('Front preset did not align the camera.');
+      if (!renderer.frameVoxels([{ x: 4, y: 3, z: 4 }])) fail('Frame Selected rejected a voxel.');
+      const framedTarget = renderer.cameraTransform.target;
+      if (Math.abs(framedTarget[0] + 1.5) > 1e-5 || Math.abs(framedTarget[1] - 3.5) > 1e-5) {
+        fail('Frame Selected did not center the requested voxel.');
+      }
+      renderer.frameAll();
+
+      const occludedCenter = renderer._projectWorld([-3.5, 2.5, 2.5]);
+      if (!occludedCenter) fail('Could not project the depth-selection fixture.');
+      const depthRect = [
+        occludedCenter.x - 2, occludedCenter.y - 2,
+        occludedCenter.x + 2, occludedCenter.y + 2,
+      ];
+      const throughDepth = renderer.voxelsInScreenRect(...depthRect, 'through')
+        .filter(voxel => voxel.x === 2 && voxel.y === 2);
+      const visibleDepth = renderer.voxelsInScreenRect(...depthRect, 'visible')
+        .filter(voxel => voxel.x === 2 && voxel.y === 2);
+      if (throughDepth.length !== 2) fail(`Through selection expected 2 aligned voxels, got ${throughDepth.length}.`);
+      if (visibleDepth.length !== 1) fail(`Visible-only selection expected 1 aligned voxel, got ${visibleDepth.length}.`);
+
+      const depthVoxel = throughDepth.find(voxel => voxel.z === 8) ?? throughDepth[0];
+      const depthKey = voxelKey(depthVoxel.x, depthVoxel.y, depthVoxel.z);
+      renderer.setSelection(new Set([depthKey]));
+      renderer.setSelectionTransformGizmo('rotate', {
+        x: depthVoxel.x + 0.5, y: depthVoxel.y + 0.5, z: depthVoxel.z + 0.5,
+      });
+      renderer.refreshVoxels();
+      await frame();
+      if (!renderer._selectionGizmoCenter) fail('Selection transform Gizmo was not built.');
+      const ringPoint = renderer._projectWorld(renderer._selectionRingPoints('z', 48)[5]);
+      if (!ringPoint || !renderer.pickSelectionGizmo(ringPoint.x, ringPoint.y)) {
+        fail('Selection rotation ring could not be picked.');
+      }
+      const gizmoCenter = renderer._projectWorld(renderer._selectionGizmoCenter);
+      if (!gizmoCenter || renderer.selectionGizmoRotationTurns(
+        'z', gizmoCenter.x + 30, gizmoCenter.y, gizmoCenter.x, gizmoCenter.y - 30,
+      ) !== 1) fail('Selection rotation ring did not quantize a quarter turn.');
+      renderer.setSelectionTransformPreview([{ ...depthVoxel, x: depthVoxel.x + 1 }]);
+      if (renderer._brushPreviewBatch.material.activeInstanceCount !== 1) fail('Selection ghost preview was not uploaded.');
+      renderer.clearBrushPreview();
+
+      renderer.setSliceState({ axis: 'y', index: 0, mode: 'single', workPlaneEnabled: true });
+      renderer.refreshVoxels();
+      await frame();
+      const sliceRect = canvas.getBoundingClientRect();
+      const sliced = renderer.voxelsInScreenRect(sliceRect.left, sliceRect.top, sliceRect.right, sliceRect.bottom);
+      if (sliced.some(voxel => voxel.y !== 0)) fail('Single-layer slice exposed a voxel outside the active layer.');
+      renderer.setSliceState({ axis: 'y', index: 0, mode: 'context', workPlaneEnabled: true });
+      renderer.refreshVoxels();
+      await frame();
+
+      const selectedKey = voxelKey(4, 0, 4);
+      if (!renderer.setSelection(new Set([selectedKey]))) fail('Selection state was not accepted.');
+      renderer.refreshVoxels();
+      const rect = canvas.getBoundingClientRect();
+      const visible = renderer.voxelsInScreenRect(rect.left, rect.top, rect.right, rect.bottom);
+      if (!visible.some(voxel => voxelKey(voxel.x, voxel.y, voxel.z) === selectedKey)) {
+        fail('Full-viewport selection could not find the selected voxel after camera rotation.');
+      }
+
+      if (!renderer.setModuleInstanceGizmo(instance.id, 'move')) fail('Module Gizmo state was not accepted.');
+      renderer.refreshVoxels();
+      await frame();
+      const center = renderer._gizmoCenter;
+      if (!center) fail('Module Gizmo was not built for the selected instance.');
+      const axes = ['x', 'y', 'z'];
+      const pickedAxes = axes.map(axis => {
+        const endpoint = renderer._projectWorld(renderer._gizmoEndpoint(axis));
+        return endpoint ? renderer.pickModuleGizmo(endpoint.x, endpoint.y) : null;
+      }).filter(Boolean);
+      if (pickedAxes.length === 0) fail('Module Gizmo could not be picked after selection and camera interaction.');
+
+      result.textContent = JSON.stringify({
+        fixture: 'voxel-editor-viewport-smoke',
+        cameraMoved,
+        visibleVoxelCount: visible.length,
+        pickedAxes: [...new Set(pickedAxes)],
+        sliceVoxelCount: sliced.length,
+        presetProjection: renderer.projectionType,
+        visibleDepthCount: visibleDepth.length,
+        throughDepthCount: throughDepth.length,
+      });
+      result.dataset.status = 'passed';
+    } catch (error) {
+      result.textContent = JSON.stringify({
+        fixture: 'voxel-editor-viewport-smoke',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      result.dataset.status = 'failed';
+    }
+  </script>
+</body>
+</html>

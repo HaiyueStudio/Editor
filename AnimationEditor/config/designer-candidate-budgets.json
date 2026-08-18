@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate",
+  "project": {
+    "nodes": 1000,
+    "tracks": 2000,
+    "keyframes": 10000,
+    "particleCapacity": 100000,
+    "resources": 256
+  },
+  "interactionMs": {
+    "scrubP95": 16,
+    "dragP95": 50,
+    "compile": 3000,
+    "previewReady": 5000,
+    "startup": 5000,
+    "longTask": 50
+  },
+  "memory": {
+    "heapGrowthBytes": 100663296
+  },
+  "bundle": {
+    "javascriptBytes": 7340032,
+    "sourceMapBytes": 7340032
+  },
+  "notes": [
+    "Candidate budgets are local G09 evidence, not formal release baselines.",
+    "Browser memory is asserted only when performance.memory is available.",
+    "Formal promotion belongs to M02 on a clean pinned device/browser revision."
+  ]
+}

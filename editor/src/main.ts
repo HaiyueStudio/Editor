@@ -1,0 +1,16 @@
+import { defineHaiyueUI } from '@haiyue/ui';
+import { defineEditorEntityTreeNode } from './ui/entityTreeNode';
+
+defineHaiyueUI();
+defineEditorEntityTreeNode();
+
+// Let the custom-element shell upgrade and paint before loading the editor
+// application closure. Optional component runtimes are activated even later,
+// when the project or an explicit user action requires them.
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    void import('./infra/app/mainEditorApp')
+      .then(module => module.runMainEditorApp())
+      .catch(error => console.error('Failed to start the editor application.', error));
+  });
+});

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>Haiyue Animation Editor · Native 3D</title>
+  <link rel="stylesheet" href="./native3d.css" />
+</head>
+<body>
+  <div class="native-app">
+    <header class="native-toolbar" aria-label="原生 3D 工程操作">
+      <a class="back" href="./index.html" aria-label="返回 2D 工作区">←</a>
+      <strong>Animation Editor</strong><span class="chip">HYA · 3D</span>
+      <label><span data-copy="template">模板</span><select id="template-select"></select></label>
+      <button id="new-project" type="button" data-copy="new">新建</button>
+      <button id="open-project" type="button" data-copy="open">打开</button>
+      <button id="save-project" type="button" data-copy="save">保存</button>
+      <button id="undo" type="button" disabled aria-label="撤销">↶</button>
+      <button id="redo" type="button" disabled aria-label="重做">↷</button>
+      <button id="play" type="button" aria-pressed="false" data-copy="play">▶ 播放</button>
+      <span class="spacer"></span>
+      <span id="project-name"></span>
+      <button id="locale" type="button" aria-label="切换语言">EN</button>
+      <button id="export-hya" type="button" data-copy="exportHya">导出 HYA</button>
+      <button id="export-package" type="button" data-copy="exportPackage">导出交付包</button>
+    </header>
+    <main class="native-workspace">
+      <aside class="native-panel hierarchy">
+        <header><strong data-copy="hierarchy">节点层级</strong><button id="add-box" type="button" title="添加立方体">＋</button></header>
+        <div id="node-list" role="tree" aria-label="3D 节点层级"></div>
+      </aside>
+      <section class="native-preview" aria-label="原生 3D WebGPU 预览">
+        <header><strong data-copy="preview">Exact WebGPU 预览</strong><span id="gpu-status">WEBGPU</span></header>
+        <canvas id="preview-canvas" width="960" height="600" tabindex="0" aria-label="3D 动画预览；拖动旋转，滚轮缩放"></canvas>
+        <footer><span data-copy="orbit">拖动 Orbit · 滚轮缩放</span><span id="preview-stats"></span></footer>
+      </section>
+      <aside class="native-panel inspector">
+        <header><strong data-copy="properties">属性</strong><span id="selection-kind">COMPOSITION</span></header>
+        <div id="inspector"></div>
+      </aside>
+      <section class="native-timeline">
+        <header><strong data-copy="timeline">时间轴</strong><span id="timecode">0.000s</span></header>
+        <div id="track-list" aria-label="3D 动画轨道"></div>
+      </section>
+    </main>
+    <footer class="native-status">
+      <span id="status" role="status" aria-live="polite">就绪</span>
+      <div id="task" hidden><progress id="task-value" max="1" value="0"></progress><span id="task-label"></span><button id="cancel-task" type="button">取消</button></div>
+      <span class="spacer"></span><span id="stats"></span>
+    </footer>
+  </div>
+  <input id="project-file" type="file" accept=".hya-project.json,application/json" hidden />
+  <script type="module" src="./dist/native3d.js"></script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G03 SpriteSheet 5×5 browser fixture</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.4 system-ui, sans-serif; background: #090d14; color: #d7dde8; }
+      body { margin: 0; padding: 20px; }
+      main { display: grid; grid-template-columns: 300px 220px 300px; gap: 18px; align-items: start; }
+      h1, #progress, #result { grid-column: 1 / -1; }
+      h1 { margin: 0; font-size: 18px; }
+      section { padding: 11px; border: 1px solid #293142; border-radius: 8px; background: #0e141f; }
+      h2 { margin: 0 0 8px; font-size: 13px; color: #aab6ca; }
+      canvas { display: block; border: 1px solid #364159; background: #080c13; image-rendering: pixelated; }
+      #atlas { width: 276px; height: 276px; }
+      #preview { width: 196px; height: 196px; }
+      #runtime { width: 276px; height: 276px; }
+      #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="failed"] { color: #ff7b86; }
+      [data-status="passed"] { color: #73dc9d; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G03 SpriteSheet 导入、切片、序列、导出与 WebGPU 播放</h1>
+      <section><h2>固定 5×5 图集与切片</h2><canvas id="atlas" width="276" height="276"></canvas></section>
+      <section><h2>Scrub / Onion-skin</h2><canvas id="preview" width="196" height="196"></canvas></section>
+      <section><h2>同一 HYA 字节的 WebGPU 预览</h2><canvas id="runtime" width="276" height="276"></canvas></section>
+      <div id="progress">正在加载 G03 模块…</div>
+      <pre id="result"></pre>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.spritesheet-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G03 浏览器测试 bundle。');
+      }
+      const domain = await import(`./${bundleDirectory}/spritesheet-domain.js`);
+      const { SpriteSheetAuthoringAdapter } = await import(`./${bundleDirectory}/spritesheet-adapters.js`);
+      const { AnimationEditorRuntimePreview } = await import(`./${bundleDirectory}/runtime-preview.js`);
+      const {
+        cloneAnimationEditorProject,
+        compileAnimationEditorProject,
+        createAnimationEditorAssetFromFile,
+        createBasicAnimationNode,
+        createEmptyAnimationEditorProject,
+        parseAnimationEditorProject,
+        serializeAnimationEditorProject,
+      } = await import('../dist-test/testing.js');
+
+      const resultNode = document.querySelector('#result');
+      const progress = document.querySelector('#progress');
+      const atlasCanvas = document.querySelector('#atlas');
+      const previewCanvas = document.querySelector('#preview');
+      const runtimeCanvas = document.querySelector('#runtime');
+      const gpuErrors = [];
+      const runtime = new AnimationEditorRuntimePreview(runtimeCanvas, { onError: error => gpuErrors.push(String(error)) });
+      let adapter = null;
+
+      try {
+        assert(runtime.supported, '浏览器必须提供 WebGPU');
+        progress.textContent = '导入固定 5×5 图集';
+        const { blob, colors } = await createFiveByFiveAtlas();
+        let project = cloneAnimationEditorProject(createEmptyAnimationEditorProject({
+          width: 256, height: 256, duration: 3, frameRate: 30, name: 'G03 SpriteSheet',
+        }));
+        const asset = await createAnimationEditorAssetFromFile(
+          new File([blob], 'g03-fixed-5x5.png', { type: 'image/png' }), project,
+        );
+        assert(asset.delivery.width === 92 && asset.delivery.height === 92, '导入读取了 92×92 图像尺寸');
+        project.assets.push(asset);
+        const sprite = createBasicAnimationNode(project, 'sprite', { imageAssetId: asset.id });
+        sprite.components[0].component.size = [160, 160];
+        project.nodes.push(sprite);
+        const component = sprite.components[0];
+
+        progress.textContent = '建立 regular-grid frame-map 并选择帧';
+        const frameMap = domain.createRegularSpriteSheetFrameMap(asset.id, 92, 92, {
+          columns: 5, rows: 5, margin: 2, spacing: 2,
+        });
+        const inference = domain.inferSpriteSheetGridCandidates(92, 92, component.component.uvRect);
+        assert(inference.requiresUserInput && inference.candidates.every(candidate => candidate.requiresConfirmation), '自动推断仅返回待确认候选');
+        let exactCompilation = null;
+        let exactPreviewRequests = 0;
+        let commits = 0;
+        let sequenceChanges = 0;
+        adapter = new SpriteSheetAuthoringAdapter(atlasCanvas, previewCanvas, {
+          project: () => project,
+          nodeId: sprite.id,
+          componentId: component.id,
+          onCommit: next => { project = next; commits++; },
+          onSequenceChange: () => { sequenceChanges++; },
+          onExactPreviewRequested: generated => {
+            exactCompilation = compileAnimationEditorProject(generated.project);
+            exactPreviewRequests++;
+          },
+        });
+        adapter.setFrameMap(frameMap);
+        await adapter.replaceImage(blob);
+        adapter.setOnionSkin(false);
+        assert(adapter.metrics.resource.liveImages === 1 && adapter.metrics.resource.peakLiveImages === 1, '只保留一张解码图集');
+        pointer(atlasCanvas, 138, 138);
+        assert(adapter.selectedFrameId === 'frame-13', '网格点击选择中间帧');
+        assert(atlasCanvas.getAttribute('role') === 'grid' && atlasCanvas.tabIndex === 0, '切片画布支持键盘与 ARIA');
+
+        progress.textContent = '生成 forward 序列、重排并 scrub';
+        const forward = domain.createSpriteSheetSequence(frameMap, {
+          start: 0, end: 24, fps: 10, loop: true, mode: 'forward',
+        });
+        adapter.setSequence(forward);
+        adapter.reorder(24, 1);
+        assert(sequenceChanges === 1 && adapter.sequence.frames[1].frameId === 'frame-25', '序列帧支持重排');
+        adapter.setSequence(forward);
+        const forwardResult = adapter.generate();
+        assert(commits === 1 && exactPreviewRequests === 1 && exactCompilation, '生成是单次提交并请求 exact HYA 预览');
+        assert(forwardResult.schedule.frames.every(frame => Number.isInteger(frame.time * 30)), '所有关键帧时间按 30fps snap');
+        assert(project.timeline.tracks[0].keyframes.every(key => key.interpolation === 'step'), 'UV track 保持 Step-only');
+        assert(project.assets.length === 1 && exactCompilation.parsed.resources.length === 1, '项目与 HYA 均只引用一张图像');
+
+        const authoringPixels = {};
+        for (const [label, time, frameIndex] of [
+          ['first', 0, 0], ['middle', 1.2, 12], ['last', 2.4, 24],
+        ]) {
+          assert(adapter.scrub(time) === `frame-${frameIndex + 1}`, `${label} scrub 选择正确帧`);
+          const actual = sample2d(previewCanvas);
+          assertColor(actual, colors[frameIndex], `authoring ${label}`);
+          authoringPixels[label] = actual;
+        }
+        adapter.setOnionSkin(true);
+        adapter.scrub(1.2);
+        const onionPixel = sample2d(previewCanvas);
+        assert(!colorsClose(onionPixel, colors[12], 8), 'onion-skin 将前后帧与当前帧合成显示');
+        adapter.setOnionSkin(false);
+
+        progress.textContent = '保存重开、导出并用相同 HYA 字节播放';
+        const savedIds = project.timeline.tracks[0].keyframes.map(key => key.id);
+        const reopened = parseAnimationEditorProject(JSON.parse(serializeAnimationEditorProject(project)));
+        assert(equal(savedIds, reopened.timeline.tracks[0].keyframes.map(key => key.id)), '保存重开保持关键帧 identity');
+        const compilation = compileAnimationEditorProject(reopened);
+        assert(new Uint8Array(compilation.binary).byteLength > 0, '生成了 HYA 二进制');
+        assert(compilation.parsed.source === 'binary', '预览输入来自编码后重新解析的 HYA 字节');
+        await runtime.load(compilation, { autoplay: false });
+        const runtimePixels = {};
+        for (const [label, time, frameIndex] of [
+          ['first', 0, 0], ['middle', 1.2, 12], ['last', 2.4, 24],
+        ]) {
+          runtimePixels[label] = await expectRuntimeColor(afterKey(time), colors[frameIndex], `runtime ${label}`);
+        }
+        runtime.play();
+        await frames(4);
+        runtime.pause();
+        assert(runtime.currentTime > 0, '导出的 HYA 可以播放');
+
+        progress.textContent = '验证 reverse 边界';
+        const reverse = domain.createSpriteSheetSequence(frameMap, {
+          start: 0, end: 24, fps: 10, loop: false, mode: 'reverse',
+        });
+        adapter.setSequence(reverse);
+        adapter.generate();
+        const reverseAuthoringPixels = {};
+        for (const [label, time, frameIndex] of [['first', 0, 24], ['last', 2.4, 0]]) {
+          adapter.scrub(time);
+          reverseAuthoringPixels[label] = sample2d(previewCanvas);
+          assertColor(reverseAuthoringPixels[label], colors[frameIndex], `authoring reverse ${label}`);
+        }
+        await runtime.load(exactCompilation, { autoplay: false });
+        const reversePixels = {
+          first: await expectRuntimeColor(0, colors[24], 'reverse first boundary'),
+          last: await expectRuntimeColor(afterKey(2.4), colors[0], 'reverse last boundary'),
+        };
+
+        progress.textContent = '验证 ping-pong 转折和回程边界';
+        const pingPong = domain.createSpriteSheetSequence(frameMap, {
+          start: 0, end: 4, fps: 10, loop: false, mode: 'ping-pong',
+        });
+        adapter.setSequence(pingPong);
+        adapter.generate();
+        const pingPongAuthoringPixels = {};
+        for (const [label, time, frameIndex] of [['start', 0, 0], ['turn', 0.4, 4], ['return', 0.8, 0]]) {
+          adapter.scrub(time);
+          pingPongAuthoringPixels[label] = sample2d(previewCanvas);
+          assertColor(pingPongAuthoringPixels[label], colors[frameIndex], `authoring ping-pong ${label}`);
+        }
+        await runtime.load(exactCompilation, { autoplay: false });
+        const pingPongPixels = {
+          start: await expectRuntimeColor(0, colors[0], 'ping-pong start'),
+          turn: await expectRuntimeColor(afterKey(0.4), colors[4], 'ping-pong turn'),
+          return: await expectRuntimeColor(afterKey(0.8), colors[0], 'ping-pong return'),
+        };
+
+        await frames(2);
+        assert(gpuErrors.length === 0, `GPU validation error 必须为 0：${gpuErrors.join('; ')}`);
+        assert(adapter.metrics.pixelCopies === 0 && adapter.metrics.perFrameResources === 0, 'scrub/onion/reorder 不复制纹理字节或创建逐帧资源');
+        const payload = {
+          status: 'passed',
+          fixedGrid: '5x5',
+          importedImage: [asset.delivery.width, asset.delivery.height],
+          frameCount: frameMap.frames.length,
+          sequenceModes: ['forward', 'reverse', 'ping-pong'],
+          authoringPixels,
+          onionPixel,
+          runtimePixels,
+          reverseAuthoringPixels,
+          reversePixels,
+          pingPongAuthoringPixels,
+          pingPongPixels,
+          keyCount: savedIds.length,
+          exactPreviewRequests,
+          commits,
+          resources: exactCompilation.parsed.resources.length,
+          resourceMetrics: adapter.metrics.resource,
+          pixelCopies: adapter.metrics.pixelCopies,
+          perFrameResources: adapter.metrics.perFrameResources,
+          gpuValidationErrors: gpuErrors.length,
+          runtimeVisuals: runtime.animation?.nodes.length ?? 0,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), gpuErrors,
+        });
+        resultNode.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      }
+
+      async function createFiveByFiveAtlas() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 92;
+        canvas.height = 92;
+        const context = canvas.getContext('2d');
+        context.fillStyle = 'rgb(3 5 8)';
+        context.fillRect(0, 0, 92, 92);
+        const colors = Array.from({ length: 25 }, (_unused, index) => [
+          32 + index * 53 % 192,
+          32 + index * 97 % 192,
+          32 + index * 149 % 192,
+        ]);
+        colors.forEach((color, index) => {
+          context.fillStyle = `rgb(${color.join(' ')})`;
+          const column = index % 5;
+          const row = Math.floor(index / 5);
+          context.fillRect(2 + column * 18, 2 + row * 18, 16, 16);
+        });
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        assert(blob, '固定图集 PNG 编码成功');
+        return { blob, colors };
+      }
+
+      async function expectRuntimeColor(time, expected, label) {
+        runtime.seek(time);
+        await frames(5);
+        const actual = await sampleWebGpuCanvas(runtimeCanvas);
+        const linearExpected = expected.map(srgbByteToLinearByte);
+        if (colorsClose(actual, linearExpected, 5)) return actual;
+        throw new Error(`${label} 像素不一致：expected-linear=${linearExpected.join(',')} actual=${actual.join(',')}`);
+      }
+
+      async function sampleWebGpuCanvas(canvas) {
+        const x = Math.floor(canvas.width / 2);
+        const y = Math.floor(canvas.height / 2);
+        const bitmap = await createImageBitmap(canvas, x, y, 1, 1);
+        const target = document.createElement('canvas');
+        target.width = 1;
+        target.height = 1;
+        target.getContext('2d', { willReadFrequently: true }).drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return [...target.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      }
+
+      function sample2d(canvas) {
+        return [...canvas.getContext('2d', { willReadFrequently: true })
+          .getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data.slice(0, 3)];
+      }
+
+      function assertColor(actual, expected, label) {
+        if (!colorsClose(actual, expected, 8)) throw new Error(`${label} 像素不一致：expected=${expected.join(',')} actual=${actual.join(',')}`);
+      }
+
+      function colorsClose(actual, expected, tolerance = 28) {
+        return actual.every((value, channel) => Math.abs(value - expected[channel]) <= tolerance);
+      }
+
+      function srgbByteToLinearByte(value) {
+        const normalized = value / 255;
+        const linear = normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
+        return Math.round(linear * 255);
+      }
+
+      function afterKey(time) { return time === 0 ? 0 : time + 1e-4; }
+
+      function pointer(canvas, x, y) {
+        const bounds = canvas.getBoundingClientRect();
+        canvas.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1,
+          clientX: bounds.left + x, clientY: bounds.top + y,
+        }));
+      }
+
+      function frames(count) {
+        return new Promise(resolve => {
+          const step = () => count-- <= 0 ? resolve() : requestAnimationFrame(step);
+          requestAnimationFrame(step);
+        });
+      }
+
+      function equal(left, right) { return JSON.stringify(left) === JSON.stringify(right); }
+      function assert(condition, message) { if (!condition) throw new Error(message); }
+    </script>
+  </body>
+</html>

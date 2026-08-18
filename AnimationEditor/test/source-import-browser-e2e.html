@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G07 来源导入与 Composition 浏览器闭环</title>
+    <style>
+      :root { color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; background: #0b1020; color: #dce7ff; }
+      body { margin: 0; padding: 28px; }
+      main { max-width: 820px; margin: auto; }
+      h1 { font-size: 20px; }
+      .card { border: 1px solid #2a3657; border-radius: 10px; padding: 16px; background: #111a2d; }
+      #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+      [data-status="passed"] { color: #74df9d; }
+      [data-status="failed"] { color: #ff8790; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>G07 真实 HTTP 来源导入</h1>
+      <div class="card">
+        <div id="progress">正在加载导入模块…</div>
+        <pre id="result"></pre>
+      </div>
+    </main>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.source-import-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) {
+        throw new Error('缺少 G07 浏览器测试 bundle。');
+      }
+      const g07 = await import(`./${bundleDirectory}/entry.js`);
+      const progress = document.querySelector('#progress');
+      const resultNode = document.querySelector('#result');
+      const requests = [];
+      const nativeFetch = globalThis.fetch.bind(globalThis);
+      globalThis.fetch = async (...args) => {
+        const response = await nativeFetch(...args);
+        requests.push({ url: response.url, status: response.status, protocol: new URL(response.url).protocol });
+        return response;
+      };
+      let objectUrlCalls = 0;
+      const nativeCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (...args) => { objectUrlCalls++; return nativeCreateObjectURL(...args); };
+      const coordinators = [];
+
+      try {
+        const fixtureBase = new URL('./source-import-fixtures/', location.href).href;
+        progress.textContent = '通过 package base path 导入真实 Lottie precomp';
+        const lottieCoordinator = new g07.SourceImportCoordinator();
+        coordinators.push(lottieCoordinator);
+        const lottie = await lottieCoordinator.import({
+          kind: 'lottie', input: { kind: 'url', url: 'real-precomp.json' }, packageBaseUrl: fixtureBase,
+        });
+        assert(lottie.source.family === '2d' && lottie.source.project.nodes.length > 0, 'Lottie 映射为可编辑 2D 工程');
+        assert(lottie.provenance.sourceUri.endsWith('/source-import-fixtures/real-precomp.json'), 'Lottie provenance 保留最终 HTTP URL');
+
+        progress.textContent = '通过真实 HTTP 导入 SpriteSheet 并交给 G03';
+        const spriteCoordinator = new g07.SourceImportCoordinator();
+        coordinators.push(spriteCoordinator);
+        const sprite = await spriteCoordinator.import({
+          kind: 'spritesheet', input: { kind: 'url', url: 'atlas.svg' }, packageBaseUrl: fixtureBase,
+          adapter: spriteAdapter(g07),
+        });
+        assert(sprite.source.family === '2d' && sprite.source.project.timeline.tracks.length === 1, 'SpriteSheet 进入 2D 工程');
+        assert(sprite.source.project.assets[0].delivery.uri.endsWith('/source-import-fixtures/atlas.svg'), 'Sprite 交付 URI 是 HTTP URL');
+        const spriteDelivery = g07.compileAnimationEditorProject(sprite.source.project);
+        assert(spriteDelivery.parsed.resources[0].uri.startsWith(location.origin), 'Sprite HYA 保留 package HTTP 资源');
+
+        progress.textContent = '通过真实 HTTP 导入 glTF 并交给 G06';
+        const gltfCoordinator = new g07.SourceImportCoordinator();
+        coordinators.push(gltfCoordinator);
+        const gltfUrl = new URL('../../node_modules/@haiyue/extensions/test/fixtures/gltf/animation-characterization.gltf', location.href).href;
+        const gltf = await gltfCoordinator.import({
+          kind: 'gltf', input: { kind: 'url', url: gltfUrl }, adapter: gltfAdapter(g07),
+        });
+        assert(gltf.source.family === '3d' && gltf.source.project.mode === '3d', 'glTF 进入独立 3D 工程');
+        assert(gltf.source.project.timeline.clips.length === 2, 'G06 delegate 生成两个可编辑 clip');
+        const gltfDelivery = g07.compileNative3dProject(gltf.source.project);
+        assert(gltfDelivery.parsed.source === 'binary', '3D 工程完成 HYA 交付闭环');
+
+        progress.textContent = '保存、重开、导出并重新按 delivery data 打开';
+        let workspace = g07.createReusableCompositionWorkspace({ id: 'browser-g07', name: 'Browser G07', root: lottie.source });
+        const workspaceText = g07.serializeReusableCompositionWorkspace(workspace);
+        workspace = g07.parseReusableCompositionWorkspace(workspaceText);
+        assert(g07.serializeReusableCompositionWorkspace(workspace) === workspaceText, 'Composition workspace 字节确定');
+        const lottieProject = g07.instantiateReusableComposition(workspace).project;
+        const firstDelivery = g07.compileAnimationEditorProject(lottieProject);
+        const secondDelivery = g07.compileAnimationEditorProject(g07.parseAnimationEditorProject(g07.serializeAnimationEditorProject(lottieProject)));
+        assert(bytesEqual(firstDelivery.binary, secondDelivery.binary), '保存重开后的 HYA 字节确定');
+        const hyaCoordinator = new g07.SourceImportCoordinator();
+        coordinators.push(hyaCoordinator);
+        const hya = await hyaCoordinator.import({ kind: 'hya', input: { kind: 'bytes', bytes: firstDelivery.binary } });
+        assert(hya.deliveryData.authoringMetadataRecovered === false && hya.source.authoring === 'limited-delivery', 'HYA 明确标为有限工程');
+
+        await Promise.all(coordinators.map(coordinator => coordinator.close()));
+        assert(coordinators.every(coordinator => !coordinator.active), '关闭后没有 active import');
+        assert(objectUrlCalls === 0, '真实资源闭环没有创建 object URL');
+        assert(requests.length === 3, `预期三次来源 HTTP 请求，实际 ${requests.length}`);
+        assert(requests.every(request => request.protocol === 'http:' && request.status === 200), '所有来源均由真实 HTTP 200 返回');
+        const payload = {
+          status: 'passed',
+          requestCount: requests.length,
+          requests,
+          families: [lottie.source.family, sprite.source.family, gltf.source.family],
+          lottieNodes: lottie.source.project.nodes.length,
+          spriteKeys: sprite.source.project.timeline.tracks[0].keyframes.length,
+          gltfClips: gltf.source.project.timeline.clips.length,
+          deterministicBytes: firstDelivery.binary.byteLength,
+          deliveryAuthoringRecovered: hya.deliveryData.authoringMetadataRecovered,
+          objectUrlCalls,
+          activeImports: coordinators.filter(coordinator => coordinator.active).length,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+        progress.textContent = 'Passed';
+      } catch (error) {
+        await Promise.allSettled(coordinators.map(coordinator => coordinator.close()));
+        resultNode.textContent = JSON.stringify({
+          status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), requests, objectUrlCalls,
+        });
+        resultNode.dataset.status = 'failed';
+        progress.textContent = 'Failed';
+      } finally {
+        globalThis.fetch = nativeFetch;
+        URL.createObjectURL = nativeCreateObjectURL;
+      }
+
+      function spriteAdapter(api) {
+        return {
+          kind: 'spritesheet', importer: 'G03/SpriteSheet', sourceFormat: 'spritesheet-grid',
+          import(payload, context) {
+            let project = api.cloneAnimationEditorProject(api.createEmptyAnimationEditorProject({
+              id: context.sourceId, name: 'HTTP SpriteSheet', width: 64, height: 64, duration: 1, frameRate: 4,
+            }));
+            project.assets.push({
+              id: 'atlas', name: 'atlas.svg', type: 'image', source: { kind: 'external', uri: payload.sourceUri },
+              delivery: { uri: payload.sourceUri, mimeType: 'image/svg+xml', width: 4, height: 2, colorSpace: 'srgb' },
+            });
+            const node = api.createBasicAnimationNode(project, 'sprite', { imageAssetId: 'atlas' });
+            project.nodes.push(node);
+            const map = api.createRegularSpriteSheetFrameMap('atlas', 4, 2, { columns: 2, rows: 1 });
+            const sequence = api.createSpriteSheetSequence(map, { start: 0, end: 1, fps: 2, loop: true, mode: 'forward' });
+            project = api.generateSpriteSheetProjectAnimation(project, node.id, node.components[0].id, map, sequence).project;
+            return { family: '2d', project };
+          },
+        };
+      }
+
+      function gltfAdapter(api) {
+        return {
+          kind: 'gltf', importer: 'G06/glTF', sourceFormat: 'gltf-2.0',
+          import(payload, context) {
+            const gltf = JSON.parse(payload.text);
+            let project = api.createNative3dProject({ id: context.sourceId, name: 'HTTP glTF', duration: 1, frameRate: 30 });
+            project = api.addNative3dAsset(project, {
+              id: 'model', name: 'animation-characterization.gltf', type: 'model',
+              source: { kind: 'external', uri: payload.sourceUri },
+              delivery: { uri: payload.sourceUri, mimeType: 'model/gltf+json' },
+              provenance: { importer: 'gltf', sourceFormat: 'gltf-2.0', sourceHash: context.provenance.sourceHash },
+            });
+            project = api.addNative3dModel(project, { nodeId: 'character', componentId: 'character:model', resource: 'model' });
+            const clips = gltf.animations.map((_animation, index) => ({
+              format: 'haiyue-animation3d-clip@1', id: `source:${index}`, name: `Take ${index + 1}`, duration: 1,
+              tracks: [{
+                id: `source:${index}:translation`,
+                binding: { id: `binding:${index}`, target: { kind: 'node-id', nodeId: 'AnimatedTRS' }, path: 'transform.translation', valueType: 'vec3', valueSize: 3 },
+                interpolation: 'linear', times: [0, 1], values: [0, 0, 0, index + 1, 0, 0],
+              }],
+              events: [],
+            }));
+            project = api.importNative3dGltfClips(project, 'character', clips, { extendComposition: true });
+            return { family: '3d', project };
+          },
+        };
+      }
+
+      function assert(condition, message) { if (!condition) throw new Error(message); }
+      function bytesEqual(left, right) {
+        const a = new Uint8Array(left);
+        const b = new Uint8Array(right);
+        return a.length === b.length && a.every((value, index) => value === b[index]);
+      }
+    </script>
+  </body>
+</html>

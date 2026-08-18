@@ -1,0 +1,31 @@
+{
+  "project": {
+    "format": "haiyue-animation-editor-project-3d@1",
+    "schemaVersion": 1,
+    "mode": "mixed",
+    "id": "project:mixed-invalid",
+    "name": "Mixed invalid",
+    "composition": {
+      "viewport": { "width": 640, "height": 360 },
+      "coordinateSystem": {
+        "handedness": "right",
+        "upAxis": "+y",
+        "forwardAxis": "-z",
+        "unit": "meter",
+        "angles": "radian",
+        "rotationStorage": "normalized-xyzw-quaternion"
+      },
+      "duration": 1,
+      "frameRate": 30,
+      "endBehavior": "hold"
+    },
+    "assets": [],
+    "materials": [],
+    "nodes": [],
+    "timeline": { "clips": [] }
+  },
+  "expectedDiagnostic": {
+    "code": "E_PROJECT_MIXED_DIMENSIONS",
+    "path": "$.mode"
+  }
+}

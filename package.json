@@ -1,0 +1,21 @@
+{
+  "name": "@haiyue/editor-repository",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "repository": "https://github.com/HaiyueStudio/Editor.git",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "workspaces": ["editor", "AnimationEditor", "voxelEditor"],
+  "scripts": {
+    "deps:local": "node scripts/install-local-dependencies.mjs",
+    "build": "npm run build -w ./editor && npm run build -w ./AnimationEditor && npm run build -w ./voxelEditor",
+    "typecheck": "npm run typecheck -w ./editor && npm run typecheck -w ./AnimationEditor && npm run typecheck -w ./voxelEditor",
+    "test": "npm test -w ./editor && npm test -w ./AnimationEditor && npm test -w ./voxelEditor",
+    "build:scene": "npm run build -w ./editor",
+    "build:animation": "npm run build -w ./AnimationEditor",
+    "build:voxel": "npm run build -w ./voxelEditor",
+    "check:boundaries": "npm run check:boundaries -w ./editor"
+  },
+  "optionalDependencies": { "@rollup/rollup-win32-x64-msvc": "4.60.4" }
+}
