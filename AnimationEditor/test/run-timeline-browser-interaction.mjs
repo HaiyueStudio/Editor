@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import nodeResolve from '@rollup/plugin-node-resolve';
 import typescript from '@rollup/plugin-typescript';
 import { rollup } from 'rollup';
 
@@ -13,11 +14,14 @@ try {
       'timeline-production': fileURLToPath(new URL('../src/domain/TimelineProduction.ts', import.meta.url)),
       'timeline-adapters': fileURLToPath(new URL('../src/authoring/timeline/TimelineCanvasAdapters.ts', import.meta.url)),
     },
-    plugins: [typescript({
-      tsconfig: fileURLToPath(new URL('../tsconfig.json', import.meta.url)),
-      declaration: false,
-      outDir: bundleDirectory,
-    })],
+    plugins: [
+      nodeResolve({ browser: true, preferBuiltins: false }),
+      typescript({
+        tsconfig: fileURLToPath(new URL('../tsconfig.json', import.meta.url)),
+        declaration: false,
+        outDir: bundleDirectory,
+      }),
+    ],
   });
   await bundle.write({
     dir: bundleDirectory,

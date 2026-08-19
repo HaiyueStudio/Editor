@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "aiNeutral": true,
+  "packages": {
+    "@haiyue/editor-plugin-sdk": { "allow": [] },
+    "@haiyue/editor-platform": { "allow": ["@haiyue/editor-plugin-sdk"] },
+    "@haiyue/editor-shell": {
+      "allow": ["@haiyue/editor-plugin-sdk", "@haiyue/editor-platform", "@haiyue/ui"]
+    },
+    "@haiyue/editor-app-kit": { "allow": ["@haiyue/editor-plugin-sdk"] },
+    "@haiyue/editor": {
+      "allow": ["@haiyue/editor-plugin-sdk", "@haiyue/editor-platform", "@haiyue/editor-shell", "@haiyue/editor-app-kit", "@haiyue/engine", "@haiyue/extensions", "@haiyue/animation-spec", "@haiyue/shader-language", "@haiyue/ui"]
+    },
+    "@haiyue/animation-editor": {
+      "allow": ["@haiyue/editor-plugin-sdk", "@haiyue/editor-platform", "@haiyue/editor-shell", "@haiyue/editor-app-kit", "@haiyue/engine", "@haiyue/extensions", "@haiyue/animation-spec", "@haiyue/ui"]
+    },
+    "@haiyue/voxel-editor": {
+      "allow": ["@haiyue/editor-plugin-sdk", "@haiyue/editor-platform", "@haiyue/editor-shell", "@haiyue/editor-app-kit", "@haiyue/engine", "@haiyue/ui"]
+    }
+  },
+  "forbiddenDependencyFragments": ["aistudio", "deepseek", "agent-runtime", "model-provider"],
+  "forbiddenProtocols": ["file:", "git:", "git+http:", "git+https:"]
+}

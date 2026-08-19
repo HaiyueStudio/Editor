@@ -6,16 +6,37 @@
   "repository": "https://github.com/HaiyueStudio/Editor.git",
   "type": "module",
   "engines": { "node": ">=22" },
-  "workspaces": ["editor", "AnimationEditor", "voxelEditor"],
+  "workspaces": [
+    "editor-plugin-sdk",
+    "editor-platform",
+    "editor-shell",
+    "editor-app-kit",
+    "editor",
+    "AnimationEditor",
+    "voxelEditor"
+  ],
   "scripts": {
     "deps:local": "node scripts/install-local-dependencies.mjs",
-    "build": "npm run build -w ./editor && npm run build -w ./AnimationEditor && npm run build -w ./voxelEditor",
-    "typecheck": "npm run typecheck -w ./editor && npm run typecheck -w ./AnimationEditor && npm run typecheck -w ./voxelEditor",
-    "test": "npm test -w ./editor && npm test -w ./AnimationEditor && npm test -w ./voxelEditor",
+    "build:foundations": "npm run build -w ./editor-plugin-sdk && npm run build -w ./editor-platform && npm run build -w ./editor-shell && npm run build -w ./editor-app-kit",
+    "build:products": "npm run build -w ./editor && npm run build -w ./AnimationEditor && npm run build -w ./voxelEditor",
+    "build:apps": "npm run build:app -w ./editor && npm run build:app -w ./AnimationEditor && npm run build:app -w ./voxelEditor",
+    "check:apps": "npm run app:check -w ./editor && npm run app:check -w ./AnimationEditor && npm run app:check -w ./voxelEditor",
+    "test:pwa": "node scripts/pwa-smoke.mjs",
+    "build": "npm run build:foundations && npm run build:products",
+    "typecheck": "npm run build:foundations && npm run typecheck -w ./editor && npm run typecheck -w ./AnimationEditor && npm run typecheck -w ./voxelEditor",
+    "test:foundations": "npm test -w ./editor-plugin-sdk && npm test -w ./editor-platform && npm test -w ./editor-shell && npm test -w ./editor-app-kit",
+    "test:products": "npm test -w ./editor && npm test -w ./AnimationEditor && npm test -w ./voxelEditor",
+    "test": "npm run test:foundations && npm run test:products",
     "build:scene": "npm run build -w ./editor",
     "build:animation": "npm run build -w ./AnimationEditor",
     "build:voxel": "npm run build -w ./voxelEditor",
-    "check:boundaries": "npm run check:boundaries -w ./editor"
+    "check:boundaries": "node scripts/check-repository-boundaries.mjs && npm run check:boundaries -w ./editor",
+    "api:check": "node scripts/check-platform-api.mjs",
+    "editor-architecture:check": "npm run check:boundaries && npm run api:check",
+    "compatibility:check": "node scripts/check-dependency-compatibility.mjs",
+    "compatibility:minimum": "node scripts/check-dependency-compatibility.mjs --minimum",
+    "release:artifact:check": "node editor-app-kit/test/validate-product-descriptors.mjs"
   },
-  "optionalDependencies": { "@rollup/rollup-win32-x64-msvc": "4.60.4" }
+  "optionalDependencies": { "@rollup/rollup-win32-x64-msvc": "4.60.4" },
+  "devDependencies": { "@rollup/plugin-terser": "^1.0.0" }
 }

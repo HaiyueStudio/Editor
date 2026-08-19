@@ -64,6 +64,11 @@ import {
   type OptionalEditorCapability,
 } from '../../domain/library/optionalComponentManifest';
 import { ContentAuthoringStore } from '../../domain/content/ContentAuthoringStore';
+import {
+  attachSceneDocumentBridge,
+  syncSceneSelection,
+} from '../../platform/sceneEditorPlatform';
+import type { EditorSelectionReference } from '@haiyue/editor-plugin-sdk';
 
 const editorDom = getEditorDom();
 const {
@@ -670,6 +675,53 @@ setupMainInspectorEventBindings({
 });
 
 export async function runMainEditorApp(): Promise<void> {
+  const documentRegistration = attachSceneDocumentBridge({
+    get revision() { return editorStore.select(editorSelectors.projectDocument).currentRevision; },
+    get savedRevision() { return editorStore.select(editorSelectors.projectDocument).savedRevision; },
+    get name() { return editorStore.select(editorSelectors.projectDocument).documentName ?? 'Untitled Scene'; },
+    serialize: signal => {
+      const world = getRuntimeContext()?.world;
+      if (!world) throw new Error('Cannot serialize the scene before the editor runtime is attached.');
+      return sceneActions.serializeEditorScene(world, signal === undefined ? {} : { signal });
+    },
+    markSaved: revision => storeCommands.project.markSaved(
+      revision,
+      editorStore.select(editorSelectors.projectDocument).documentName,
+    ),
+    subscribe: listener => editorStore.subscribe('project.changed', listener),
+  });
+  const selectionRegistration = editorStore.subscribe('selection.changed', selection => {
+    const entityReferences = [...selection.entities].map<EditorSelectionReference>(entity => Object.freeze({
+      kind: 'scene.entity',
+      id: String(entity.id),
+      documentId: 'scene.current',
+    }));
+    const resourceReferences = Object.entries(selection.resources)
+      .filter((entry): entry is [string, number] => entry[1] !== null)
+      .map<EditorSelectionReference>(([kind, id]) => Object.freeze({
+        kind: `scene.resource.${kind}`,
+        id: String(id),
+        documentId: 'scene.current',
+      }));
+    const items = [...entityReferences, ...resourceReferences];
+    const active = selection.active
+      ? items.find(item => item.kind === 'scene.entity' && item.id === String(selection.active?.id)) ?? null
+      : items[0] ?? null;
+    syncSceneSelection(items, active);
+  });
+  const initialSelection = editorStore.snapshot().selection;
+  syncSceneSelection(
+    [...initialSelection.entities].map(entity => ({ kind: 'scene.entity', id: String(entity.id), documentId: 'scene.current' })),
+    initialSelection.active
+      ? { kind: 'scene.entity', id: String(initialSelection.active.id), documentId: 'scene.current' }
+      : null,
+  );
+  window.addEventListener('pagehide', () => {
+    selectionRegistration();
+    void documentRegistration.dispose();
+    pendingCommandBus?.dispose();
+    pendingCommandBus = null;
+  }, { once: true });
   await startMainEditorWithContext({
     editorDom,
     componentLibraries,
@@ -678,7 +730,10 @@ export async function runMainEditorApp(): Promise<void> {
     entityTreePresenter,
     history: {
       getCommandBus,
-      setCommandBus: nextCommandBus => { pendingCommandBus = nextCommandBus; },
+      setCommandBus: nextCommandBus => {
+        pendingCommandBus?.dispose();
+        pendingCommandBus = nextCommandBus;
+      },
     },
     viewport: {
       setInspectorContext: context => { storeCommands.inspector.setContext(context); },

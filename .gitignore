@@ -3,9 +3,13 @@ node_modules/
 .cert/
 dist/
 dist-test/
-voxelEditor/app-dist/
-voxelEditor/electron/app-dist/
-voxelEditor/release-electron/
+*/app-dist/
+*/electron/app-dist/
+*/release-electron/
+*/.electron-candidate.json
+*/electron/main.mjs
+*/electron/package.json
+*/electron-builder.generated.json
 bundle.js
 bundle.js.map
 bundle.meta.json

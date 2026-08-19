@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "haiyue-scene-editor",
+  "version": "0.1.0",
+  "productName": "HaiYue Scene Editor",
+  "appId": "studio.haiyue.scene-editor",
+  "artifactName": "HaiYue-Scene-Editor-${version}-${os}-${arch}.${ext}",
+  "storageNamespace": "haiyue.scene-editor.v1",
+  "supportTier": "stable",
+  "entries": ["index.html"],
+  "staticFiles": ["assets"],
+  "workers": ["dist/export-worker.js", "dist/material-graph-worker.js"],
+  "distDirectory": "dist",
+  "outputDirectory": "app-dist",
+  "electronRendererDirectory": "electron/app-dist",
+  "budget": { "maxRawBytes": 6700000, "maxGzipBytes": 1600000 },
+  "pwa": {
+    "enabled": true,
+    "shortName": "Scene Editor",
+    "description": "WebGPU scene and game authoring editor.",
+    "themeColor": "#10151d",
+    "backgroundColor": "#10151d",
+    "icons": [
+      { "src": "./assets/branding/haiyue-logo-128.png", "sizes": "128x128", "type": "image/png" }
+    ]
+  },
+  "electron": {
+    "enabled": true,
+    "width": 1440,
+    "height": 900,
+    "minWidth": 1024,
+    "minHeight": 700,
+    "backgroundColor": "#10151d"
+  }
+}

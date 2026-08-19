@@ -23,6 +23,11 @@ interface ProjectSessionControllerOptions {
   autosaveDelay?: number;
 }
 
+export interface ProjectSessionSnapshot {
+  readonly projectName: string;
+  readonly dirty: boolean;
+}
+
 /** Owns browser saves, project identity, crash recovery, recents, shortcuts, and file drops. */
 export class ProjectSessionController {
   private readonly _document: VoxelDocument;
@@ -50,6 +55,7 @@ export class ProjectSessionController {
   private _dragDepth = 0;
   private _storageErrorReported = false;
   private _restoringSnapshot = false;
+  private readonly _listeners = new Set<(snapshot: ProjectSessionSnapshot) => void>();
 
   constructor(options: ProjectSessionControllerOptions) {
     this._document = options.document;
@@ -66,6 +72,14 @@ export class ProjectSessionController {
 
   get dirty(): boolean { return this._dirty; }
   get projectName(): string { return this._projectName; }
+
+  subscribe(listener: (snapshot: ProjectSessionSnapshot) => void): () => void {
+    this._listeners.add(listener);
+    listener(Object.freeze({ projectName: this._projectName, dirty: this._dirty }));
+    return () => this._listeners.delete(listener);
+  }
+
+  save(): Promise<void> { return this._save(); }
 
   async initialize(): Promise<void> {
     try {
@@ -99,6 +113,7 @@ export class ProjectSessionController {
     void this._saveCurrent(project);
     void this._rememberRecent(project);
     void this._saveRecovery(project);
+    this._emitSession();
   }
 
   confirmReplace(): boolean {
@@ -108,6 +123,7 @@ export class ProjectSessionController {
   syncLocale(): void {
     if (this._usesDefaultProjectName) this._projectName = translate('project.untitled');
     this._renderIdentity();
+    this._emitSession();
     this._syncRecentMenu();
     if (this._recovery) this._showRecovery(this._recovery);
   }
@@ -250,6 +266,7 @@ export class ProjectSessionController {
     this._setDirty(false);
     this._resetCamera();
     this._renderIdentity();
+    this._emitSession();
   }
 
   private _restoreRecovery(): void {
@@ -267,6 +284,7 @@ export class ProjectSessionController {
       this._hideRecovery();
       this._notify(`已恢复“${snapshot.name}”的自动保存快照。`);
       this._scheduleAutosave();
+      this._emitSession();
     } catch (error) {
       this._notify(error instanceof Error ? error.message : String(error), true);
     }
@@ -299,6 +317,12 @@ export class ProjectSessionController {
     if (dirty === this._dirty) return;
     this._dirty = dirty;
     this._renderIdentity();
+    this._emitSession();
+  }
+
+  private _emitSession(): void {
+    const snapshot = Object.freeze({ projectName: this._projectName, dirty: this._dirty });
+    for (const listener of [...this._listeners]) listener(snapshot);
   }
 
   private _renderIdentity(): void {

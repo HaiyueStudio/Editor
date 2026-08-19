@@ -6,6 +6,7 @@ import {
   type DeepMutable,
 } from './AnimationEditorProject';
 import { AnimationEditorStore } from './AnimationEditorStore';
+import { EditorHistoryService } from '@haiyue/editor-platform';
 
 export interface EditorCommand {
   readonly label: string;
@@ -25,24 +26,31 @@ export interface CommandHistorySnapshot {
 export type CommandHistoryListener = (snapshot: CommandHistorySnapshot) => void;
 
 export class CommandHistory {
-  private readonly _undoStack: EditorCommand[] = [];
-  private readonly _redoStack: EditorCommand[] = [];
   private readonly _listeners = new Set<CommandHistoryListener>();
-  private readonly _limit: number;
   private readonly _byteBudget: number;
-  private _undoBytes = 0;
-  private _redoBytes = 0;
+  private readonly _history: EditorHistoryService;
+  private readonly _ownsHistory: boolean;
+  private readonly _historySubscription: { dispose(): void };
 
-  constructor(limit = 100, byteBudget = 32 * 1024 * 1024) {
-    this._limit = Math.max(1, Math.floor(limit));
+  constructor(
+    limit = 100,
+    byteBudget = 32 * 1024 * 1024,
+    history?: EditorHistoryService,
+  ) {
     this._byteBudget = Math.max(1, Math.floor(byteBudget));
+    this._ownsHistory = history === undefined;
+    this._history = history ?? new EditorHistoryService({
+      maxEntries: Math.max(1, Math.floor(limit)),
+      byteBudget: this._byteBudget,
+    });
+    this._historySubscription = this._history.subscribe(() => this._notify());
   }
 
-  get canUndo(): boolean { return this._undoStack.length > 0; }
-  get canRedo(): boolean { return this._redoStack.length > 0; }
-  get undoLabel(): string | null { return this._undoStack.at(-1)?.label ?? null; }
-  get redoLabel(): string | null { return this._redoStack.at(-1)?.label ?? null; }
-  get estimatedBytes(): number { return this._undoBytes + this._redoBytes; }
+  get canUndo(): boolean { return this._history.canUndo; }
+  get canRedo(): boolean { return this._history.canRedo; }
+  get undoLabel(): string | null { return this._history.snapshot().undoLabel ?? null; }
+  get redoLabel(): string | null { return this._history.snapshot().redoLabel ?? null; }
+  get estimatedBytes(): number { return this._history.snapshot().estimatedBytes; }
   get byteBudget(): number { return this._byteBudget; }
 
   subscribe(listener: CommandHistoryListener): () => void {
@@ -51,65 +59,32 @@ export class CommandHistory {
   }
 
   execute(command: EditorCommand | null): boolean {
-    if (!command || !command.execute()) return false;
-    this.recordApplied(command);
-    return true;
+    if (!command) return false;
+    if (commandBytes(command) > this._byteBudget) {
+      if (!command.execute()) return false;
+      this._history.clear();
+      return true;
+    }
+    return this._history.execute(command);
   }
 
   recordApplied(command: EditorCommand): void {
-    const bytes = commandBytes(command);
-    this._redoStack.length = 0;
-    this._redoBytes = 0;
-    if (bytes > this._byteBudget) {
-      this._undoStack.length = 0;
-      this._undoBytes = 0;
-      this._notify();
-      return;
-    }
-    this._undoStack.push(command);
-    this._undoBytes += bytes;
-    while ((this._undoStack.length > this._limit || this._undoBytes > this._byteBudget) && this._undoStack.length > 1) {
-      const removed = this._undoStack.shift();
-      if (removed) this._undoBytes -= commandBytes(removed);
-    }
-    this._notify();
+    if (commandBytes(command) > this._byteBudget) this._history.clear();
+    else this._history.recordApplied(command);
   }
 
   undo(): string | null {
-    const command = this._undoStack.pop();
-    if (!command) return null;
-    const bytes = commandBytes(command);
-    this._undoBytes -= bytes;
-    command.undo();
-    this._redoStack.push(command);
-    this._redoBytes += bytes;
-    this._notify();
-    return command.label;
+    const label = this.undoLabel;
+    return label && this._history.undo() ? label : null;
   }
 
   redo(): string | null {
-    const command = this._redoStack.pop();
-    if (!command) return null;
-    const bytes = commandBytes(command);
-    this._redoBytes -= bytes;
-    if (!command.execute()) {
-      this._redoStack.push(command);
-      this._redoBytes += bytes;
-      return null;
-    }
-    this._undoStack.push(command);
-    this._undoBytes += bytes;
-    this._notify();
-    return command.label;
+    const label = this.redoLabel;
+    return label && this._history.redo() ? label : null;
   }
 
   clear(): void {
-    if (!this.canUndo && !this.canRedo) return;
-    this._undoStack.length = 0;
-    this._redoStack.length = 0;
-    this._undoBytes = 0;
-    this._redoBytes = 0;
-    this._notify();
+    if (this.canUndo || this.canRedo) this._history.clear();
   }
 
   snapshot(): CommandHistorySnapshot {
@@ -125,6 +100,11 @@ export class CommandHistory {
   private _notify(): void {
     const snapshot = this.snapshot();
     for (const listener of [...this._listeners]) listener(snapshot);
+  }
+
+  dispose(): void {
+    this._historySubscription.dispose();
+    if (this._ownsHistory) this._history.dispose();
   }
 }
 

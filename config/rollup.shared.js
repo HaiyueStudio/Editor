@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path';
 import nodeResolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
+import terser from '@rollup/plugin-terser';
 import { wgslRaw } from '../scripts/rollup-plugin-wgsl.js';
 
 /** Shared Rollup policy for every Haiyue TypeScript/WebGPU bundle. */
@@ -12,6 +13,7 @@ export function haiyuePlugins({
   declaration,
   localPackages = {},
   commonjsInterop = true,
+  minify = false,
   extra = [],
 } = {}) {
   return [
@@ -21,6 +23,13 @@ export function haiyuePlugins({
     nodeResolve({ browser: true, preferBuiltins: false, exportConditions: ['source'] }),
     commonjsInterop ? commonjs() : null,
     typescript({ tsconfig, ...(declaration === undefined ? {} : { declaration }) }),
+    minify ? terser({
+      compress: { passes: 2 },
+      mangle: false,
+      keep_classnames: true,
+      keep_fnames: true,
+      format: { comments: false },
+    }) : null,
     ...extra,
   ].filter(Boolean);
 }

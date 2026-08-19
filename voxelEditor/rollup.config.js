@@ -24,5 +24,5 @@ export default {
     'project-import-worker': 'src/projectImportWorker.ts', 'project-import': 'src/projectImport.ts',
   },
   output: libraryOutput(),
-  plugins: [cleanOutputDirectory(), ...haiyuePlugins({ declaration: false, tsconfig: './tsconfig.rollup.json' })],
+  plugins: [cleanOutputDirectory(), ...haiyuePlugins({ declaration: false, tsconfig: './tsconfig.rollup.json', minify: true })],
 };

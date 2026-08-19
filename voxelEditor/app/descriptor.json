@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "haiyue-voxel-editor",
+  "version": "0.1.0",
+  "productName": "HaiYue Voxel Editor",
+  "appId": "studio.haiyue.voxel-editor",
+  "artifactName": "HaiYue-Voxel-Editor-${version}-${os}-${arch}.${ext}",
+  "storageNamespace": "haiyue.voxel-editor.v1",
+  "supportTier": "stable",
+  "entries": ["index.html"],
+  "staticFiles": ["styles.css", "pwa/icons"],
+  "workers": ["dist/export-worker.js", "dist/project-import-worker.js"],
+  "distDirectory": "dist",
+  "outputDirectory": "app-dist",
+  "electronRendererDirectory": "electron/app-dist",
+  "budget": { "maxRawBytes": 4000000, "maxGzipBytes": 850000 },
+  "pwa": {
+    "enabled": true,
+    "shortName": "Voxel Editor",
+    "description": "WebGPU voxel modeling, animation, and game-asset editor.",
+    "themeColor": "#0e131b",
+    "backgroundColor": "#0e131b",
+    "icons": [
+      { "src": "./pwa/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+      { "src": "./pwa/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+      { "src": "./pwa/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ]
+  },
+  "electron": {
+    "enabled": true,
+    "width": 1440,
+    "height": 900,
+    "minWidth": 960,
+    "minHeight": 640,
+    "backgroundColor": "#0e131b"
+  }
+}

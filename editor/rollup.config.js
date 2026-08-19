@@ -7,6 +7,7 @@ const plugins = () => [
   cleanOutputDirectory(),
   ...haiyuePlugins({
     tsconfig: './tsconfig.rollup.json',
+    minify: true,
     extra: [visualizer({
       filename: 'dist/bundle-visualizer.html',
       title: 'Haiyue Editor Bundle',

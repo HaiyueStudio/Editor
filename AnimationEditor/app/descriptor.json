@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "haiyue-animation-editor",
+  "version": "0.1.0",
+  "productName": "HaiYue Animation Editor",
+  "appId": "studio.haiyue.animation-editor",
+  "artifactName": "HaiYue-Animation-Editor-${version}-${os}-${arch}.${ext}",
+  "storageNamespace": "haiyue.animation-editor.v1",
+  "supportTier": "stable",
+  "entries": ["index.html", "native3d.html"],
+  "staticFiles": ["styles.css", "native3d.css", "CAPABILITY_MATRIX.md"],
+  "workers": [],
+  "distDirectory": "dist",
+  "outputDirectory": "app-dist",
+  "electronRendererDirectory": "electron/app-dist",
+  "budget": { "maxRawBytes": 5850000, "maxGzipBytes": 1100000 },
+  "pwa": {
+    "enabled": true,
+    "shortName": "Animation Editor",
+    "description": "HaiYue HYA animation and motion authoring editor.",
+    "themeColor": "#111827",
+    "backgroundColor": "#111827"
+  },
+  "electron": {
+    "enabled": true,
+    "width": 1440,
+    "height": 900,
+    "minWidth": 1024,
+    "minHeight": 700,
+    "backgroundColor": "#111827"
+  }
+}

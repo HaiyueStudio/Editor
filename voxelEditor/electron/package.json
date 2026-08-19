@@ -1,9 +1,0 @@
-{
-  "name": "haiyue-voxel-editor-desktop",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Desktop wrapper for HaiYue Voxel Editor.",
-  "author": "HaiYue Contributors",
-  "type": "module",
-  "main": "main.mjs"
-}

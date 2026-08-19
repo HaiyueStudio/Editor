@@ -5,7 +5,8 @@ import test from 'node:test';
 const packageRoot = new URL('../', import.meta.url);
 
 test('PWA manifest exposes installable icons and a scoped standalone application', async () => {
-  const manifest = JSON.parse(await readFile(new URL('manifest.webmanifest', packageRoot), 'utf8'));
+  const descriptor = JSON.parse(await readFile(new URL('app/descriptor.json', packageRoot), 'utf8'));
+  const manifest = JSON.parse(await readFile(new URL('app-dist/manifest.webmanifest', packageRoot), 'utf8'));
   assert.equal(manifest.start_url, './');
   assert.equal(manifest.scope, './');
   assert.equal(manifest.display, 'standalone');
@@ -14,9 +15,10 @@ test('PWA manifest exposes installable icons and a scoped standalone application
   assert.equal(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'any'), true);
   assert.equal(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'maskable'), true);
   for (const icon of manifest.icons) {
-    const info = await stat(new URL(icon.src, packageRoot));
+    const info = await stat(new URL(icon.src, new URL('app-dist/', packageRoot)));
     assert.equal(info.isFile(), true);
   }
+  assert.equal(descriptor.storageNamespace, 'haiyue.voxel-editor.v1');
 });
 
 test('assembled PWA precaches the complete production shell without source maps', async () => {
@@ -27,7 +29,7 @@ test('assembled PWA precaches the complete production shell without source maps'
   assert.match(worker, /\.\/dist\/main\.js/);
   assert.match(worker, /\.\/dist\/export-worker\.js/);
   assert.match(worker, /\.\/dist\/project-import-worker\.js/);
-  assert.match(worker, /cache\.addAll\(PRECACHE_URLS\)/);
+  assert.match(worker, /cache\.addAll\(FILES\)/);
   assert.match(html, /rel="manifest" href="\.\/manifest\.webmanifest"/);
   assert.match(html, /src="\.\/pwa\/register\.js"/);
   assert.equal((await listFiles(outputRoot)).some(path => path.endsWith('.map')), false);
@@ -35,22 +37,21 @@ test('assembled PWA precaches the complete production shell without source maps'
 
 test('Electron entry keeps renderer privileges isolated and packages the shared app output', async () => {
   const main = await readFile(new URL('electron/main.mjs', packageRoot), 'utf8');
-  const builder = await readFile(new URL('electron-builder.yml', packageRoot), 'utf8');
+  const builder = JSON.parse(await readFile(new URL('electron-builder.generated.json', packageRoot), 'utf8'));
   const desktopPackage = JSON.parse(await readFile(new URL('electron/package.json', packageRoot), 'utf8'));
   assert.match(main, /contextIsolation:\s*true/);
   assert.match(main, /nodeIntegration:\s*false/);
   assert.match(main, /sandbox:\s*true/);
   assert.match(main, /webSecurity:\s*true/);
   assert.match(main, /let mainWindow = null/);
-  assert.match(main, /WINDOW_SHOW_FALLBACK_MS/);
-  assert.match(main, /did-finish-load/);
-  assert.match(main, /did-fail-load/);
+  assert.match(main, /ready-to-show/);
+  assert.match(main, /will-navigate/);
   assert.match(main, /app-dist[\s\S]*index\.html/);
   assert.match(main, /setWindowOpenHandler/);
-  assert.match(builder, /app-dist\/\*\*\/\*/);
-  assert.match(builder, /!node_modules/);
-  assert.match(builder, /asar:\s*true/);
-  assert.match(builder, /target:[\s\S]*dmg[\s\S]*nsis[\s\S]*AppImage/);
+  assert.ok(builder.files.includes('app-dist/**/*'));
+  assert.ok(builder.files.some(file => file.includes('!node_modules')));
+  assert.equal(builder.asar, true);
+  assert.deepEqual(builder.win.target, ['nsis', 'portable']);
   assert.equal(desktopPackage.main, 'main.mjs');
   assert.equal('dependencies' in desktopPackage, false);
 });

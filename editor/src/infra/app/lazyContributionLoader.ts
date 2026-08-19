@@ -3,6 +3,7 @@ import {
   collectOptionalCapabilitiesForProject,
   type OptionalEditorCapability,
 } from '../../domain/library/optionalComponentManifest';
+import { loadSceneEditorPlugin } from '../../platform/sceneEditorPlatform';
 
 type ConfiguredSystemRuntimeContribution =
   typeof import('./configuredSystemRuntimeContribution');
@@ -31,10 +32,10 @@ export function loadConfiguredSystemRuntime(
 
 /** Loads the entity Inspector only after an entity is selected. */
 export function loadEditorInspectorContribution(): Promise<EditorInspectorContribution> {
-  editorInspectorContributionPromise ??= Promise.all([
-    import('../inspector/mainInspectorRenderer'),
-    import('../inspector/inspectorRenderer'),
-  ]);
+  editorInspectorContributionPromise ??= loadSceneEditorPlugin('scene.inspector').then(() => Promise.all([
+      import('../inspector/mainInspectorRenderer'),
+      import('../inspector/inspectorRenderer'),
+    ]));
   return editorInspectorContributionPromise;
 }
 

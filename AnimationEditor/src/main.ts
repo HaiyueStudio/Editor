@@ -120,7 +120,14 @@ import {
 import { detectDesignerProjectFamily, relinkAnimationEditorAsset } from './integration/DesignerProjectIO';
 import { DesignerTaskCoordinator } from './integration/DesignerTaskCoordinator';
 import { DesignerViewportInteraction } from './integration/DesignerViewportInteraction';
+import {
+  animationEditorPlatform,
+  connectAnimationEditorPlatform,
+  disposeAnimationEditorPlatform,
+  startAnimationEditorPlatform,
+} from './platform/animationEditorPlatform';
 
+await startAnimationEditorPlatform();
 defineHaiyueUI();
 initializeAnimationEditorLocalization();
 
@@ -128,7 +135,8 @@ const SPLIT_LAYOUT_STORAGE_KEY = 'haiyue-animation-editor:split-layout@1';
 const TIMELINE_END_PADDING = 32;
 const store = new AnimationEditorStore(createEmptyAnimationEditorProject());
 const selection = new SelectionStore();
-const history = new CommandHistory();
+const platformBindings = connectAnimationEditorPlatform(store, selection);
+const history = new CommandHistory(100, 32 * 1024 * 1024, animationEditorPlatform.history);
 let playing = false;
 let statusMessage = translate('status.ready');
 let recoverySnapshot: ProjectSnapshot | null = null;
@@ -145,7 +153,7 @@ let compiledFingerprint = '';
 let currentCompilation: AnimationEditorCompilation | null = null;
 let runtimeStateLayers: AnimationEditorPreviewFrame['stateMachineLayers'] = [];
 const runtimeParameterValues = new Map<string, number | boolean>();
-const designerTasks = new DesignerTaskCoordinator();
+const designerTasks = new DesignerTaskCoordinator(animationEditorPlatform.tasks);
 const sourceImports = new SourceImportCoordinator();
 let relinkAssetId: string | null = null;
 
@@ -494,9 +502,12 @@ window.addEventListener('pagehide', () => {
   timelineResizeObserver.disconnect();
   if (timelineLayoutFrame !== null) window.cancelAnimationFrame(timelineLayoutFrame);
   session.dispose();
+  platformBindings.dispose();
+  history.dispose();
   viewportInteraction.destroy();
   void sourceImports.close();
   void designerTasks.close();
+  disposeAnimationEditorPlatform();
   runtimePreview.destroy();
 }, { once: true });
 

@@ -19,12 +19,20 @@ type DesignerTaskListener = (snapshot: DesignerTaskSnapshot) => void;
 /** Latest-wins owner for import, compile, package, and other cancellable editor tasks. */
 export class DesignerTaskCoordinator {
   #generation = 0;
-  #active: Readonly<{ generation: number; controller: AbortController; startedAt: number }> | null = null;
+  #active: { generation: number; startedAt: number; settled: Promise<unknown> } | null = null;
   #closed = false;
   #listeners = new Set<DesignerTaskListener>();
   #snapshot: DesignerTaskSnapshot = Object.freeze({
     generation: 0, label: '', state: 'idle', progress: 0, detail: '', durationMs: 0,
   });
+
+  private readonly tasks: EditorTaskCoordinator;
+  private readonly ownsTasks: boolean;
+
+  constructor(tasks?: EditorTaskCoordinator) {
+    this.tasks = tasks ?? new EditorTaskCoordinator();
+    this.ownsTasks = tasks === undefined;
+  }
 
   get snapshot(): DesignerTaskSnapshot { return this.#snapshot; }
   get active(): boolean { return this.#active !== null; }
@@ -41,26 +49,34 @@ export class DesignerTaskCoordinator {
     if (this.#closed) throw new DOMException('Designer task coordinator is closed.', 'AbortError');
     if (this.#active) await this.cancel();
     const generation = ++this.#generation;
-    const controller = new AbortController();
     const startedAt = performance.now();
-    const active = Object.freeze({ generation, controller, startedAt });
-    this.#active = active;
     this.#publish({ generation, label, state: 'running', progress: 0, detail: '', durationMs: 0 });
-    const report = (progress: number, detail = ''): void => {
-      if (this.#active !== active || controller.signal.aborted) return;
-      this.#publish({
-        generation, label, state: 'running', progress: clamp(progress), detail,
-        durationMs: performance.now() - startedAt,
-      });
-    };
+    const active = { generation, startedAt, settled: Promise.resolve() as Promise<unknown> };
+    this.#active = active;
+    const resultPromise = this.tasks.run(`animation-editor:${label}`, {
+      prepare: async context => task(Object.freeze({
+        signal: context.signal,
+        report: (progress: number, detail = '') => {
+          context.report({ current: clamp(progress), total: 1, ...(detail ? { message: detail } : {}) });
+          if (this.#active?.generation !== generation) return;
+          this.#publish({
+            generation, label, state: 'running', progress: clamp(progress), detail,
+            durationMs: performance.now() - startedAt,
+          });
+        },
+      })),
+      commit: value => value,
+    });
+    active.settled = resultPromise;
     try {
-      const result = await task(Object.freeze({ signal: controller.signal, report }));
-      if (controller.signal.aborted || this.#active !== active) throw abortError();
+      const result = await resultPromise;
       this.#active = null;
+      if (result.status === 'cancelled') throw abortError();
+      if (result.status === 'failed') throw result.error;
       this.#publish({ generation, label, state: 'completed', progress: 1, detail: '', durationMs: performance.now() - startedAt });
-      return result;
+      return result.value;
     } catch (error) {
-      const cancelled = controller.signal.aborted || error instanceof DOMException && error.name === 'AbortError';
+      const cancelled = error instanceof DOMException && error.name === 'AbortError';
       if (this.#active === active) this.#active = null;
       this.#publish({
         generation, label, state: cancelled ? 'cancelled' : 'failed', progress: this.#snapshot.progress,
@@ -74,13 +90,12 @@ export class DesignerTaskCoordinator {
   async cancel(): Promise<void> {
     const active = this.#active;
     if (!active) return;
-    this.#active = null;
-    active.controller.abort('cancelled');
+    this.tasks.cancel(`animation-editor:${this.#snapshot.label}`);
     this.#publish({
       ...this.#snapshot, generation: active.generation, state: 'cancelled',
       durationMs: performance.now() - active.startedAt,
     });
-    await Promise.resolve();
+    await active.settled;
   }
 
   async close(): Promise<void> {
@@ -89,6 +104,7 @@ export class DesignerTaskCoordinator {
     this.#closed = true;
     this.#publish({ ...this.#snapshot, state: 'closed' });
     this.#listeners.clear();
+    if (this.ownsTasks) this.tasks.dispose();
   }
 
   #publish(snapshot: DesignerTaskSnapshot): void {
@@ -104,3 +120,4 @@ function clamp(value: number): number {
 function abortError(): DOMException {
   return new DOMException('Designer task was cancelled.', 'AbortError');
 }
+import { EditorTaskCoordinator } from '@haiyue/editor-platform';

@@ -16,6 +16,7 @@ import type { MainInspectorCommitContext } from '../inspector/mainInspectorCommi
 import type { CoreWorkflowCoordinator } from '../../domain/workflows/CoreWorkflowCoordinator';
 import type { startMainEditorApp, MainEditorStartupDeps } from './mainStartup';
 import type { OptionalEditorCapability } from '../../domain/library/optionalComponentManifest';
+import { sceneEditorPlatform } from '../../platform/sceneEditorPlatform';
 
 type EditorDom = ReturnType<typeof import('../../dom').getEditorDom>;
 type EntityTreePresenter = ReturnType<typeof createEntityTreePresenter>;
@@ -143,7 +144,7 @@ function createMainEditorStartupDeps(
     createCommandBus: () => new CommandBus(() => {
       updateHistoryButtons();
       deps.document.markSceneChanged();
-    }),
+    }, sceneEditorPlatform.history),
     getCommandBus: deps.history.getCommandBus,
     setCommandBus: deps.history.setCommandBus,
     updateHistoryButtons,

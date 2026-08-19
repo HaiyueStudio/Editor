@@ -32,13 +32,20 @@ import { VoxelRenderer } from './VoxelRenderer';
 import { createVoxelCameraStatePort, runPreservingCamera } from './cameraHistory';
 import { UiRenderScheduler, type VoxelRenderInvalidation } from './uiRenderScheduler';
 import { initializeEditorLocalization, translate } from './localization';
+import {
+  connectVoxelEditorPlatform,
+  disposeVoxelEditorPlatform,
+  startVoxelEditorPlatform,
+  voxelEditorPlatform,
+} from './platform/voxelEditorPlatform';
 
+await startVoxelEditorPlatform();
 defineHaiyueUI();
 initializeEditorLocalization();
 new EditorHelpController();
 
 const documentModel = new VoxelDocument();
-const commandHistory = new CommandHistory(100)
+const commandHistory = new CommandHistory(100, 64 * 1024 * 1024, voxelEditorPlatform.history)
   .setTransactionRunner(operation => documentModel.transact(operation));
 const voxelSelection = new VoxelSelection();
 let renderer: VoxelRenderer | null = null;
@@ -271,6 +278,12 @@ projectSessionController = new ProjectSessionController({
   notify,
   resetCamera: () => renderer?.resetCamera(),
 });
+const platformBindings = connectVoxelEditorPlatform(documentModel, voxelSelection, projectSessionController);
+window.addEventListener('pagehide', () => {
+  platformBindings.dispose();
+  commandHistory.dispose();
+  disposeVoxelEditorPlatform();
+}, { once: true });
 
 document.addEventListener('voxel-editor-locale-change', () => {
   paletteController.sync();

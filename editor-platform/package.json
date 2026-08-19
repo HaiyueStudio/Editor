@@ -1,0 +1,23 @@
+{
+  "name": "@haiyue/editor-platform",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./conformance": { "types": "./dist/conformance.d.ts", "import": "./dist/conformance.js" }
+  },
+  "files": ["README.md", "dist", "src"],
+  "engines": { "node": ">=22" },
+  "publishConfig": { "access": "public", "tag": "latest" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": { "@haiyue/editor-plugin-sdk": "0.1.0" },
+  "devDependencies": { "typescript": "^5.2.0" }
+}

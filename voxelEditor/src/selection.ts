@@ -3,7 +3,7 @@ import { voxelKey } from './model';
 
 export type SelectionApplyMode = 'replace' | 'add' | 'subtract';
 
-export class VoxelSelection {
+export class VoxelSelection extends EventTarget {
   private readonly _keys = new Set<string>();
 
   get count(): number { return this._keys.size; }
@@ -49,6 +49,7 @@ export class VoxelSelection {
   clear(): boolean {
     if (this._keys.size === 0) return false;
     this._keys.clear();
+    this.dispatchEvent(new Event('change'));
     return true;
   }
 
@@ -56,6 +57,7 @@ export class VoxelSelection {
     if (next.size === this._keys.size && [...next].every(key => this._keys.has(key))) return false;
     this._keys.clear();
     for (const key of next) this._keys.add(key);
+    this.dispatchEvent(new Event('change'));
     return true;
   }
 }

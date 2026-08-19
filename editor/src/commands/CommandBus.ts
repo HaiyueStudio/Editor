@@ -1,76 +1,68 @@
-import { HistoryManager } from '../scene/history';
+import { EditorHistoryService } from '@haiyue/editor-platform';
 import type { Command } from '../types';
 import {
   isHierarchyTransactionActive,
   measureHierarchyStage,
 } from '../domain/scene/hierarchyTransactionMetrics';
 
-interface CommandGroup {
-  label: string;
-  commands: Command[];
-}
-
 export class CommandBus {
-  private readonly _history: HistoryManager;
-  private readonly _groups: CommandGroup[] = [];
+  private readonly _history: EditorHistoryService;
+  private readonly _ownsHistory: boolean;
+  private readonly _groupMutations: boolean[] = [];
 
-  constructor(onChange: () => void) {
-    this._history = new HistoryManager(
-      () => {
-        if (isHierarchyTransactionActive()) measureHierarchyStage('dirty-notification', onChange);
-        else onChange();
-      },
-    );
+  constructor(
+    private readonly _onChange: () => void,
+    history?: EditorHistoryService,
+  ) {
+    this._history = history ?? new EditorHistoryService();
+    this._ownsHistory = history === undefined;
   }
 
   execute(command: Command): void {
-    if (this._groups.length > 0) {
-      command.execute();
-      this._groups.at(-1)?.commands.push(command);
+    const applied = this._history.execute(command);
+    if (!applied) return;
+    if (this._groupMutations.length > 0) {
+      this._groupMutations[this._groupMutations.length - 1] = true;
       return;
     }
-    this._history.execute(command);
+    this._notifyChange();
   }
 
   beginGroup(label: string): void {
-    this._groups.push({ label, commands: [] });
+    this._history.beginGroup(label);
+    this._groupMutations.push(false);
   }
 
   endGroup(): void {
-    const group = this._groups.pop();
-    if (!group) return;
-    const command = createCompositeCommand(group.label, group.commands);
-    if (!command) return;
-    const parent = this._groups.at(-1);
-    if (parent) parent.commands.push(command);
-    else this._history.pushExecuted(command);
+    if (this._history.activeGroupDepth === 0) return;
+    const changed = this._groupMutations.pop() ?? false;
+    this._history.endGroup();
+    if (!changed) return;
+    if (this._groupMutations.length > 0) {
+      this._groupMutations[this._groupMutations.length - 1] = true;
+      return;
+    }
+    this._notifyChange();
   }
 
   cancelGroup(): void {
-    const group = this._groups.pop();
-    if (!group) return;
-    for (const command of group.commands.slice().reverse()) command.undo();
+    if (this._history.activeGroupDepth === 0) return;
+    this._groupMutations.pop();
+    this._history.cancelGroup();
   }
 
   runGroup(label: string, callback: () => void): void {
-    this.beginGroup(label);
-    try {
-      callback();
-      this.endGroup();
-    } catch (error) {
-      this.cancelGroup();
-      throw error;
-    }
+    this._history.runGroup(label, callback);
   }
 
   undo(): void {
-    if (this._groups.length > 0) return;
-    this._history.undo();
+    if (this._history.activeGroupDepth > 0) return;
+    if (this._history.undo()) this._notifyChange();
   }
 
   redo(): void {
-    if (this._groups.length > 0) return;
-    this._history.redo();
+    if (this._history.activeGroupDepth > 0) return;
+    if (this._history.redo()) this._notifyChange();
   }
 
   get canUndo(): boolean {
@@ -80,19 +72,15 @@ export class CommandBus {
   get canRedo(): boolean {
     return this._history.canRedo;
   }
-}
 
-function createCompositeCommand(label: string, commands: readonly Command[]): Command | null {
-  const items = commands.filter(Boolean);
-  if (items.length === 0) return null;
-  if (items.length === 1) return items[0] ?? null;
-  return {
-    label,
-    execute: () => {
-      for (const command of items) command.execute();
-    },
-    undo: () => {
-      for (const command of items.slice().reverse()) command.undo();
-    },
-  };
+  get platformHistory(): EditorHistoryService { return this._history; }
+
+  dispose(): void {
+    if (this._ownsHistory) this._history.dispose();
+  }
+
+  private _notifyChange(): void {
+    if (isHierarchyTransactionActive()) measureHierarchyStage('dirty-notification', this._onChange);
+    else this._onChange();
+  }
 }
