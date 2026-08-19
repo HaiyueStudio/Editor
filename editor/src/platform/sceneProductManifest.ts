@@ -62,5 +62,6 @@ export const sceneEditorProductManifest = defineEditorProduct({
     { id: 'scene.inspector', load: () => import('./sceneLazyPlugins').then(module => module.sceneInspectorPlugin) },
     { id: 'scene.content-authoring', load: () => import('./sceneLazyPlugins').then(module => module.sceneContentAuthoringPlugin) },
     { id: 'scene.runtime-debug', load: () => import('./sceneLazyPlugins').then(module => module.sceneRuntimeDebugPlugin) },
+    { id: 'scene.ray-tracing', load: () => import('./sceneRayTracingPlugin').then(module => module.sceneRayTracingPlugin) },
   ],
 });

@@ -66,11 +66,15 @@ import {
 import { ContentAuthoringStore } from '../../domain/content/ContentAuthoringStore';
 import {
   attachSceneDocumentBridge,
+  enableSceneRayTracingPreview,
   syncSceneSelection,
 } from '../../platform/sceneEditorPlatform';
 import type { EditorSelectionReference } from '@haiyue/editor-plugin-sdk';
 
 const editorDom = getEditorDom();
+document.getElementById('ray-tracing-preview-button')?.addEventListener('click', () => {
+  void enableSceneRayTracingPreview().catch(error => console.error('Failed to enable ray tracing preview.', error));
+});
 const {
   systemList,
   canvas,

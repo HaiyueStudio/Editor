@@ -51,6 +51,7 @@ export { MaterialGraphCompilerClient } from './infra/content/MaterialGraphCompil
 export { loadPlayerOptionalRuntime } from './player/PlayerOptionalRuntime';
 export { AssetOperationCenter } from './infra/resource/AssetOperationCenter';
 export { OptionalEditorCapabilityLoader } from './infra/app/lazyContributionLoader';
+export { sceneRayTracingPlugin } from './platform/sceneRayTracingPlugin';
 export { createTweenEditorPlugin } from './infra/app/tweenEditorContribution';
 export {
   collectOptionalCapabilitiesForProject,
