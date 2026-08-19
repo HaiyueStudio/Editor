@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { loadPlayerOptionalRuntime } from '../dist-test/testing.js';
+import { deserializeEntity, loadPlayerOptionalRuntime } from '../dist-test/testing.js';
 
 const emptyScene = Object.freeze({
   version: 1,
@@ -53,6 +53,42 @@ test('physics player scene activates the preserved script API only on demand', a
     typeof runtime.runtimeApiCapabilities.componentConstructors.Physics2DSystem,
     'function',
   );
+});
+
+test('optional runtime restores Tilemap components before starter scripts execute', async () => {
+  const serializedBoard = {
+    name: 'Tetris Board',
+    disabled: false,
+    components: [{
+      type: 'Tilemap2DComponent',
+      columns: 10,
+      rows: 20,
+      cellWidth: 32,
+      cellHeight: 32,
+      originX: 0,
+      originY: 0,
+      gap: 2,
+      cells: Array(200).fill(0),
+      palette: [[0, 0, 0, 0], [0.13, 0.83, 0.93, 1]],
+    }],
+    children: [],
+  };
+  const runtime = await loadPlayerOptionalRuntime({
+    ...emptyScene,
+    entities: [serializedBoard],
+  });
+  const Tilemap2DComponent = runtime.runtimeApiCapabilities.componentConstructors.Tilemap2DComponent;
+  assert.equal(typeof Tilemap2DComponent, 'function');
+
+  const board = deserializeEntity(serializedBoard, new Map(), new Map(), new Map(), {
+    extensions: runtime.componentExtensions,
+  });
+  const tilemap = board.getComponent(Tilemap2DComponent);
+  assert.ok(tilemap);
+  assert.equal(tilemap.name, 'Tilemap2DComponent');
+  assert.equal(tilemap.columns, 10);
+  assert.equal(tilemap.rows, 20);
+  assert.equal(tilemap.gap, 2);
 });
 
 test('player runtime adapter keeps optional packages behind PlayerOptionalRuntime', () => {

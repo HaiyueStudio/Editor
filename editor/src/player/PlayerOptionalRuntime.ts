@@ -1,7 +1,8 @@
-import type { Entity, HaiyueEngine, System, World } from '@haiyue/engine';
+import type { Component, Entity, HaiyueEngine, System, World } from '@haiyue/engine';
 import type { ComponentDeserializationExtension } from '../types';
 import type { PlayerRuntimeApiCapabilities } from '../engine-adapter/PlayerRuntimeAdapter';
 import type {
+  SerializedComponent,
   SerializedEditorScene,
   SerializedPhysics2DSystem,
 } from '../export/RuntimeSceneContract';
@@ -79,6 +80,11 @@ export async function loadPlayerOptionalRuntime(
   const runtime: PlayerOptionalRuntime = {
     componentExtensions: Object.freeze([
       ...(gltfExtensions?.playerComponentExtensions ?? []),
+      ...(canvasText ? [createOptionalComponentExtension('CanvasTextComponent', canvasText.CanvasTextComponent)] : []),
+      ...(grid ? [createOptionalComponentExtension('Grid2DComponent', grid.Grid2DComponent)] : []),
+      ...(spine ? [createOptionalComponentExtension('Spine2DComponent', spine.Spine2DComponent)] : []),
+      ...(tilemap ? [createOptionalComponentExtension('Tilemap2DComponent', tilemap.Tilemap2DComponent)] : []),
+      ...(tween ? [createOptionalComponentExtension('Tween2DComponent', tween.Tween2DComponent)] : []),
     ]),
     runtimeApiCapabilities: Object.freeze({
       componentConstructors: Object.freeze({
@@ -143,6 +149,19 @@ export async function loadPlayerOptionalRuntime(
     },
   };
   return Object.freeze(runtime);
+}
+
+type OptionalComponentConstructor = new (options?: never) => Component;
+
+function createOptionalComponentExtension(
+  type: string,
+  ComponentType: OptionalComponentConstructor,
+): ComponentDeserializationExtension {
+  return Object.freeze({
+    deserializeComponent(data: SerializedComponent) {
+      return data.type === type ? new ComponentType(data as never) : null;
+    },
+  });
 }
 
 function needsComponentRuntime(

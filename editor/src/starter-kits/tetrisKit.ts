@@ -10,7 +10,10 @@ import type { SerializedGlobalSettings } from '../export/runtimeScene';
 const TETRIS_STARTER_SCRIPT = `
 const components = api.read.components || {};
 function getTilemap(entity) {
-  const direct = entity?.getComponent?.('Tilemap2DComponent');
+  const Tilemap2D = components.Tilemap2DComponent;
+  const direct = Tilemap2D
+    ? entity?.getComponent?.(Tilemap2D)
+    : entity?.getComponent?.('Tilemap2DComponent');
   if (direct) return direct;
   for (const component of entity?.components?.values?.() || []) {
     if (component?.name === 'Tilemap2DComponent' || String(component?.UniqueSymbol) === 'Symbol(Tilemap2DComponent)') {

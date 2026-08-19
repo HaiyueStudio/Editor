@@ -25,7 +25,8 @@
     "electron:pack": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-pack",
     "electron:smoke": "node ../scripts/run-editor-app-kit.mjs electron-smoke",
     "electron:dist": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-dist",
-    "test:e2e": "npm run build && node ../scripts/editor-e2e/createSaveExportPlay.mjs && node ../scripts/editor-e2e/gltfImportSaveExportPlay.mjs",
+    "test:e2e": "npm run build && node ../scripts/editor-e2e/createSaveExportPlay.mjs && node ../scripts/editor-e2e/gltfImportSaveExportPlay.mjs && node ../scripts/editor-e2e/tetrisStarterPlay.mjs",
+    "test:e2e:tetris": "npm run build && node ../scripts/editor-e2e/tetrisStarterPlay.mjs",
     "test": "node ../scripts/build-rollup-once.mjs rollup.test.config.js && node scripts/check-boundaries.mjs && node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
