@@ -18,6 +18,12 @@ const GLTF_CORE_MODULES = Object.freeze([
 export function editorBundleManualChunk(moduleId) {
   const id = normalizeModuleId(moduleId);
   if (id === '\0commonjsHelpers.js') return 'commonjs-runtime';
+  // Theme restoration runs before the first custom-element paint. Keep this
+  // tiny storage adapter separate from the deferred localization/options chunk.
+  if (id.endsWith('/editor/src/infra/theme/editorTheme.ts')
+    || id === '/src/infra/theme/editorTheme.ts') {
+    return 'editor-theme';
+  }
   if (id.endsWith('/editor/src/infra/options/editorOptions.ts')
     || id === '/src/infra/options/editorOptions.ts') {
     return 'editor-localization';

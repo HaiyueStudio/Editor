@@ -51,6 +51,16 @@ export { MaterialGraphCompilerClient } from './infra/content/MaterialGraphCompil
 export { loadPlayerOptionalRuntime } from './player/PlayerOptionalRuntime';
 export { AssetOperationCenter } from './infra/resource/AssetOperationCenter';
 export { OptionalEditorCapabilityLoader } from './infra/app/lazyContributionLoader';
+export {
+  applyEditorTheme,
+  applyStoredEditorTheme,
+  DEFAULT_EDITOR_THEME,
+  EDITOR_THEME_STORAGE_KEY,
+  installLegacyButtonThemeBridge,
+  normalizeEditorTheme,
+  readStoredEditorTheme,
+  storeEditorTheme,
+} from './infra/theme/editorTheme';
 export { sceneRayTracingPlugin } from './platform/sceneRayTracingPlugin';
 export { createTweenEditorPlugin } from './infra/app/tweenEditorContribution';
 export {

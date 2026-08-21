@@ -1,0 +1,397 @@
+:root {
+  color-scheme: dark;
+  --editor-canvas: #080b21;
+  --editor-header: #181a40;
+  --editor-surface: #10132f;
+  --editor-surface-2: #121633;
+  --editor-surface-3: #1b1e46;
+  --editor-input: #0c1029;
+  --editor-viewport: #050718;
+  --editor-text: #eef0ff;
+  --editor-text-muted: #a9add4;
+  --editor-text-subtle: #747ba8;
+  --editor-border: #343765;
+  --editor-border-strong: #484b84;
+  --editor-accent: #8177f2;
+  --editor-accent-strong: #554cc6;
+  --editor-accent-soft: rgba(129, 119, 242, 0.2);
+  --editor-hover: #242752;
+  --editor-selection: #302d6b;
+  --editor-shadow: rgba(1, 2, 18, 0.58);
+  --editor-overlay: rgba(3, 4, 20, 0.78);
+  --editor-code: #090c24;
+  --editor-code-keyword: #e98acb;
+  --editor-code-number: #e1b952;
+  --editor-code-string: #9ed58a;
+  --editor-code-definition: #8dd9ff;
+
+  --hy-canvas-color: var(--editor-canvas);
+  --hy-surface-color: var(--editor-surface);
+  --hy-surface-elevated-color: var(--editor-surface-3);
+  --hy-panel-bg-color: var(--editor-surface-2);
+  --hy-input-bg-color: var(--editor-input);
+  --hy-menu-bg-color: var(--editor-surface-3);
+  --hy-text-color: var(--editor-text);
+  --hy-secondary-text-color: var(--editor-text-muted);
+  --hy-muted-color: var(--editor-text-subtle);
+  --hy-disabled-text-color: var(--editor-text-subtle);
+  --hy-border-color: var(--editor-border);
+  --hy-border-strong-color: var(--editor-border-strong);
+  --hy-hover-border-color: #6468aa;
+  --hy-hover-bg-color: var(--editor-hover);
+  --hy-menu-item-hover-bg-color: var(--editor-selection);
+  --hy-accent-color: var(--editor-accent);
+  --hy-accent-strong-color: var(--editor-accent-strong);
+  --hy-selected-bg-color: var(--editor-accent-strong);
+  --hy-selected-text-color: #ffffff;
+  --hy-active-text-color: #f5f2ff;
+  --hy-focus-border-color: #9c8fff;
+  --hy-focus-ring-color: rgba(137, 121, 255, 0.28);
+  --hy-menu-shadow-color: var(--editor-shadow);
+  --hy-tooltip-bg-color: #090b20;
+  --hy-tooltip-text-color: #f4f2ff;
+  --hy-tooltip-border-color: rgba(150, 137, 255, 0.28);
+  --hy-drop-indicator-color: #9287ff;
+  --hy-drop-target-bg-color: #29265b;
+
+  /* Keep the installed 0.1.0 UI package themed while Editor migrates to HY component tags. */
+  --ge-surface-color: var(--hy-surface-color);
+  --ge-surface-elevated-color: var(--hy-surface-elevated-color);
+  --ge-panel-bg-color: var(--hy-panel-bg-color);
+  --ge-input-bg-color: var(--hy-input-bg-color);
+  --ge-menu-bg-color: var(--hy-menu-bg-color);
+  --ge-text-color: var(--hy-text-color);
+  --ge-secondary-text-color: var(--hy-secondary-text-color);
+  --ge-muted-color: var(--hy-muted-color);
+  --ge-disabled-text-color: var(--hy-disabled-text-color);
+  --ge-border-color: var(--hy-border-color);
+  --ge-border-strong-color: var(--hy-border-strong-color);
+  --ge-hover-border-color: var(--hy-hover-border-color);
+  --ge-hover-bg-color: var(--hy-hover-bg-color);
+  --ge-menu-item-hover-bg-color: var(--hy-menu-item-hover-bg-color);
+  --ge-accent-color: var(--hy-accent-color);
+  --ge-accent-strong-color: var(--hy-accent-strong-color);
+  --ge-selected-bg-color: var(--hy-selected-bg-color);
+  --ge-selected-text-color: var(--hy-selected-text-color);
+  --ge-active-text-color: var(--hy-active-text-color);
+  --ge-focus-border-color: var(--hy-focus-border-color);
+  --ge-focus-ring-color: var(--hy-focus-ring-color);
+  --ge-menu-shadow-color: var(--hy-menu-shadow-color);
+  --ge-tooltip-bg-color: var(--hy-tooltip-bg-color);
+  --ge-tooltip-text-color: var(--hy-tooltip-text-color);
+  --ge-tooltip-border-color: var(--hy-tooltip-border-color);
+  --ge-drop-indicator-color: var(--hy-drop-indicator-color);
+  --ge-drop-target-bg-color: var(--hy-drop-target-bg-color);
+}
+
+:root[data-hy-theme="light"] {
+  color-scheme: light;
+  --editor-canvas: #edf8ff;
+  --editor-header: #ffffff;
+  --editor-surface: #f7fcff;
+  --editor-surface-2: #f0f8fd;
+  --editor-surface-3: #ffffff;
+  --editor-input: #f9fdff;
+  --editor-viewport: #dcecf6;
+  --editor-text: #183247;
+  --editor-text-muted: #527187;
+  --editor-text-subtle: #7894a8;
+  --editor-border: #c7dce8;
+  --editor-border-strong: #a8cde0;
+  --editor-accent: #55b4da;
+  --editor-accent-strong: #2c88b0;
+  --editor-accent-soft: rgba(58, 166, 209, 0.18);
+  --editor-hover: #e5f3fb;
+  --editor-selection: #dceff9;
+  --editor-shadow: rgba(50, 91, 118, 0.2);
+  --editor-overlay: rgba(55, 92, 116, 0.28);
+  --editor-code: #f1f8fc;
+  --editor-code-keyword: #a63c7a;
+  --editor-code-number: #9b6518;
+  --editor-code-string: #3f7b38;
+  --editor-code-definition: #187ba6;
+
+  --hy-hover-border-color: #86bad3;
+  --hy-focus-border-color: #3aa6d1;
+  --hy-focus-ring-color: rgba(58, 166, 209, 0.24);
+  --hy-selected-bg-color: #2f8cb5;
+  --hy-active-text-color: #153b54;
+  --hy-tooltip-bg-color: #214d68;
+  --hy-tooltip-text-color: #f7fcff;
+  --hy-tooltip-border-color: rgba(255, 255, 255, 0.28);
+  --hy-drop-indicator-color: #38a9d7;
+  --hy-drop-target-bg-color: #d9effa;
+}
+
+html,
+body,
+#app,
+ge-split,
+hy-split {
+  background: var(--editor-canvas);
+  color: var(--editor-text);
+}
+
+header {
+  border-color: var(--editor-border);
+  background: var(--editor-header);
+  box-shadow: 0 1px 12px var(--editor-shadow);
+}
+
+.brand,
+.editor-options-title,
+.section-title,
+.system-card-title,
+.detail-value,
+.resource-name,
+.play-debug-section-title,
+.play-debug-metric strong {
+  color: var(--editor-text);
+}
+
+.toolbar-divider,
+.detail-row,
+.inspector-section,
+.play-debug-section {
+  border-color: var(--editor-border);
+}
+
+.panel,
+.panel-body,
+ge-tabs,
+hy-tabs {
+  background: var(--editor-surface-2);
+  color: var(--editor-text);
+}
+
+.hierarchy ge-tree,
+.hierarchy hy-tree {
+  background: var(--editor-surface-2);
+  --ge-panel-bg-color: var(--editor-surface-2);
+  --ge-tree-text-color: var(--editor-text);
+  --ge-tree-icon-color: var(--editor-text-muted);
+  --ge-hover-bg-color: var(--editor-hover);
+  --ge-selected-bg-color: var(--editor-accent-strong);
+  --ge-selected-text-color: #ffffff;
+  --hy-panel-bg-color: var(--editor-surface-2);
+  --hy-tree-text-color: var(--editor-text);
+  --hy-tree-icon-color: var(--editor-text-muted);
+  --hy-hover-bg-color: var(--editor-hover);
+  --hy-selected-bg-color: var(--editor-accent-strong);
+  --hy-selected-text-color: #ffffff;
+}
+
+.panel-header,
+.viewport-tabs,
+.editor-options-panel,
+.geometry-create-menu,
+.play-overlay-header,
+.script-editor-overlay .play-overlay-header {
+  border-color: var(--editor-border);
+  color: var(--editor-text-muted);
+  background: var(--editor-surface-3);
+}
+
+.editor-options-panel,
+.geometry-create-menu,
+.editor-notification {
+  box-shadow: 0 14px 34px var(--editor-shadow);
+}
+
+.viewport-tab,
+.viewport-tool,
+.icon-button,
+.play-overlay-close,
+.play-overlay-action,
+.play-debug-export,
+.play-breakpoints-apply,
+.detail-action,
+.content-authoring button,
+.code-help button,
+.geometry-create-menu button {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-input);
+}
+
+.viewport-tab:hover,
+.viewport-tool:hover,
+.icon-button:hover,
+.play-overlay-close:hover,
+.play-overlay-action:hover,
+.play-debug-export:hover,
+.play-breakpoints-apply:hover,
+.detail-action:hover,
+.content-authoring button:hover,
+.code-help button:hover,
+.geometry-create-menu button:hover {
+  border-color: var(--editor-accent);
+  background: var(--editor-hover);
+}
+
+.viewport-tab.active,
+.viewport-tool.active,
+.timeline-clip {
+  border-color: var(--editor-accent);
+  color: #ffffff;
+  background: var(--editor-accent-strong);
+}
+
+input,
+select,
+textarea,
+.panel-search,
+.detail-input,
+.detail-select,
+.field .readonly,
+.field .value,
+.play-device-toolbar input,
+.play-debug-field textarea,
+.play-breakpoints-input,
+.content-authoring input,
+.content-authoring select,
+.content-authoring textarea,
+.asset-ref-field select {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-input);
+}
+
+.field input,
+.field .readonly,
+.field .value,
+.vector-field input,
+.system-card select,
+.system-toolbar select,
+.system-toolbar button,
+.viewport-tools input[type="number"],
+.viewport-tools select {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-input);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--editor-accent);
+  outline-color: var(--editor-accent-soft);
+}
+
+input::placeholder,
+textarea::placeholder,
+.field label,
+.vector-field label,
+.detail-label,
+.resource-meta,
+.resource-empty,
+.inspector-note,
+.play-device-toolbar label,
+.play-debug-empty,
+.play-debug-field span,
+.content-authoring-status,
+.prefab-diff-empty,
+.material-node-card small {
+  color: var(--editor-text-muted);
+}
+
+.asset-operation,
+.system-list li,
+.system-list li.system-card,
+.play-output,
+.play-debug-section,
+.play-debug-metric,
+.play-debug-field textarea,
+.prefab-card,
+.geometry-create-card,
+.resource-detail,
+.content-authoring,
+.content-authoring-status,
+.timeline-lanes,
+.material-node-card,
+.prefab-diff-card,
+.prefab-diff-cell code,
+.code-help {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-surface);
+}
+
+.resource-list li {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-surface);
+}
+
+.prefab-card:hover,
+.geometry-create-card:hover,
+.asset-operation:hover {
+  border-color: var(--editor-accent);
+  background: var(--editor-hover);
+}
+
+.prefab-card.selected,
+.geometry-create-card.open {
+  border-color: var(--editor-accent);
+  background: var(--editor-selection);
+  box-shadow: 0 0 0 1px var(--editor-accent-soft);
+}
+
+.viewport-wrap,
+.play-overlay,
+.script-editor-overlay {
+  background: var(--editor-overlay);
+}
+
+.viewport-wrap,
+.play-device-stage,
+.play-device-viewport,
+.play-device-frame,
+.play-frame {
+  border-color: var(--editor-border);
+  background: var(--editor-viewport);
+}
+
+.script-editor-host,
+.script-editor-textarea,
+.script-editor-highlight,
+.code-help pre {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+  background: var(--editor-code);
+  caret-color: var(--editor-text);
+}
+
+.script-editor-textarea::selection {
+  background: var(--editor-accent-soft);
+}
+
+.script-editor-host .tok-keyword,
+.code-help .tok-keyword { color: var(--editor-code-keyword); }
+.script-editor-host .tok-number,
+.code-help .tok-number { color: var(--editor-code-number); }
+.script-editor-host .tok-string,
+.script-editor-host .tok-string2,
+.code-help .tok-string,
+.code-help .tok-string2 { color: var(--editor-code-string); }
+.script-editor-host .tok-definition,
+.script-editor-host .tok-propertyName,
+.code-help .tok-definition,
+.code-help .tok-propertyName { color: var(--editor-code-definition); }
+.script-editor-host .tok-variableName,
+.code-help .tok-variableName { color: var(--editor-text); }
+.script-editor-host .tok-comment,
+.code-help .tok-comment,
+.script-editor-host .tok-punctuation,
+.code-help .tok-punctuation { color: var(--editor-text-subtle); }
+
+.editor-notification {
+  border-color: var(--editor-border-strong);
+  color: var(--editor-text);
+  background: color-mix(in srgb, var(--editor-surface-3) 94%, transparent);
+}
+
+.selection-helper-2d {
+  border-color: var(--editor-accent);
+  background: var(--editor-accent-soft);
+}

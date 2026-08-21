@@ -127,6 +127,7 @@ export interface EditorDom {
   editorOptionsButton: HTMLButtonElement | null;
   editorOptionsPanel: HTMLElement | null;
   editorLanguageSelect: HTMLSelectElement | null;
+  editorThemeSelect: HTMLSelectElement | null;
   editorDefaultMaterialSelect: HTMLSelectElement | null;
   resourceTabs: HTMLElement | null;
   inspectorTabs: HTMLElement | null;
@@ -313,6 +314,7 @@ export function getEditorDom(): EditorDom {
     editorOptionsButton: document.getElementById('editor-options-button') as HTMLButtonElement | null,
     editorOptionsPanel: document.getElementById('editor-options-panel') as HTMLElement | null,
     editorLanguageSelect: document.getElementById('editor-language-select') as HTMLSelectElement | null,
+    editorThemeSelect: document.getElementById('editor-theme-select') as HTMLSelectElement | null,
     editorDefaultMaterialSelect: document.getElementById('editor-default-material-select') as HTMLSelectElement | null,
     resourceTabs: document.getElementById('resource-tabs') as HTMLElement | null,
     inspectorTabs: document.getElementById('inspector-tabs') as HTMLElement | null,

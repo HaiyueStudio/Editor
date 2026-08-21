@@ -1,3 +1,9 @@
+import {
+  applyEditorTheme,
+  readStoredEditorTheme,
+  storeEditorTheme,
+} from '../theme/editorTheme';
+
 type EditorLanguage = 'zh-CN' | 'en-US';
 export type EditorDefaultMaterialKind = 'pbr' | 'basic' | 'blinn-phong' | 'normal' | 'depth';
 
@@ -7,6 +13,7 @@ interface EditorOptionsElements {
   button: HTMLButtonElement | null;
   panel: HTMLElement | null;
   languageSelect: HTMLSelectElement | null;
+  themeSelect: HTMLSelectElement | null;
   defaultMaterialSelect: HTMLSelectElement | null;
   resourceTabs: HTMLElement | null;
   inspectorTabs: HTMLElement | null;
@@ -55,12 +62,15 @@ const dictionaries: Record<EditorLanguage, EditorDictionary> = {
       'options.open': '编辑器选项',
       'options.title': '编辑器选项',
       'options.language': '语言',
+      'options.theme': '主题配色',
       'options.defaultMaterial': '默认 3D 材质',
       'recent.openScene': '打开场景...',
       'recent.empty': '暂无最近打开',
       'recent.clear': '清空最近打开',
       'language.zh': '中文',
       'language.en': 'English',
+      'theme.light': '月白 · 淡蓝明亮',
+      'theme.dark': '夜阑 · 深蓝紫暗色',
       'defaultMaterial.basic': 'Basic',
       'defaultMaterial.pbr': 'PBR 金属度/粗糙度',
       'defaultMaterial.blinnPhong': 'Blinn-Phong',
@@ -323,12 +333,15 @@ const dictionaries: Record<EditorLanguage, EditorDictionary> = {
       'options.open': 'Editor options',
       'options.title': 'Editor Options',
       'options.language': 'Language',
+      'options.theme': 'Color Theme',
       'options.defaultMaterial': 'Default 3D Material',
       'recent.openScene': 'Open scene...',
       'recent.empty': 'No recent scenes',
       'recent.clear': 'Clear recent',
       'language.zh': '中文',
       'language.en': 'English',
+      'theme.light': 'Moonlight · Pale Blue',
+      'theme.dark': 'Nightfall · Deep Indigo',
       'defaultMaterial.basic': 'Basic',
       'defaultMaterial.pbr': 'PBR Metallic/Roughness',
       'defaultMaterial.blinnPhong': 'Blinn-Phong',
@@ -584,7 +597,9 @@ const dictionaries: Record<EditorLanguage, EditorDictionary> = {
 };
 
 export function setupEditorOptions(elements: EditorOptionsElements, options: EditorOptionsSetupOptions = {}): void {
+  const initialTheme = applyEditorTheme(readStoredEditorTheme());
   applyLanguage(currentLanguage, elements);
+  if (elements.themeSelect) elements.themeSelect.value = initialTheme;
   if (elements.defaultMaterialSelect) elements.defaultMaterialSelect.value = currentDefaultMaterialKind;
   applyTabsSession(elements, options.session);
   applySplitSession(elements, options.session);
@@ -595,6 +610,11 @@ export function setupEditorOptions(elements: EditorOptionsElements, options: Edi
     applyLanguage(currentLanguage, elements);
     applyTabsSession(elements, options.session);
     applySplitSession(elements, options.session);
+  });
+  elements.themeSelect?.addEventListener('change', () => {
+    const theme = storeEditorTheme(elements.themeSelect?.value);
+    applyEditorTheme(theme);
+    if (elements.themeSelect) elements.themeSelect.value = theme;
   });
   elements.defaultMaterialSelect?.addEventListener('change', () => {
     currentDefaultMaterialKind = normalizeDefaultMaterialKind(elements.defaultMaterialSelect?.value);

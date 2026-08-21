@@ -8,7 +8,7 @@
   "storageNamespace": "haiyue.scene-editor.v1",
   "supportTier": "stable",
   "entries": ["index.html"],
-  "staticFiles": ["assets"],
+  "staticFiles": ["assets", "theme.css"],
   "workers": ["dist/export-worker.js", "dist/material-graph-worker.js"],
   "distDirectory": "dist",
   "outputDirectory": "app-dist",

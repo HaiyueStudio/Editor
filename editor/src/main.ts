@@ -1,8 +1,11 @@
 import { defineHaiyueUI } from '@haiyue/ui';
 import { defineEditorEntityTreeNode } from './ui/entityTreeNode';
 import { startSceneEditorPlatform } from './platform/sceneEditorPlatform';
+import { applyStoredEditorTheme, installLegacyButtonThemeBridge } from './infra/theme/editorTheme';
 
+applyStoredEditorTheme();
 defineHaiyueUI();
+installLegacyButtonThemeBridge();
 defineEditorEntityTreeNode();
 
 // Let the custom-element shell upgrade and paint before loading the editor
