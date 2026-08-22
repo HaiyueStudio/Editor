@@ -53,5 +53,6 @@ export const animationEditorProductManifest = defineEditorProduct({
   lazyPlugins: [
     { id: 'animation.advanced-authoring', load: () => import('./animationEditorLazyPlugins').then(module => module.advancedAuthoringPlugin) },
     { id: 'animation.native3d-preview', load: () => import('./animationEditorLazyPlugins').then(module => module.native3dPreviewPlugin) },
+    { id: 'animation.live2d-clip-baked-import', load: () => import('./animationEditorLazyPlugins').then(module => module.live2dClipBakedImportPlugin) },
   ],
 });

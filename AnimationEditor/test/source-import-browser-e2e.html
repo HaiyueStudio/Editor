@@ -92,6 +92,29 @@
         const hya = await hyaCoordinator.import({ kind: 'hya', input: { kind: 'bytes', bytes: firstDelivery.binary } });
         assert(hya.deliveryData.authoringMetadataRecovered === false && hya.source.authoring === 'limited-delivery', 'HYA 明确标为有限工程');
 
+        progress.textContent = '通过懒注入 converter 完成 Live2D exact preview 与 reimport identity';
+        const live2dConverter = {
+          id: 'browser-live2d-adapter', version: '1.0.0',
+          async convert(_request, context) {
+            context.progress(1, 1, 'encode');
+            return { hya: new Uint8Array(firstDelivery.binary), sidecars: [], diagnostics: [], sourceVersion: 'fixture-v1', evaluatorVersion: 'fake-core-v1' };
+          },
+        };
+        const live2dRequest = {
+          assetId: 'browser-live2d', entry: 'model.model3.json', coreVersion: 'fake-core-v1',
+          files: [{ path: 'model.model3.json', bytes: new TextEncoder().encode('{}') }],
+          recipe: { id: 'idle', motion: 'Idle:0', frameRate: 30, tolerance: 0.01, quantizationStep: 0.001, mode: 'normal' },
+        };
+        const live2dWorkflow = new g07.Live2DImportWorkflow(live2dConverter);
+        const live2d = await live2dWorkflow.convert(live2dRequest);
+        assert(live2d.preview.source === 'binary' && live2d.id === 'browser-live2d', 'Live2D preview 重解析同一 HYA bytes 并保留 identity');
+        const reopenedLive2d = g07.parseLive2DDerivedAsset(g07.serializeLive2DDerivedAsset(live2d));
+        assert(reopenedLive2d.preview.source === 'binary' && reopenedLive2d.recipe.motion === 'Idle:0', 'Live2D recipe/provenance 与派生 bytes 保存重开');
+        const stale = await g07.inspectLive2DAssetStaleness(live2d, { ...live2dRequest, recipe: { ...live2dRequest.recipe, motion: 'Tap:0' } }, live2dConverter);
+        assert(stale.stale && stale.reasons.join('/') === 'recipe', 'Live2D recipe stale 精确归因');
+        assert(g07.createLive2DDeliveryFiles(live2d).every(file => !/\.(?:moc3|model3\.json|wpk)$/iu.test(file.path)), 'Live2D delivery 不包含 source/Core');
+        live2dWorkflow.close();
+
         await Promise.all(coordinators.map(coordinator => coordinator.close()));
         assert(coordinators.every(coordinator => !coordinator.active), '关闭后没有 active import');
         assert(objectUrlCalls === 0, '真实资源闭环没有创建 object URL');
@@ -109,6 +132,8 @@
           deliveryAuthoringRecovered: hya.deliveryData.authoringMetadataRecovered,
           objectUrlCalls,
           activeImports: coordinators.filter(coordinator => coordinator.active).length,
+          live2dPreview: live2d.preview.source,
+          live2dStaleReasons: stale.reasons,
         };
         resultNode.textContent = JSON.stringify(payload);
         resultNode.dataset.status = 'passed';

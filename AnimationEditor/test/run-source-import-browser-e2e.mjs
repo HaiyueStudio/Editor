@@ -43,9 +43,13 @@ try {
   if (result.families.join('/') !== '2d/2d/3d' || result.deliveryAuthoringRecovered !== false) {
     throw new Error(`G07 family/delivery invariant failed: ${JSON.stringify(result)}`);
   }
+  if (result.live2dPreview !== 'binary' || result.live2dStaleReasons.join('/') !== 'recipe') {
+    throw new Error(`G08 Live2D exact-preview/stale invariant failed: ${JSON.stringify(result)}`);
+  }
   console.log(
     `[g07-browser] HTTP=${result.requestCount}; families=${result.families.join('/')} `
     + `Lottie nodes=${result.lottieNodes}; Sprite keys=${result.spriteKeys}; glTF clips=${result.gltfClips}; `
+    + `Live2D=${result.live2dPreview}/${result.live2dStaleReasons.join('+')}; `
     + `objectURLs=${result.objectUrlCalls}; active=${result.activeImports}; bytes=${result.deterministicBytes}`,
   );
 } finally {

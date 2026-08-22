@@ -1,4 +1,5 @@
 export * from '../src/persistence/SourceImport';
+export * from '../src/import/deformable-animation/Live2DImportWorkflow';
 export * from '../src/domain/ReusableComposition';
 export * from '../src/domain/CompositionInstantiation';
 export * from '../src/domain/CompositionProjectMapping';
