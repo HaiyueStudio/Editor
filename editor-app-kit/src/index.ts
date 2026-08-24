@@ -21,6 +21,24 @@ export interface EditorElectronDescriptor {
   readonly minWidth: number;
   readonly minHeight: number;
   readonly backgroundColor: string;
+  readonly unsavedCloseProtection?: boolean;
+}
+
+export interface EditorElectronDocumentState {
+  readonly dirty: boolean;
+  readonly name: string;
+  readonly locale: string;
+}
+
+export interface EditorElectronRendererBridge {
+  updateDocumentState(state: EditorElectronDocumentState): void;
+  onSaveAndClose(handler: () => boolean | Promise<boolean>): () => void;
+}
+
+declare global {
+  interface Window {
+    readonly haiyueEditorHost?: EditorElectronRendererBridge;
+  }
 }
 
 export interface EditorAppDescriptor {
@@ -67,6 +85,10 @@ export function validateEditorAppDescriptor(value: unknown): readonly string[] {
   }
   if (!descriptor.pwa || typeof descriptor.pwa.enabled !== 'boolean') errors.push('pwa descriptor is required');
   if (!descriptor.electron || typeof descriptor.electron.enabled !== 'boolean') errors.push('electron descriptor is required');
+  if (descriptor.electron?.unsavedCloseProtection !== undefined
+    && typeof descriptor.electron.unsavedCloseProtection !== 'boolean') {
+    errors.push('electron.unsavedCloseProtection must be a boolean');
+  }
   return Object.freeze(errors);
 }
 

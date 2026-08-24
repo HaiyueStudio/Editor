@@ -79,7 +79,7 @@ export class ProjectSessionController {
     return () => this._listeners.delete(listener);
   }
 
-  save(): Promise<void> { return this._save(); }
+  save(): Promise<boolean> { return this._save(); }
 
   async initialize(): Promise<void> {
     try {
@@ -158,7 +158,7 @@ export class ProjectSessionController {
     window.addEventListener('drop', event => void this._onDrop(event));
   }
 
-  private async _save(): Promise<void> {
+  private async _save(): Promise<boolean> {
     if (this._autosaveTimer !== null) {
       window.clearTimeout(this._autosaveTimer);
       this._autosaveTimer = null;
@@ -176,8 +176,10 @@ export class ProjectSessionController {
         this._saveRecovery(),
       ]);
       this._notify(translate('project.savedToBrowser'));
+      return !this._dirty;
     } catch (error) {
       this._notify(error instanceof Error ? error.message : String(error), true);
+      return false;
     }
   }
 

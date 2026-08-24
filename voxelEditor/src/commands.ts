@@ -1074,6 +1074,41 @@ export class SceneResizeCommand implements EditorCommand {
   }
 }
 
+export class ModuleResizeCommand implements EditorCommand {
+  private readonly _before: SceneSize;
+  private readonly _after: SceneSize;
+  private readonly _removed: Voxel[];
+
+  constructor(
+    private readonly _document: VoxelDocument,
+    private readonly _moduleId: string,
+    size: SceneSize,
+    readonly label = '调整模块尺寸',
+  ) {
+    const module = _document.getModule(_moduleId);
+    if (!module) throw new Error('模块不存在。');
+    this._before = { ...module.size };
+    this._after = normalizeSceneSize(size);
+    this._removed = module.voxels
+      .filter(voxel => voxel.x >= this._after.x || voxel.y >= this._after.y || voxel.z >= this._after.z)
+      .map(voxel => ({ ...voxel }));
+  }
+
+  get removedCount(): number { return this._removed.length; }
+  get estimatedBytes(): number { return 512 + this._removed.length * ESTIMATED_VOXEL_HISTORY_BYTES; }
+
+  execute(): boolean {
+    if (sameSize(this._before, this._after)) return false;
+    this._document.setModuleSize(this._moduleId, this._after);
+    return true;
+  }
+
+  undo(): void {
+    this._document.setModuleSize(this._moduleId, this._before);
+    if (this._removed.length > 0) this._document.applyVoxelPatch(this._moduleId, this._removed);
+  }
+}
+
 export class SceneBackgroundColorCommand implements EditorCommand {
   readonly estimatedBytes = 256;
   private readonly _before: string;

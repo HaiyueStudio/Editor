@@ -5,6 +5,7 @@ export default {
     'voxel-render-projection-cache': 'src/render/VoxelRenderProjectionCache.ts',
     'voxel-scene-projection-cache': 'src/render/VoxelSceneProjectionCache.ts',
     'project-migration': 'src/persistence/VoxelProjectMigration.ts',
+    'electron-close-controller': 'src/controllers/ElectronCloseController.ts',
   },
   output: libraryOutput('dist-test'),
   plugins: [

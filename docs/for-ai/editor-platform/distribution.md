@@ -22,6 +22,11 @@ tree byte-for-byte as the Electron renderer. Electron uses one generated bootstr
 web security, and Node integration disabled. The clean checkout contains no generated app tree or generated Electron
 bootstrap; every Electron command builds it first.
 
+An editor with persistent document state can opt into `electron.unsavedCloseProtection`. The generated sandboxed
+preload exposes only document-state publication and save-and-close registration. On window close, Electron presents a
+native localized Save and Close / Don't Save / Cancel choice; a failed or timed-out save keeps the window open, while
+Don't Save explicitly allows the renderer's `beforeunload` guard to be bypassed for that close attempt.
+
 `npm run release:artifact:check` validates descriptor identity isolation. `npm run check:apps` validates built hashes,
 PWA URLs, renderer equality, and Electron policy. Packaging is unsigned; code signing, notarization, stores, and automatic
 updates remain outside M03.

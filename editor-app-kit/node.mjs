@@ -105,6 +105,15 @@ export async function validateAssembledEditorApp({ descriptorPath, packageRoot =
     for (const policy of ['contextIsolation: true', 'nodeIntegration: false', 'sandbox: true', 'webSecurity: true']) {
       if (!main.includes(policy)) throw new Error(`${descriptor.id} Electron bootstrap is missing ${policy}.`);
     }
+    if (descriptor.electron.unsavedCloseProtection) {
+      for (const policy of ['preload: join', "will-prevent-unload", "showMessageBox", "save-and-close"]) {
+        if (!main.includes(policy)) throw new Error(`${descriptor.id} Electron close protection is missing ${policy}.`);
+      }
+      const preload = await readFile(resolveInside(root, 'electron/preload.cjs'), 'utf8');
+      if (!preload.includes('contextBridge.exposeInMainWorld') || !preload.includes('haiyueEditorHost')) {
+        throw new Error(`${descriptor.id} Electron close protection preload is invalid.`);
+      }
+    }
   }
   return Object.freeze({ descriptor, manifest, files: Object.freeze(files) });
 }
@@ -184,8 +193,14 @@ async function writeElectronFiles(root, descriptor) {
   const rendererRelative = relative(electronRoot, resolveInside(root, descriptor.electronRendererDirectory)).replaceAll('\\', '/');
   const entry = `${rendererRelative}/${descriptor.entries[0]}`;
   const e = descriptor.electron;
-  const main = `import { app, BrowserWindow, Menu, shell } from 'electron';\nimport { join } from 'node:path';\nimport { pathToFileURL } from 'node:url';\nconst smoke = process.env.HAIYUE_ELECTRON_SMOKE === '1';\nlet mainWindow = null;\nlet smokeTimer = null;\nfunction finishSmoke(code, message) {\n  if (!smoke) return;\n  if (smokeTimer) clearTimeout(smokeTimer);\n  console.log(message);\n  app.exit(code);\n}\nfunction createWindow() {\n  if (mainWindow && !mainWindow.isDestroyed()) { if (!smoke) { mainWindow.show(); mainWindow.focus(); } return mainWindow; }\n  const window = new BrowserWindow({ width: ${e.width}, height: ${e.height}, minWidth: ${e.minWidth}, minHeight: ${e.minHeight}, show: false, backgroundColor: ${JSON.stringify(e.backgroundColor)}, title: ${JSON.stringify(descriptor.productName)}, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });\n  mainWindow = window;\n  const entry = join(import.meta.dirname, ${JSON.stringify(entry)});\n  const entryUrl = pathToFileURL(entry).href;\n  window.once('ready-to-show', () => { if (!smoke) { window.show(); window.focus(); } });\n  if (smoke) {\n    smokeTimer = setTimeout(() => finishSmoke(2, '[editor-app-kit] Electron smoke timed out.'), 30000);\n    window.webContents.once('did-finish-load', () => finishSmoke(0, '[editor-app-kit] Electron renderer loaded.'));\n    window.webContents.once('did-fail-load', (_event, code, description) => finishSmoke(1, \`[editor-app-kit] Electron renderer failed: \${code} \${description}\`));\n  }\n  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) void shell.openExternal(url); return { action: 'deny' }; });\n  window.webContents.on('will-navigate', (event, url) => { if (url !== entryUrl) event.preventDefault(); });\n  window.once('closed', () => { if (mainWindow === window) mainWindow = null; });\n  void window.loadFile(entry);\n  return window;\n}\nconst lock = app.requestSingleInstanceLock();\nif (!lock) app.quit(); else { app.on('second-instance', createWindow); void app.whenReady().then(() => { Menu.setApplicationMenu(null); createWindow(); }); }\napp.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });\napp.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });\n`;
+  const defaultMain = `import { app, BrowserWindow, Menu, shell } from 'electron';\nimport { join } from 'node:path';\nimport { pathToFileURL } from 'node:url';\nconst smoke = process.env.HAIYUE_ELECTRON_SMOKE === '1';\nlet mainWindow = null;\nlet smokeTimer = null;\nfunction finishSmoke(code, message) {\n  if (!smoke) return;\n  if (smokeTimer) clearTimeout(smokeTimer);\n  console.log(message);\n  app.exit(code);\n}\nfunction createWindow() {\n  if (mainWindow && !mainWindow.isDestroyed()) { if (!smoke) { mainWindow.show(); mainWindow.focus(); } return mainWindow; }\n  const window = new BrowserWindow({ width: ${e.width}, height: ${e.height}, minWidth: ${e.minWidth}, minHeight: ${e.minHeight}, show: false, backgroundColor: ${JSON.stringify(e.backgroundColor)}, title: ${JSON.stringify(descriptor.productName)}, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });\n  mainWindow = window;\n  const entry = join(import.meta.dirname, ${JSON.stringify(entry)});\n  const entryUrl = pathToFileURL(entry).href;\n  window.once('ready-to-show', () => { if (!smoke) { window.show(); window.focus(); } });\n  if (smoke) {\n    smokeTimer = setTimeout(() => finishSmoke(2, '[editor-app-kit] Electron smoke timed out.'), 30000);\n    window.webContents.once('did-finish-load', () => finishSmoke(0, '[editor-app-kit] Electron renderer loaded.'));\n    window.webContents.once('did-fail-load', (_event, code, description) => finishSmoke(1, \`[editor-app-kit] Electron renderer failed: \${code} \${description}\`));\n  }\n  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) void shell.openExternal(url); return { action: 'deny' }; });\n  window.webContents.on('will-navigate', (event, url) => { if (url !== entryUrl) event.preventDefault(); });\n  window.once('closed', () => { if (mainWindow === window) mainWindow = null; });\n  void window.loadFile(entry);\n  return window;\n}\nconst lock = app.requestSingleInstanceLock();\nif (!lock) app.quit(); else { app.on('second-instance', createWindow); void app.whenReady().then(() => { Menu.setApplicationMenu(null); createWindow(); }); }\napp.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });\napp.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });\n`;
+  const main = e.unsavedCloseProtection
+    ? electronCloseProtectedMainSource(descriptor, entry)
+    : defaultMain;
   await writeFile(resolveInside(electronRoot, 'main.mjs'), main);
+  if (e.unsavedCloseProtection) {
+    await writeFile(resolveInside(electronRoot, 'preload.cjs'), electronCloseProtectionPreloadSource());
+  }
   const packageJson = {
     name: descriptor.id,
     version: descriptor.version,
@@ -203,10 +218,196 @@ async function writeElectronFiles(root, descriptor) {
     npmRebuild: false,
     asar: true,
     directories: { app: 'electron', output: 'release-electron' },
-    files: ['app-dist/**/*', 'main.mjs', 'package.json', '!node_modules{,/**/*}'],
+    files: [
+      'app-dist/**/*',
+      'main.mjs',
+      ...(e.unsavedCloseProtection ? ['preload.cjs'] : []),
+      'package.json',
+      '!node_modules{,/**/*}',
+    ],
     win: { target: ['nsis', 'portable'] },
   };
   await writeFile(resolveInside(root, 'electron-builder.generated.json'), `${JSON.stringify(builder, null, 2)}\n`);
+}
+
+function electronCloseProtectedMainSource(descriptor, entry) {
+  const e = descriptor.electron;
+  return `import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const smoke = process.env.HAIYUE_ELECTRON_SMOKE === '1';
+const productName = ${JSON.stringify(descriptor.productName)};
+const stateChannel = 'haiyue-editor:update-document-state';
+const saveRequestChannel = 'haiyue-editor:save-and-close';
+const saveResultChannel = 'haiyue-editor:save-and-close-result';
+let mainWindow = null;
+let smokeTimer = null;
+let saveTimer = null;
+let closePhase = 'idle';
+let rendererHasCloseBridge = false;
+let documentState = { dirty: false, name: '', locale: 'en-US' };
+function finishSmoke(code, message) {
+  if (!smoke) return;
+  if (smokeTimer) clearTimeout(smokeTimer);
+  console.log(message);
+  app.exit(code);
+}
+function isCurrentRenderer(event) {
+  return mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents;
+}
+function closeCopy() {
+  const name = documentState.name || productName;
+  if (/^zh(?:-|$)/i.test(documentState.locale)) return {
+    title: productName,
+    message: '“' + name + '”有未保存的修改。',
+    detail: '关闭前是否保存这些修改？',
+    buttons: ['保存并关闭', '不保存', '取消'],
+    saveFailed: '保存失败，编辑器将保持打开。',
+    ok: '确定',
+  };
+  return {
+    title: productName,
+    message: '“' + name + '” has unsaved changes.',
+    detail: 'Save the changes before closing?',
+    buttons: ['Save and Close', "Don't Save", 'Cancel'],
+    saveFailed: 'Saving failed. The editor will remain open.',
+    ok: 'OK',
+  };
+}
+function clearSaveTimer() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+}
+function showSaveFailure(window) {
+  const copy = closeCopy();
+  void dialog.showMessageBox(window, {
+    type: 'error', title: copy.title, message: copy.saveFailed,
+    buttons: [copy.ok], defaultId: 0, cancelId: 0, noLink: true,
+  });
+}
+async function promptForClose(window) {
+  if (closePhase !== 'idle' || window.isDestroyed()) return;
+  closePhase = 'prompting';
+  const copy = closeCopy();
+  let response;
+  try {
+    ({ response } = await dialog.showMessageBox(window, {
+      type: 'warning', title: copy.title, message: copy.message, detail: copy.detail,
+      buttons: copy.buttons, defaultId: 0, cancelId: 2, noLink: true,
+    }));
+  } catch {
+    closePhase = 'idle';
+    return;
+  }
+  if (window.isDestroyed()) return;
+  if (response === 2) { closePhase = 'idle'; return; }
+  if (response === 1) { closePhase = 'allow'; window.close(); return; }
+  closePhase = 'saving';
+  window.webContents.send(saveRequestChannel);
+  saveTimer = setTimeout(() => {
+    if (closePhase !== 'saving' || window.isDestroyed()) return;
+    saveTimer = null;
+    closePhase = 'idle';
+    showSaveFailure(window);
+  }, 15000);
+}
+ipcMain.on(stateChannel, (event, state) => {
+  if (!isCurrentRenderer(event)) return;
+  rendererHasCloseBridge = true;
+  documentState = {
+    dirty: state && state.dirty === true,
+    name: typeof state?.name === 'string' ? state.name.slice(0, 200) : '',
+    locale: typeof state?.locale === 'string' ? state.locale.slice(0, 32) : 'en-US',
+  };
+});
+ipcMain.on(saveResultChannel, (event, saved) => {
+  if (!isCurrentRenderer(event) || closePhase !== 'saving') return;
+  clearSaveTimer();
+  if (saved === true) {
+    documentState = { ...documentState, dirty: false };
+    closePhase = 'allow';
+    mainWindow.close();
+    return;
+  }
+  closePhase = 'idle';
+  showSaveFailure(mainWindow);
+});
+function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) { if (!smoke) { mainWindow.show(); mainWindow.focus(); } return mainWindow; }
+  rendererHasCloseBridge = false;
+  documentState = { dirty: false, name: '', locale: 'en-US' };
+  closePhase = 'idle';
+  const window = new BrowserWindow({ width: ${e.width}, height: ${e.height}, minWidth: ${e.minWidth}, minHeight: ${e.minHeight}, show: false, backgroundColor: ${JSON.stringify(e.backgroundColor)}, title: productName, webPreferences: { preload: join(import.meta.dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+  mainWindow = window;
+  const entry = join(import.meta.dirname, ${JSON.stringify(entry)});
+  const entryUrl = pathToFileURL(entry).href;
+  window.once('ready-to-show', () => { if (!smoke) { window.show(); window.focus(); } });
+  if (smoke) {
+    smokeTimer = setTimeout(() => finishSmoke(2, '[editor-app-kit] Electron smoke timed out.'), 30000);
+    window.webContents.once('did-finish-load', () => finishSmoke(0, '[editor-app-kit] Electron renderer loaded.'));
+    window.webContents.once('did-fail-load', (_event, code, description) => finishSmoke(1, '[editor-app-kit] Electron renderer failed: ' + code + ' ' + description));
+  }
+  window.on('close', event => {
+    if (smoke || closePhase === 'allow' || !documentState.dirty) return;
+    event.preventDefault();
+    if (rendererHasCloseBridge) void promptForClose(window);
+  });
+  window.webContents.on('will-prevent-unload', event => {
+    if (closePhase === 'allow') { event.preventDefault(); return; }
+    if (rendererHasCloseBridge && closePhase === 'idle') void promptForClose(window);
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
+  window.webContents.on('will-navigate', (event, url) => { if (url !== entryUrl) event.preventDefault(); });
+  window.once('closed', () => {
+    clearSaveTimer();
+    closePhase = 'idle';
+    if (mainWindow === window) mainWindow = null;
+  });
+  void window.loadFile(entry);
+  return window;
+}
+const lock = app.requestSingleInstanceLock();
+if (!lock) app.quit(); else { app.on('second-instance', createWindow); void app.whenReady().then(() => { Menu.setApplicationMenu(null); createWindow(); }); }
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+`;
+}
+
+function electronCloseProtectionPreloadSource() {
+  return `'use strict';
+const { contextBridge, ipcRenderer } = require('electron');
+const stateChannel = 'haiyue-editor:update-document-state';
+const saveRequestChannel = 'haiyue-editor:save-and-close';
+const saveResultChannel = 'haiyue-editor:save-and-close-result';
+let saveAndCloseHandler = null;
+ipcRenderer.on(saveRequestChannel, () => {
+  const handler = saveAndCloseHandler;
+  if (!handler) { ipcRenderer.send(saveResultChannel, false); return; }
+  Promise.resolve().then(() => handler()).then(
+    saved => ipcRenderer.send(saveResultChannel, saved === true),
+    () => ipcRenderer.send(saveResultChannel, false),
+  );
+});
+contextBridge.exposeInMainWorld('haiyueEditorHost', Object.freeze({
+  updateDocumentState(state) {
+    ipcRenderer.send(stateChannel, {
+      dirty: state?.dirty === true,
+      name: typeof state?.name === 'string' ? state.name : '',
+      locale: typeof state?.locale === 'string' ? state.locale : 'en-US',
+    });
+  },
+  onSaveAndClose(handler) {
+    if (typeof handler !== 'function') throw new TypeError('Save-and-close handler must be a function.');
+    saveAndCloseHandler = handler;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      if (saveAndCloseHandler === handler) saveAndCloseHandler = null;
+    };
+  },
+}));
+`;
 }
 
 function serviceWorkerSource(namespace, hash, paths) {
@@ -291,6 +492,10 @@ function validateDescriptor(descriptor) {
   if (!descriptor?.budget || !(descriptor.budget.maxRawBytes > 0) || !(descriptor.budget.maxGzipBytes > 0)) errors.push('budget is invalid');
   if (!descriptor?.pwa || typeof descriptor.pwa.enabled !== 'boolean') errors.push('pwa descriptor is required');
   if (!descriptor?.electron || typeof descriptor.electron.enabled !== 'boolean') errors.push('electron descriptor is required');
+  if (descriptor?.electron?.unsavedCloseProtection !== undefined
+    && typeof descriptor.electron.unsavedCloseProtection !== 'boolean') {
+    errors.push('electron.unsavedCloseProtection must be a boolean');
+  }
   return errors;
 }
 

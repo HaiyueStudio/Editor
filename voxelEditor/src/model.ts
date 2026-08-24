@@ -655,6 +655,23 @@ export class VoxelDocument extends EventTarget {
     return removed;
   }
 
+  setModuleSize(moduleId: string, size: SceneSize): number {
+    const module = this._modules.get(moduleId);
+    if (!module) throw new Error('模块不存在。');
+    const next = { x: normalizeAxis(size.x), y: normalizeAxis(size.y), z: normalizeAxis(size.z) };
+    if (next.x === module.size.x && next.y === module.size.y && next.z === module.size.z) return 0;
+    module.size = next;
+    let removed = 0;
+    for (const [key, voxel] of module.voxels) {
+      if (voxel.x >= 0 && voxel.x < next.x && voxel.y >= 0 && voxel.y < next.y && voxel.z >= 0 && voxel.z < next.z) continue;
+      module.voxels.delete(key);
+      removed += 1;
+    }
+    this._touchModule(moduleId);
+    this._notify('resize');
+    return removed;
+  }
+
   clear(): boolean {
     const target = this._getEditableVoxels();
     if (target.size === 0 && (this.isEditingModule || this._moduleInstances.size === 0)) return false;

@@ -3,7 +3,6 @@ import {
   ClearDocumentCommand,
   CommandHistory,
   createSetVoxelsCommand,
-  SceneResizeCommand,
 } from './commands';
 import { AnimationController } from './controllers/AnimationController';
 import { ModulePanelController } from './controllers/ModulePanelController';
@@ -21,6 +20,8 @@ import { SceneBackgroundController } from './controllers/SceneBackgroundControll
 import { ViewportInputController } from './controllers/ViewportInputController';
 import { VoxelSelectionController } from './controllers/VoxelSelectionController';
 import { TextInputDialogController } from './controllers/TextInputDialogController';
+import { ElectronCloseController } from './controllers/ElectronCloseController';
+import { EditContextController } from './controllers/EditContextController';
 import { VoxelDocument } from './model';
 import type {
   VoxelDocumentChangeDetail,
@@ -69,9 +70,6 @@ const canvas = byId<HTMLCanvasElement>('viewport');
 const voxelCount = byId<HTMLElement>('voxel-count');
 const coordinate = byId<HTMLElement>('coordinate');
 const toast = byId<HTMLElement>('toast');
-const sizeX = byId<HTMLInputElement>('size-x');
-const sizeY = byId<HTMLInputElement>('size-y');
-const sizeZ = byId<HTMLInputElement>('size-z');
 const shapeKind = byId<HTMLSelectElement>('shape-kind');
 const undoButton = byId<HTMLElement>('undo-command');
 const redoButton = byId<HTMLElement>('redo-command');
@@ -99,6 +97,12 @@ const viewportSliceController = new ViewportSliceController({
   getRenderer: () => renderer,
   getSize: () => documentModel.viewSize,
   requestRender: requestRenderRefresh,
+});
+const editContextController = new EditContextController({
+  document: documentModel,
+  history: commandHistory,
+  notify,
+  resetCamera: () => renderer?.resetCamera(),
 });
 selectionController = new VoxelSelectionController({
   document: documentModel,
@@ -194,15 +198,9 @@ function syncSceneStatsUi(): void {
   voxelCount.textContent = documentModel.sceneVoxelCount.toLocaleString();
 }
 
-function syncSizeUi(): void {
-  sizeX.value = String(documentModel.size.x);
-  sizeY.value = String(documentModel.size.y);
-  sizeZ.value = String(documentModel.size.z);
-}
-
 function syncUi(): void {
   syncSceneStatsUi();
-  syncSizeUi();
+  editContextController.sync();
   paletteController.sync();
   brushController.syncLocale();
 }
@@ -253,7 +251,7 @@ function flushUiUpdates(
     paletteController.sync();
   }
   if (dirty.grid) {
-    syncSizeUi();
+    editContextController.sync();
     viewportSliceController.syncSize(false);
   }
   let renderStateChanged = false;
@@ -288,8 +286,10 @@ projectSessionController = new ProjectSessionController({
   notify,
   resetCamera: () => renderer?.resetCamera(),
 });
+const electronCloseController = new ElectronCloseController(projectSessionController);
 const platformBindings = connectVoxelEditorPlatform(documentModel, voxelSelection, projectSessionController);
 window.addEventListener('pagehide', () => {
+  electronCloseController.dispose();
   platformBindings.dispose();
   commandHistory.dispose();
   disposeVoxelEditorPlatform();
@@ -304,6 +304,7 @@ document.addEventListener('voxel-editor-locale-change', () => {
   animationController.sync();
   projectIOController.syncLocale();
   projectSessionController.syncLocale();
+  editContextController.sync();
   syncHistoryUi();
 });
 
@@ -335,19 +336,6 @@ selectionController.bindActions({
   delete: byId('delete-selection'),
   rotateButtons: [...document.querySelectorAll<HTMLButtonElement>('[data-selection-rotate]')],
   flipButtons: [...document.querySelectorAll<HTMLButtonElement>('[data-selection-flip]')],
-});
-
-byId('apply-size').addEventListener('click', () => {
-  const next = { x: Number(sizeX.value), y: Number(sizeY.value), z: Number(sizeZ.value) };
-  const command = new SceneResizeCommand(documentModel, next);
-  const changed = commandHistory.execute(command);
-  if (!changed) {
-    syncUi();
-    notify('场景尺寸没有变化。');
-    return;
-  }
-  renderer?.resetCamera();
-  notify(command.removedCount > 0 ? `场景尺寸已更新，移除了 ${command.removedCount} 个越界体素。` : '场景尺寸已更新。');
 });
 
 byId('generate-shape').addEventListener('click', () => {

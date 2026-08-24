@@ -25,6 +25,7 @@ import {
   ModuleInstanceTransformCommand,
   ModuleRemoveCommand,
   ModuleRenameCommand,
+  ModuleResizeCommand,
   PaletteMaterialCreateCommand,
   PaletteMaterialRemoveCommand,
   PaletteMaterialUpdateCommand,
@@ -510,6 +511,31 @@ test('resize and clear commands retain only removed scene content', () => {
   assert.equal(document.voxelCount, 2);
   assert.equal(document.getModuleInstance(instance.id)?.moduleId, module.id);
   assert.equal(document.getModule(module.id)?.voxels.length, 1);
+});
+
+test('module resize changes only the active asset and restores clipped voxels on undo', () => {
+  const document = new VoxelDocument({ x: 20, y: 20, z: 20 });
+  const module = document.createModule('可调整模块', { x: 8, y: 7, z: 6 });
+  document.setVoxel(1, 1, 1, '#ff0000');
+  document.setVoxel(7, 6, 5, '#00ff00');
+  const otherModule = document.createModule('另一个模块', { x: 3, y: 3, z: 3 });
+  document.editModule(module.id);
+  const history = new CommandHistory();
+  const resize = new ModuleResizeCommand(document, module.id, { x: 4, y: 4, z: 4 });
+
+  assert.equal(history.execute(resize), true);
+  assert.equal(resize.removedCount, 1);
+  assert.deepEqual(document.size, { x: 20, y: 20, z: 20 });
+  assert.deepEqual(document.viewSize, { x: 4, y: 4, z: 4 });
+  assert.equal(document.getTargetVoxel(module.id, 7, 6, 5), undefined);
+  document.editModule(otherModule.id);
+  assert.equal(history.undo(), '调整模块尺寸');
+  assert.equal(document.editingModuleId, otherModule.id, 'undo must not jump away from the newly selected module');
+  assert.deepEqual(document.getModule(module.id)?.size, { x: 8, y: 7, z: 6 });
+  assert.equal(document.getTargetVoxel(module.id, 7, 6, 5)?.color, '#00ff00');
+  assert.equal(history.redo(), '调整模块尺寸');
+  assert.equal(document.editingModuleId, otherModule.id);
+  assert.deepEqual(document.getModule(module.id)?.size, { x: 4, y: 4, z: 4 });
 });
 
 test('scene background color command supports undo and redo', () => {

@@ -32,6 +32,11 @@ test('replace color UI exposes a target swatch and editor language settings', as
   assert.match(html, /id="scene-background-color"/);
   assert.match(html, /id="scene-background-hex"/);
   assert.match(html, /id="reset-scene-background"/);
+  assert.match(html, /id="scene-background-section" data-edit-context="scene"/);
+  assert.match(html, /id="scene-module-controls" data-edit-context="scene"/);
+  assert.match(html, /id="scene-animation-section" data-edit-context="scene"/);
+  assert.match(html, /id="edit-context-heading"/);
+  assert.match(html, /id="edit-size-label"/);
   assert.match(html, /id="mirror-help"/);
   assert.match(html, /data-i18n-label="hint\.mirror"/);
   assert.match(html, />替换颜色</);

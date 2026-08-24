@@ -220,8 +220,37 @@
       await submitTextInput('Smoke Module', '名称');
       await submitTextInput('2,2,2', '尺寸');
       await waitFor(() => editorDocument.getElementById('edit-context').textContent.includes('Smoke Module'), 'module creation');
+      await waitFor(() => editorDocument.getElementById('edit-context-heading').textContent === '模块设置', 'module settings context');
+      if (!editorDocument.getElementById('scene-background-section').hidden
+        || !editorDocument.getElementById('scene-module-controls').hidden
+        || !editorDocument.getElementById('scene-animation-section').hidden) {
+        throw new Error('Scene-only controls remained visible while editing a module.');
+      }
+      if (editorDocument.getElementById('edit-size-label').textContent !== '模块尺寸') {
+        throw new Error('Size editor did not switch to module semantics.');
+      }
+      editorDocument.getElementById('size-x').value = '3';
+      editorDocument.getElementById('apply-size').click();
+      await waitFor(() => editorDocument.getElementById('undo-command').title.includes('调整模块尺寸'), 'module resize command');
+      if (editorDocument.getElementById('size-x').value !== '3') throw new Error('Module size did not update.');
+
+      editorDocument.getElementById('new-module').click();
+      await submitTextInput('Second Module', '名称');
+      await submitTextInput('4,4,4', '尺寸');
+      await waitFor(() => editorDocument.getElementById('edit-context').textContent.includes('Second Module'), 'second module creation');
+      const firstModuleAsset = [...editorDocument.querySelectorAll('#module-assets .module-asset')]
+        .find(button => button.querySelector('strong')?.textContent === 'Smoke Module');
+      if (!firstModuleAsset) throw new Error('First module asset was not rendered.');
+      firstModuleAsset.click();
+      await waitFor(() => editorDocument.getElementById('edit-context').textContent.includes('Smoke Module'), 'module asset edit switch');
       editorDocument.getElementById('generate-shape').click();
       editorDocument.getElementById('edit-scene').click();
+      await waitFor(() => editorDocument.getElementById('edit-context-heading').textContent === '场景设置', 'scene settings context');
+      if (editorDocument.getElementById('scene-background-section').hidden
+        || editorDocument.getElementById('scene-module-controls').hidden
+        || editorDocument.getElementById('scene-animation-section').hidden) {
+        throw new Error('Scene controls did not return after leaving module editing.');
+      }
       editorDocument.getElementById('paste-module').click();
       editorDocument.getElementById('new-animation').click();
       await submitTextInput('Smoke Animation', '名称');

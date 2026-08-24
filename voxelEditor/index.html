@@ -298,10 +298,10 @@
         </ge-split>
 
         <aside slot="second" class="panel right-panel">
-          <div class="panel-header"><span data-i18n="panel.sceneSettings">场景设置</span><span class="muted">WORLD</span></div>
+          <div class="panel-header"><span id="edit-context-heading" data-i18n="panel.sceneSettings">场景设置</span><span id="edit-context-kind" class="muted">WORLD</span></div>
           <div class="panel-body controls">
             <section>
-              <div class="section-label label-with-help"><span data-i18n="scene.size">场景尺寸</span><ge-tooltip class="inline-help-tooltip" label="细网格间隔为 1 单位；每 5 单位使用中等强调线，每 10 单位使用更粗、更亮的线。" data-i18n-label="hint.grid" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
+              <div class="section-label label-with-help"><span id="edit-size-label" data-i18n="scene.size">场景尺寸</span><ge-tooltip class="inline-help-tooltip" label="细网格间隔为 1 单位；每 5 单位使用中等强调线，每 10 单位使用更粗、更亮的线。" data-i18n-label="hint.grid" placement="left" delay="250"><button class="inline-help-button" type="button" aria-label="查看说明" data-i18n-aria-label="app.moreInfo">?</button></ge-tooltip></div>
               <div class="dimension-row">
                 <label><span>X</span><input id="size-x" type="number" min="1" max="256" value="50" /></label>
                 <label><span>Y</span><input id="size-y" type="number" min="1" max="256" value="50" /></label>
@@ -310,7 +310,7 @@
               <button id="apply-size" class="wide-button primary" data-i18n="scene.applySize">应用尺寸</button>
             </section>
 
-            <section>
+            <section id="scene-background-section" data-edit-context="scene">
               <div class="section-label" data-i18n="scene.background">场景背景色</div>
               <div class="scene-background-editor">
                 <input id="scene-background-color" type="color" value="#090c11" aria-label="选择场景背景色" data-i18n-aria-label="scene.backgroundColorAria" />
@@ -407,14 +407,15 @@
               <div class="module-actions three">
                 <button id="new-module" data-i18n="module.new">新建</button>
                 <button id="edit-module" data-i18n="module.edit">编辑模块</button>
-                <button id="edit-scene" data-i18n="module.return">返回场景</button>
+                <button id="edit-scene" data-i18n="module.return" hidden>返回场景</button>
               </div>
               <div class="module-actions three">
                 <button id="rename-module" data-i18n="common.rename">重命名</button>
                 <button id="duplicate-module" data-i18n="module.duplicateDefinition">复制定义</button>
                 <button id="remove-unused-module" data-i18n="module.removeUnused">删除未使用</button>
               </div>
-              <button id="locate-module-instances" class="wide-button" data-i18n="module.locate">定位该模块的所有实例</button>
+              <button id="locate-module-instances" class="wide-button" data-edit-context="scene" data-i18n="module.locate">定位该模块的所有实例</button>
+              <div id="scene-module-controls" data-edit-context="scene">
               <div class="section-label module-subtitle" data-i18n="layer.title">图层</div>
               <select id="layer-library" class="module-library" aria-label="场景图层" data-i18n-aria-label="layer.sceneAria">
                 <option value="layer-1" data-i18n="layer.default">默认图层</option>
@@ -464,9 +465,10 @@
               <div id="module-conflict-details" class="module-conflict-details" data-i18n="module.noConflict">当前实例没有重合冲突。</div>
               <button id="highlight-module-conflicts" class="wide-button" data-i18n="module.highlightConflict">定位并高亮冲突体素</button>
               <button id="remove-module-instance" class="wide-button danger" data-i18n="module.removeInstance">删除选中的模块实例</button>
+              </div>
             </section>
 
-            <section>
+            <section id="scene-animation-section" data-edit-context="scene">
               <div class="section-label module-section-title"><span data-i18n="animation.title">动画</span><b id="animation-frame-label" data-i18n="animation.frame" data-i18n-current="1" data-i18n-total="1">帧 1 / 1</b></div>
               <select id="animation-library" class="module-library" aria-label="动画片段" data-i18n-aria-label="animation.libraryAria">
                 <option value="" data-i18n="animation.empty">尚未创建动画</option>

@@ -20,7 +20,10 @@ test('assembler creates deterministic base-relative PWA and byte-identical Elect
       outputDirectory: 'app-dist', electronRendererDirectory: 'electron/app-dist',
       budget: { maxRawBytes: 100000, maxGzipBytes: 100000 },
       pwa: { enabled: true, shortName: 'Test', description: 'Test', themeColor: '#000', backgroundColor: '#000' },
-      electron: { enabled: true, width: 1200, height: 800, minWidth: 800, minHeight: 600, backgroundColor: '#000' },
+      electron: {
+        enabled: true, width: 1200, height: 800, minWidth: 800, minHeight: 600,
+        backgroundColor: '#000', unsavedCloseProtection: true,
+      },
     }));
     const first = await assembleEditorApp({ descriptorPath: join(root, 'app.json'), packageRoot: root });
     const second = await assembleEditorApp({ descriptorPath: join(root, 'app.json'), packageRoot: root });
@@ -33,6 +36,15 @@ test('assembler creates deterministic base-relative PWA and byte-identical Elect
     await assert.rejects(readFile(join(root, 'app-dist/dist/bundle-report.md')), { code: 'ENOENT' });
     const electronMain = await readFile(join(root, 'electron/main.mjs'), 'utf8');
     assert.match(electronMain, /HAIYUE_ELECTRON_SMOKE/);
+    assert.match(electronMain, /will-prevent-unload/);
+    assert.match(electronMain, /保存并关闭/);
+    assert.match(electronMain, /save-and-close-result/);
+    assert.match(electronMain, /preload: join/);
+    const electronPreload = await readFile(join(root, 'electron/preload.cjs'), 'utf8');
+    assert.match(electronPreload, /contextBridge\.exposeInMainWorld\('haiyueEditorHost'/);
+    assert.doesNotMatch(electronPreload, /exposeInMainWorld\([^\n]+ipcRenderer/);
+    const builder = JSON.parse(await readFile(join(root, 'electron-builder.generated.json'), 'utf8'));
+    assert.ok(builder.files.includes('preload.cjs'));
 
     const server = await previewEditorApp({
       descriptorPath: join(root, 'app.json'),

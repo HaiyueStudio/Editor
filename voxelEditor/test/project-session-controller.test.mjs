@@ -31,8 +31,12 @@ class MemoryStore {
   current = null;
   recovery = null;
   recent = [];
+  failSaveCurrent = false;
   async loadCurrent() { return structuredClone(this.current); }
-  async saveCurrent(snapshot) { this.current = structuredClone(snapshot); }
+  async saveCurrent(snapshot) {
+    if (this.failSaveCurrent) throw new Error('save failed');
+    this.current = structuredClone(snapshot);
+  }
   async loadRecovery() { return this.recovery; }
   async saveRecovery(snapshot) { this.recovery = structuredClone(snapshot); }
   async clearRecovery() { this.recovery = null; }
@@ -128,6 +132,20 @@ test('save shortcut writes the current project to IndexedDB and reconciles dirty
   state.documentModel.setVoxel(1, 1, 1, '#ff0000');
   await settle();
   assert.equal(state.controller.dirty, false, 'returning to the saved content should clear the dirty marker');
+});
+
+test('explicit save reports whether Electron may close the dirty project', async () => {
+  const state = await fixture();
+  await state.controller.initialize();
+  state.documentModel.setVoxel(1, 2, 3, '#123456');
+  assert.equal(await state.controller.save(), true);
+  assert.equal(state.controller.dirty, false);
+
+  state.documentModel.setVoxel(2, 3, 4, '#abcdef');
+  state.store.failSaveCurrent = true;
+  assert.equal(await state.controller.save(), false);
+  assert.equal(state.controller.dirty, true);
+  assert.deepEqual(state.notices.at(-1), { message: 'save failed', error: true });
 });
 
 test('startup automatically restores the last project explicitly saved in IndexedDB', async () => {

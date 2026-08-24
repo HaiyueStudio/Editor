@@ -135,6 +135,8 @@ export class ModulePanelController {
     this._editContext.textContent = editingModule
       ? translate('module.editing', { name: editingModule.name })
       : translate('module.scene');
+    element<HTMLButtonElement>('edit-module').hidden = editingModule !== null;
+    element<HTMLButtonElement>('edit-scene').hidden = editingModule === null;
     if (!layers.some(layer => layer.id === this._activeLayerId)) this._activeLayerId = DEFAULT_LAYER_ID;
     this._document.setActiveVoxelLayer(this._activeLayerId);
     this._layerLibrary.replaceChildren(...layers.map(layer => new Option(layer.name, layer.id)));
@@ -281,7 +283,7 @@ export class ModulePanelController {
 
   private _bind(): void {
     this._moduleLibrary.addEventListener('change', () => {
-      if (this._moduleLibrary.value) this._copiedModuleId = this._moduleLibrary.value;
+      if (this._moduleLibrary.value) this._selectModuleAsset(this._moduleLibrary.value);
       this.sync();
     });
     this._moduleSearch.addEventListener('input', () => this._renderModuleAssets(this._sortedModules(this._document.moduleSummaries)));
@@ -415,8 +417,7 @@ export class ModulePanelController {
       copy.append(name, meta);
       button.append(svg, copy);
       button.addEventListener('click', () => {
-        this._moduleLibrary.value = module.id;
-        this._copiedModuleId = module.id;
+        this._selectModuleAsset(module.id);
         this.sync();
       });
       this._moduleAssets.append(button);
@@ -427,6 +428,18 @@ export class ModulePanelController {
     const module = this._document.getModule(this._moduleLibrary.value);
     if (!module) throw new Error('请先选择一个模块。');
     return module;
+  }
+
+  private _selectModuleAsset(moduleId: string): void {
+    this._moduleLibrary.value = moduleId;
+    this._copiedModuleId = moduleId;
+    const previousEditingModuleId = this._document.editingModuleId;
+    if (!previousEditingModuleId || previousEditingModuleId === moduleId) return;
+    if (!this._document.editModule(moduleId)) throw new Error('选择的模块不存在。');
+    this._selectedInstanceId = null;
+    this._resetCamera();
+    const module = this._document.getModule(moduleId);
+    if (module) this._notify(`已切换到模块“${module.name}”。`);
   }
 
   private async _renameModule(): Promise<void> {
