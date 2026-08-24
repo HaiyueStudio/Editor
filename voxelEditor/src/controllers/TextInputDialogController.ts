@@ -19,6 +19,7 @@ export class TextInputDialogController {
   private readonly _abort = new AbortController();
   private _resolve: ((value: string | null) => void) | null = null;
   private _returnFocus: HTMLElement | null = null;
+  private _ownedCloseEvents = 0;
   private _disposed = false;
 
   constructor(root: Document = document) {
@@ -39,7 +40,13 @@ export class TextInputDialogController {
       event.preventDefault();
       this._settle(null);
     }, { signal });
-    this._dialog.addEventListener('close', () => this._settle(null), { signal });
+    this._dialog.addEventListener('close', () => {
+      if (this._ownedCloseEvents > 0) {
+        this._ownedCloseEvents--;
+        return;
+      }
+      this._settle(null);
+    }, { signal });
   }
 
   readonly request: RequestTextInput = request => {
@@ -82,8 +89,10 @@ export class TextInputDialogController {
     const resolve = this._resolve;
     if (!resolve) return;
     this._resolve = null;
-    if (this._dialog.open && typeof this._dialog.close === 'function') this._dialog.close();
-    else this._dialog.removeAttribute('open');
+    if (this._dialog.open && typeof this._dialog.close === 'function') {
+      this._ownedCloseEvents++;
+      this._dialog.close();
+    } else this._dialog.removeAttribute('open');
     const returnFocus = this._returnFocus;
     resolve(value);
     if (restoreFocus) queueMicrotask(() => {

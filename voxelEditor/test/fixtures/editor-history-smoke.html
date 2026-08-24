@@ -212,6 +212,9 @@
         );
         textInput.value = value;
         textInputForm.requestSubmit();
+        // Keep enough time for the previous native <dialog> close event to fire.
+        // A stale close event must not cancel a newly opened follow-up prompt.
+        await delay(50);
       };
       editorDocument.getElementById('new-module').click();
       await submitTextInput('Smoke Module', '名称');
