@@ -201,15 +201,27 @@
       editorDocument.getElementById('replace-color').click();
       await waitFor(() => editorDocument.getElementById('undo-command').title.includes('全局替换颜色'), 'replace-color command');
 
-      const promptAnswers = ['Smoke Module', '2,2,2', 'Smoke Animation'];
-      const originalPrompt = editorWindow.prompt;
-      editorWindow.prompt = () => promptAnswers.shift() ?? null;
+      const textInputDialog = editorDocument.getElementById('text-input-dialog');
+      const textInputLabel = editorDocument.getElementById('text-input-dialog-label');
+      const textInput = editorDocument.getElementById('text-input-dialog-input');
+      const textInputForm = editorDocument.getElementById('text-input-dialog-form');
+      const submitTextInput = async (value, expectedLabel) => {
+        await waitFor(
+          () => textInputDialog.open && textInputLabel.textContent.includes(expectedLabel),
+          `text input dialog for ${expectedLabel}`,
+        );
+        textInput.value = value;
+        textInputForm.requestSubmit();
+      };
       editorDocument.getElementById('new-module').click();
+      await submitTextInput('Smoke Module', '名称');
+      await submitTextInput('2,2,2', '尺寸');
       await waitFor(() => editorDocument.getElementById('edit-context').textContent.includes('Smoke Module'), 'module creation');
       editorDocument.getElementById('generate-shape').click();
       editorDocument.getElementById('edit-scene').click();
       editorDocument.getElementById('paste-module').click();
       editorDocument.getElementById('new-animation').click();
+      await submitTextInput('Smoke Animation', '名称');
       await waitFor(() => editorDocument.getElementById('animation-library').value, 'new animation selection');
       editorDocument.getElementById('set-animation-keyframe').click();
       await waitFor(() => editorDocument.querySelectorAll('.timeline-keyframe').length === 1, 'first timeline keyframe');
@@ -225,7 +237,6 @@
       editorDocument.getElementById('save-animation-settings').click();
       editorDocument.getElementById('onion-previous').click();
       editorDocument.getElementById('onion-next').click();
-      editorWindow.prompt = originalPrompt;
 
       editorWindow.dispatchEvent(new editorWindow.KeyboardEvent('keydown', {
         key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true,

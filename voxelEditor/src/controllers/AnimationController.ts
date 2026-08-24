@@ -11,6 +11,7 @@ import {
 import type { RenderableVoxel, VoxelAnimationClip, VoxelAnimationKeyframe, VoxelDocument } from '../model';
 import type { VoxelRenderer } from '../VoxelRenderer';
 import { AnimationTimelineController } from './AnimationTimelineController';
+import type { RequestTextInput } from './TextInputDialogController';
 
 type Notify = (message: string, error?: boolean) => void;
 
@@ -18,6 +19,7 @@ export interface AnimationControllerOptions {
   document: VoxelDocument;
   history: CommandHistory;
   notify: Notify;
+  requestTextInput: RequestTextInput;
   getSelectedInstanceId(): string | null;
   getRenderer(): VoxelRenderer | null;
 }
@@ -27,6 +29,7 @@ export class AnimationController {
   private readonly _document: VoxelDocument;
   private readonly _history: CommandHistory;
   private readonly _notify: Notify;
+  private readonly _requestTextInput: RequestTextInput;
   private readonly _selectedInstanceId: () => string | null;
   private readonly _getRenderer: () => VoxelRenderer | null;
   private readonly _library = element<HTMLSelectElement>('animation-library');
@@ -45,6 +48,7 @@ export class AnimationController {
     this._document = options.document;
     this._history = options.history;
     this._notify = options.notify;
+    this._requestTextInput = options.requestTextInput;
     this._selectedInstanceId = options.getSelectedInstanceId;
     this._getRenderer = options.getRenderer;
     this._timeline = new AnimationTimelineController({
@@ -174,8 +178,12 @@ export class AnimationController {
 
   private _bind(): void {
     this._library.addEventListener('change', () => this._document.setActiveAnimation(this._library.value || null));
-    element('new-animation').addEventListener('click', () => this._run(() => {
-      const name = window.prompt('动画名称', `动画 ${this._document.animationSummaries.length + 1}`);
+    element('new-animation').addEventListener('click', () => this._run(async () => {
+      const name = await this._requestTextInput({
+        title: translate('animation.new'),
+        label: translate('common.name'),
+        initialValue: `动画 ${this._document.animationSummaries.length + 1}`,
+      });
       if (name === null) return;
       this._history.execute(new AnimationCreateCommand(this._document, name, 12, 12));
       this._notify('动画片段已创建。选择实例并在不同帧记录关键帧。');
@@ -220,10 +228,14 @@ export class AnimationController {
     this._notify(changed ? '动画设置和播放区间已更新。' : '动画设置没有变化。');
   }
 
-  private _duplicateAnimation(): void {
+  private async _duplicateAnimation(): Promise<void> {
     const clip = this._document.activeAnimationView;
     if (!clip) return;
-    const name = window.prompt('复制动画名称', `${clip.name} 副本`);
+    const name = await this._requestTextInput({
+      title: translate('animation.duplicate'),
+      label: translate('common.name'),
+      initialValue: `${clip.name} 副本`,
+    });
     if (name === null) return;
     if (this._history.execute(new AnimationDuplicateCommand(this._document, clip.id, name))) {
       this._notify(`已复制动画片段“${clip.name}”。`);
@@ -330,8 +342,8 @@ export class AnimationController {
       && sameVector(vectorInputs('module-scale'), keyframe.scale);
   }
 
-  private _run(action: () => void): void {
-    try { action(); }
+  private async _run(action: () => void | Promise<void>): Promise<void> {
+    try { await action(); }
     catch (error) { this._notify(error instanceof Error ? error.message : String(error), true); }
   }
 }

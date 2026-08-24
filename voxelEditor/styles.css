@@ -143,6 +143,13 @@ ge-split { --ge-split-bg-color: var(--bg); --ge-split-bar-color: #0c1118; --ge-s
 .editor-help-row span { color: #8392a8; line-height: 1.35; }
 .editor-dialog-actions { display: flex; justify-content: flex-end; padding: 10px 17px 14px; border-top: 1px solid var(--border-soft); }
 .editor-dialog-actions button { min-width: 72px; height: 30px; border: 1px solid #247aa6; border-radius: 4px; color: #fff; background: #176b95; cursor: pointer; }
+.editor-text-input-dialog { width: min(390px, calc(100vw - 32px)); }
+.editor-text-input-form { display: block; }
+.editor-text-input-field { display: grid; gap: 7px; padding: 16px 17px; color: #93a4b9; font-size: 10px; }
+.editor-text-input-field input { width: 100%; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 4px; outline: none; color: var(--text); background: #111722; box-sizing: border-box; }
+.editor-text-input-field input:focus { border-color: #4a9bc2; box-shadow: 0 0 0 3px rgba(74,155,194,.16); }
+.editor-text-input-actions { gap: 7px; }
+.editor-text-input-actions button.secondary { border-color: var(--border); color: #a9b8ca; background: #182130; }
 
 .viewport-panel { background: #090e15; }
 .viewport-header { background: #151c27; }

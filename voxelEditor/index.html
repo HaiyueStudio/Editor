@@ -642,6 +642,21 @@
       <button id="close-editor-settings" type="button" data-i18n="settings.done">完成</button>
     </div>
   </dialog>
+  <dialog id="text-input-dialog" class="editor-dialog editor-text-input-dialog" aria-labelledby="text-input-dialog-title">
+    <form id="text-input-dialog-form" class="editor-text-input-form">
+      <div class="editor-dialog-heading">
+        <h2 id="text-input-dialog-title"></h2>
+      </div>
+      <label class="editor-text-input-field" for="text-input-dialog-input">
+        <span id="text-input-dialog-label"></span>
+        <input id="text-input-dialog-input" type="text" autocomplete="off" />
+      </label>
+      <div class="editor-dialog-actions editor-text-input-actions">
+        <button id="cancel-text-input-dialog" class="secondary" type="button" data-i18n="common.cancel">取消</button>
+        <button id="submit-text-input-dialog" type="submit" data-i18n="common.confirm">确定</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="./pwa/register.js"></script>
   <script type="module" src="./dist/main.js"></script>
 </body>

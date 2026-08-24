@@ -17,6 +17,7 @@ import { DEFAULT_LAYER_ID, type ModuleSummary, type Voxel, type VoxelDocument, t
 import { moduleThumbnailPoints } from '../moduleThumbnail';
 import { getEditorLocale, translate } from '../localization';
 import type { ModuleGizmoMode, VoxelRenderer } from '../VoxelRenderer';
+import type { RequestTextInput } from './TextInputDialogController';
 
 type Notify = (message: string, error?: boolean) => void;
 
@@ -24,6 +25,7 @@ export interface ModulePanelControllerOptions {
   document: VoxelDocument;
   history: CommandHistory;
   notify: Notify;
+  requestTextInput: RequestTextInput;
   getRenderer(): VoxelRenderer | null;
   requestRenderRefresh(): void;
   resetCamera(): void;
@@ -36,6 +38,7 @@ export class ModulePanelController {
   private readonly _document: VoxelDocument;
   private readonly _history: CommandHistory;
   private readonly _notify: Notify;
+  private readonly _requestTextInput: RequestTextInput;
   private readonly _getRenderer: () => VoxelRenderer | null;
   private readonly _requestRenderRefresh: () => void;
   private readonly _resetCamera: () => void;
@@ -61,6 +64,7 @@ export class ModulePanelController {
     this._document = options.document;
     this._history = options.history;
     this._notify = options.notify;
+    this._requestTextInput = options.requestTextInput;
     this._getRenderer = options.getRenderer;
     this._requestRenderRefresh = options.requestRenderRefresh;
     this._resetCamera = options.resetCamera;
@@ -288,17 +292,25 @@ export class ModulePanelController {
       this.sync();
     });
     this._gizmoModeInput.addEventListener('change', () => { this._gizmoMode = this._gizmoModeInput.value as ModuleGizmoMode; this.sync(); });
-    element('new-layer').addEventListener('click', () => this._run(() => {
-      const name = window.prompt('图层名称', `图层 ${this._document.layers.length + 1}`);
+    element('new-layer').addEventListener('click', () => this._run(async () => {
+      const name = await this._requestTextInput({
+        title: translate('layer.new'),
+        label: translate('common.name'),
+        initialValue: `图层 ${this._document.layers.length + 1}`,
+      });
       if (name === null) return;
       const command = new LayerCreateCommand(this._document, name);
       this._history.execute(command);
       this._activeLayerId = command.layer?.id ?? DEFAULT_LAYER_ID;
     }));
-    element('rename-layer').addEventListener('click', () => this._run(() => {
+    element('rename-layer').addEventListener('click', () => this._run(async () => {
       const layer = this._document.getLayer(this._activeLayerId);
       if (!layer) return;
-      const name = window.prompt('重命名图层', layer.name);
+      const name = await this._requestTextInput({
+        title: translate('common.rename'),
+        label: translate('common.name'),
+        initialValue: layer.name,
+      });
       if (name !== null) this._history.execute(new LayerUpdateCommand(this._document, layer.id, { name }, '重命名图层'));
     }));
     element('remove-layer').addEventListener('click', () => this._run(() => {
@@ -417,9 +429,13 @@ export class ModulePanelController {
     return module;
   }
 
-  private _renameModule(): void {
+  private async _renameModule(): Promise<void> {
     const module = this._selectedModule();
-    const name = window.prompt('重命名模块', module.name);
+    const name = await this._requestTextInput({
+      title: translate('common.rename'),
+      label: translate('common.name'),
+      initialValue: module.name,
+    });
     if (name === null) return;
     if (this._history.execute(new ModuleRenameCommand(this._document, module.id, name))) {
       this._notify(`模块已重命名为“${name.trim() || module.name}”。`);
@@ -488,10 +504,18 @@ export class ModulePanelController {
     this._notify(`已高亮 ${collisions.length.toLocaleString()} 个冲突格。`);
   }
 
-  private _newModule(): void {
-    const name = window.prompt('模块名称', `模块 ${this._document.moduleSummaries.length + 1}`);
+  private async _newModule(): Promise<void> {
+    const name = await this._requestTextInput({
+      title: translate('module.new'),
+      label: translate('common.name'),
+      initialValue: `模块 ${this._document.moduleSummaries.length + 1}`,
+    });
     if (name === null) return;
-    const rawSize = window.prompt('模块尺寸（X,Y,Z）', '16,16,16');
+    const rawSize = await this._requestTextInput({
+      title: translate('module.new'),
+      label: `${translate('common.size')} (X, Y, Z)`,
+      initialValue: '16,16,16',
+    });
     if (rawSize === null) return;
     const axes = rawSize.split(/[,，x×\s]+/).filter(Boolean).map(Number);
     if (axes.length !== 3 || axes.some(axis => !Number.isFinite(axis) || axis <= 0)) throw new Error('模块尺寸格式无效，请输入类似 16,16,16。');
@@ -571,8 +595,8 @@ export class ModulePanelController {
     this._onSelectionChange();
   }
 
-  private _run(action: () => void): void {
-    try { action(); }
+  private async _run(action: () => void | Promise<void>): Promise<void> {
+    try { await action(); }
     catch (error) { this._notify(error instanceof Error ? error.message : String(error), true); }
   }
 }

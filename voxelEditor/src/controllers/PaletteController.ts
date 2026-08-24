@@ -6,6 +6,7 @@ import {
 } from '../commands';
 import type { VoxelDocument } from '../model';
 import { getEditorLocale, translate } from '../localization';
+import type { RequestTextInput } from './TextInputDialogController';
 
 type Notify = (message: string, error?: boolean) => void;
 
@@ -13,6 +14,7 @@ export interface PaletteControllerOptions {
   document: VoxelDocument;
   history: CommandHistory;
   notify: Notify;
+  requestTextInput: RequestTextInput;
 }
 
 /** Owns palette selection, PBR material editing, and palette-derived usage UI. */
@@ -20,6 +22,7 @@ export class PaletteController {
   private readonly _document: VoxelDocument;
   private readonly _history: CommandHistory;
   private readonly _notify: Notify;
+  private readonly _requestTextInput: RequestTextInput;
   private readonly _color = element<HTMLInputElement>('color-input');
   private readonly _replaceTarget = element<HTMLElement>('replace-target-color');
   private readonly _hex = element<HTMLInputElement>('color-hex');
@@ -34,6 +37,7 @@ export class PaletteController {
     this._document = options.document;
     this._history = options.history;
     this._notify = options.notify;
+    this._requestTextInput = options.requestTextInput;
     this._bind();
   }
 
@@ -97,9 +101,13 @@ export class PaletteController {
       this._notify(changed ? 'PBR 材质已更新，所有引用体素已同步。' : 'PBR 材质没有变化。');
     }));
 
-    element('duplicate-pbr-material').addEventListener('click', () => this._run(() => {
+    element('duplicate-pbr-material').addEventListener('click', () => this._run(async () => {
       const source = this._document.getPaletteMaterial(this._document.currentMaterialId);
-      const rawColor = window.prompt('新材质颜色', source.color);
+      const rawColor = await this._requestTextInput({
+        title: translate('material.duplicate'),
+        label: translate('material.colorAria'),
+        initialValue: source.color,
+      });
       if (rawColor === null) return;
       this._history.execute(new PaletteMaterialCreateCommand(
         this._document,
@@ -117,8 +125,8 @@ export class PaletteController {
     }));
   }
 
-  private _run(action: () => void): void {
-    try { action(); }
+  private async _run(action: () => void | Promise<void>): Promise<void> {
+    try { await action(); }
     catch (error) { this._notify(error instanceof Error ? error.message : String(error), true); }
   }
 }

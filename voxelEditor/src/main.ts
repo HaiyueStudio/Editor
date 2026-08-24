@@ -20,6 +20,7 @@ import { ModuleGizmoController } from './controllers/ModuleGizmoController';
 import { SceneBackgroundController } from './controllers/SceneBackgroundController';
 import { ViewportInputController } from './controllers/ViewportInputController';
 import { VoxelSelectionController } from './controllers/VoxelSelectionController';
+import { TextInputDialogController } from './controllers/TextInputDialogController';
 import { VoxelDocument } from './model';
 import type {
   VoxelDocumentChangeDetail,
@@ -43,6 +44,8 @@ await startVoxelEditorPlatform();
 defineHaiyueUI();
 initializeEditorLocalization();
 new EditorHelpController();
+const textInputDialogController = new TextInputDialogController();
+window.addEventListener('pagehide', () => textInputDialogController.dispose(), { once: true });
 
 const documentModel = new VoxelDocument();
 const commandHistory = new CommandHistory(100, 64 * 1024 * 1024, voxelEditorPlatform.history)
@@ -76,7 +79,12 @@ const selectionKind = byId<HTMLSelectElement>('selection-kind');
 const boxSelectionMode = byId<HTMLSelectElement>('box-selection-mode');
 const selectionCount = byId<HTMLElement>('selection-count');
 const selectionRect = byId<HTMLElement>('selection-rect');
-const paletteController = new PaletteController({ document: documentModel, history: commandHistory, notify });
+const paletteController = new PaletteController({
+  document: documentModel,
+  history: commandHistory,
+  notify,
+  requestTextInput: textInputDialogController.request,
+});
 let selectionController: VoxelSelectionController;
 let selectionTransformController: SelectionTransformController;
 const viewportController = new ViewportInteractionController({
@@ -133,6 +141,7 @@ const modulePanelController = new ModulePanelController({
   document: documentModel,
   history: commandHistory,
   notify,
+  requestTextInput: textInputDialogController.request,
   getRenderer: () => renderer,
   requestRenderRefresh,
   resetCamera: () => renderer?.resetCamera(),
@@ -143,6 +152,7 @@ animationController = new AnimationController({
   document: documentModel,
   history: commandHistory,
   notify,
+  requestTextInput: textInputDialogController.request,
   getSelectedInstanceId: () => modulePanelController.selectedInstanceId,
   getRenderer: () => renderer,
 });
