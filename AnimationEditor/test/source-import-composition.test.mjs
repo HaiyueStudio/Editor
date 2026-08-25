@@ -4,10 +4,8 @@ import test from 'node:test';
 
 const g07 = await import('../dist-test/source-import-entry.js');
 const REAL_PRECOMP = new URL('./source-import-fixtures/real-precomp.json', import.meta.url);
-const animationSpecRoot = new URL('../', import.meta.resolve('@haiyue/animation-spec'));
-const extensionsRoot = new URL('../', import.meta.resolve('@haiyue/extensions'));
-const BASIC_LOTTIE = new URL('test/fixtures/basic-lottie.json', animationSpecRoot);
-const REAL_GLTF = new URL('test/fixtures/gltf/animation-characterization.gltf', extensionsRoot);
+const BASIC_LOTTIE = new URL('./fixtures/lottie/basic-lottie.json', import.meta.url);
+const REAL_GLTF = new URL('./fixtures/gltf/animation-characterization.gltf', import.meta.url);
 
 test('real CC0 Lottie precomp maps through the package converter with stable provenance and editable project identity', async () => {
   const text = await readFile(REAL_PRECOMP, 'utf8');

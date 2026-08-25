@@ -26,11 +26,7 @@ import {
 import type { VoxelSceneProjectionSource } from './document/VoxelSceneProjectionSource';
 import { normalizedVoxelLayerId, numericIdSuffix, replaceMap } from './document/VoxelDocumentUtilities';
 import {
-  cloneVoxMaterialExtension,
-  isVoxelRecord as isRecord,
   normalizeVoxelAxis as normalizeAxis,
-  normalizeVoxelUnit as normalizeUnit,
-  parseVoxMaterialExtension,
   StringKeyVoxelMapView,
 } from './document/VoxelDocumentNormalization';
 import { ModuleHierarchyState } from './modules/ModuleHierarchyState';
@@ -38,9 +34,6 @@ import { PaletteMaterialState } from './palette/PaletteMaterialState';
 import { migrateVoxelProject } from './persistence/VoxelProjectMigration';
 import {
   DEFAULT_LAYER_ID,
-  DEFAULT_PALETTE,
-  DEFAULT_PBR_METALLIC,
-  DEFAULT_PBR_ROUGHNESS,
   DEFAULT_SCENE_BACKGROUND_COLOR,
   DEFAULT_SCENE_SIZE,
   MAX_VOXELS,
@@ -133,7 +126,6 @@ export class VoxelDocument extends EventTarget {
       z: normalizeAxis(size.z),
     };
     this._layers.set(DEFAULT_LAYER_ID, { id: DEFAULT_LAYER_ID, name: '默认图层', visible: true, locked: false });
-    for (const material of DEFAULT_PALETTE) this._palette.set(material.id, { ...material });
   }
 
   get size(): Readonly<SceneSize> { return this._size; }
@@ -306,12 +298,7 @@ export class VoxelDocument extends EventTarget {
   }
 
   set currentColor(value: string) {
-    const color = normalizeColor(value);
-    const current = this._palette.get(this._currentMaterialId);
-    if (current?.color === color) return;
-    const material = this._findPaletteMaterialByColor(color) ?? this._createPaletteMaterialInternal(color);
-    this._currentMaterialId = material.id;
-    this._currentColor = material.color;
+    if (!this._paletteState.selectColor(value)) return;
     this._notify('color');
   }
 
@@ -324,44 +311,26 @@ export class VoxelDocument extends EventTarget {
   }
 
   selectPaletteMaterial(materialId: string): boolean {
-    const material = this._palette.get(materialId);
-    if (!material) return false;
-    if (material.id === this._currentMaterialId) return false;
-    this._currentMaterialId = material.id;
-    this._currentColor = material.color;
+    if (!this._paletteState.select(materialId)) return false;
     this._notify('color');
     return true;
   }
 
   getPaletteMaterial(materialIdOrColor: string): PbrPaletteMaterial {
-    const direct = this._palette.get(materialIdOrColor);
-    if (direct) return { ...direct };
-    const normalized = normalizeColor(materialIdOrColor);
-    const material = this._findPaletteMaterialByColor(normalized);
-    return material ? { ...material } : {
-      id: '',
-      color: normalized,
-      name: normalized.toUpperCase(),
-      metallic: DEFAULT_PBR_METALLIC,
-      roughness: DEFAULT_PBR_ROUGHNESS,
-    };
+    return this._paletteState.get(materialIdOrColor);
   }
 
   resolveVoxelMaterial(voxel: Pick<Voxel, 'color' | 'materialId'>): PbrPaletteMaterial {
-    const byId = voxel.materialId ? this._palette.get(voxel.materialId) : null;
-    return byId ? { ...byId } : this.getPaletteMaterial(voxel.color);
+    return this._paletteState.resolve(voxel);
   }
 
   /** Read-only renderer hot-path view. Callers must never mutate the returned material. */
   resolveVoxelMaterialView(voxel: Pick<Voxel, 'color' | 'materialId'>): Readonly<PbrPaletteMaterial> {
-    return (voxel.materialId ? this._palette.get(voxel.materialId) : null)
-      ?? this._findPaletteMaterialByColor(voxel.color)
-      ?? { id: '', color: voxel.color, name: voxel.color.toUpperCase(), metallic: DEFAULT_PBR_METALLIC, roughness: DEFAULT_PBR_ROUGHNESS };
+    return this._paletteState.resolveView(voxel);
   }
 
   createPaletteMaterial(color: string, name = ''): PbrPaletteMaterial {
-    const normalized = normalizeColor(color);
-    const material = this._createPaletteMaterialInternal(normalized, name);
+    const material = this._paletteState.create(color, name);
     this._notify('palette-create');
     return { ...material };
   }
@@ -370,53 +339,21 @@ export class VoxelDocument extends EventTarget {
     materialId: string,
     patch: Partial<Pick<PbrPaletteMaterial, 'name' | 'metallic' | 'roughness'>>,
   ): boolean {
-    const material = this._palette.get(materialId);
-    if (!material) throw new Error('调色板材质不存在。');
-    const next = {
-      ...material,
-      name: patch.name === undefined ? material.name : patch.name.trim() || material.name,
-      metallic: patch.metallic === undefined
-        ? material.metallic
-        : normalizeUnit(patch.metallic, material.metallic),
-      roughness: patch.roughness === undefined
-        ? material.roughness
-        : normalizeUnit(patch.roughness, material.roughness, 0.04),
-    };
-    if (next.name === material.name && next.metallic === material.metallic && next.roughness === material.roughness) return false;
-    this._palette.set(materialId, next);
+    if (!this._paletteState.update(materialId, patch)) return false;
     this._notify('palette-update', { materialIds: [materialId] });
     return true;
   }
 
   removePaletteMaterial(materialId: string): boolean {
-    const material = this._palette.get(materialId);
-    if (!material) return false;
+    if (!this._palette.has(materialId)) return false;
     if (this.getMaterialUsageCount(materialId) > 0) throw new Error('该材质仍被体素使用，无法删除。');
-    if (this._palette.size <= 1) throw new Error('调色板至少需要保留一个材质。');
-    this._palette.delete(materialId);
-    if (this._currentMaterialId === materialId) {
-      const next = this._palette.values().next().value as PbrPaletteMaterial | undefined;
-      this._currentMaterialId = next?.id ?? 'material-5';
-      this._currentColor = next?.color ?? '#69d2e7';
-    }
+    this._paletteState.remove(materialId);
     this._notify('palette-remove');
     return true;
   }
 
   restorePaletteMaterial(material: Readonly<PbrPaletteMaterial>): void {
-    const color = normalizeColor(material.color);
-    const restored: PbrPaletteMaterial = {
-      id: String(material.id),
-      color,
-      name: String(material.name).trim() || color.toUpperCase(),
-      metallic: normalizeUnit(material.metallic, DEFAULT_PBR_METALLIC),
-      roughness: normalizeUnit(material.roughness, DEFAULT_PBR_ROUGHNESS, 0.04),
-      ...(material.vox ? { vox: cloneVoxMaterialExtension(material.vox) } : {}),
-    };
-    const existed = this._palette.has(restored.id);
-    this._palette.set(restored.id, restored);
-    this._nextMaterialId = Math.max(this._nextMaterialId, numericIdSuffix(restored.id, 'material-') + 1);
-    if (this._currentMaterialId === restored.id) this._currentColor = restored.color;
+    const existed = this._paletteState.restore(material);
     this._notify(existed ? 'palette-update' : 'palette-create');
   }
 
@@ -507,7 +444,7 @@ export class VoxelDocument extends EventTarget {
       if (entry.color === null) {
         staged.set(packVoxelKey(x, y, z), null);
       } else {
-        const material = this._resolveMaterialForWrite(entry.color, entry.materialId ?? undefined);
+        const material = this._paletteState.resolveForWrite(entry.color, entry.materialId ?? undefined);
         const existing = target.get(packVoxelKey(x, y, z));
         const layerId = moduleId
           ? undefined
@@ -556,7 +493,7 @@ export class VoxelDocument extends EventTarget {
     if (!this.contains(x, y, z)) return false;
     const key = packVoxelKey(x, y, z);
     const normalized = normalizeColor(color);
-    const material = this._resolveMaterialForWrite(normalized);
+    const material = this._paletteState.resolveForWrite(normalized);
     const target = this._getEditableVoxels();
     const existing = target.get(key);
     if (!this.isEditingModule && !this.isBaseVoxelEditable(existing ?? null)) throw new Error('目标体素图层已隐藏或锁定。');
@@ -577,7 +514,7 @@ export class VoxelDocument extends EventTarget {
 
   setVoxels(positions: Iterable<VoxelPosition>, color = this._currentColor): BatchVoxelResult {
     const normalized = normalizeColor(color);
-    const material = this._resolveMaterialForWrite(normalized);
+    const material = this._paletteState.resolveForWrite(normalized);
     const target = this._getEditableVoxels();
     const staged = new Map<PackedVoxelKey, Voxel>();
     let unchanged = 0;
@@ -729,7 +666,7 @@ export class VoxelDocument extends EventTarget {
     for (const source of module.voxels) {
       const x = Math.round(source.x), y = Math.round(source.y), z = Math.round(source.z);
       if (x < 0 || x >= size.x || y < 0 || y >= size.y || z < 0 || z >= size.z) continue;
-      const material = this._resolveMaterialForWrite(source.color, source.materialId);
+      const material = this._paletteState.resolveForWrite(source.color, source.materialId);
       voxels.set(packVoxelKey(x, y, z), { x, y, z, color: material.color, materialId: material.id });
       if (voxels.size > MAX_VOXELS) throw new Error(`单个模块的体素数量不能超过 ${MAX_VOXELS.toLocaleString()}。`);
     }
@@ -1168,12 +1105,10 @@ export class VoxelDocument extends EventTarget {
     this._modules.clear();
     this._moduleInstances.clear();
     this._layers.clear();
-    this._palette.clear();
     this._animations.clear();
     this._nextModuleId = 1;
     this._nextModuleInstanceId = 1;
     this._nextLayerId = 2;
-    this._nextMaterialId = 1;
     this._nextAnimationId = 1;
     this._activeAnimationId = null;
     this._animationFrame = 0;
@@ -1196,25 +1131,7 @@ export class VoxelDocument extends EventTarget {
       if (layerId === DEFAULT_LAYER_ID) delete voxel.layerId;
       else voxel.layerId = layerId;
     }
-    const rawPalette = data.palette;
-    if (Array.isArray(rawPalette) && rawPalette.length > 0) {
-      for (const rawMaterial of rawPalette) {
-        const color = normalizeColor(String(rawMaterial.color));
-        const id = String(rawMaterial.id || `material-${this._nextMaterialId++}`);
-        this._palette.set(id, {
-          id,
-          color,
-          name: String(rawMaterial.name || color.toUpperCase()),
-          metallic: normalizeUnit(Number(rawMaterial.metallic), DEFAULT_PBR_METALLIC),
-          roughness: normalizeUnit(Number(rawMaterial.roughness), DEFAULT_PBR_ROUGHNESS, 0.04),
-          ...(isRecord(rawMaterial.vox) ? { vox: parseVoxMaterialExtension(rawMaterial.vox) } : {}),
-        });
-        this._nextMaterialId = Math.max(this._nextMaterialId, numericIdSuffix(id, 'material-') + 1);
-      }
-    } else {
-      for (const material of DEFAULT_PALETTE) this._palette.set(material.id, { ...material });
-      this._nextMaterialId = 13;
-    }
+    this._paletteState.reset(data.palette);
     for (const rawModule of data.modules ?? []) {
       const moduleSize = {
         x: normalizeAxis(Number(rawModule.size?.x)),
@@ -1318,18 +1235,18 @@ export class VoxelDocument extends EventTarget {
     if (data.editor?.currentColor) this._currentColor = normalizeColor(data.editor.currentColor);
     const preferredMaterial = data.editor?.currentMaterialId
       ? this._palette.get(data.editor.currentMaterialId)
-      : this._findPaletteMaterialByColor(this._currentColor);
-    const currentMaterial = preferredMaterial ?? this._createPaletteMaterialInternal(this._currentColor);
+      : this._paletteState.findByColor(this._currentColor);
+    const currentMaterial = preferredMaterial ?? this._paletteState.create(this._currentColor);
     this._currentMaterialId = currentMaterial.id;
     this._currentColor = currentMaterial.color;
     for (const voxel of this._voxels.values()) {
-      const material = this._resolveMaterialForWrite(voxel.color, voxel.materialId);
+      const material = this._paletteState.resolveForWrite(voxel.color, voxel.materialId);
       voxel.color = material.color;
       voxel.materialId = material.id;
     }
     for (const module of this._modules.values()) {
       for (const voxel of module.voxels.values()) {
-        const material = this._resolveMaterialForWrite(voxel.color, voxel.materialId);
+        const material = this._paletteState.resolveForWrite(voxel.color, voxel.materialId);
         voxel.color = material.color;
         voxel.materialId = material.id;
       }
@@ -1401,40 +1318,12 @@ export class VoxelDocument extends EventTarget {
     const add = (voxel: Readonly<Voxel>): void => {
       const materialId = voxel.materialId && this._palette.has(voxel.materialId)
         ? voxel.materialId
-        : this._findPaletteMaterialByColor(voxel.color)?.id;
+        : this._paletteState.findByColor(voxel.color)?.id;
       if (materialId) this._materialUsageCounts.set(materialId, (this._materialUsageCounts.get(materialId) ?? 0) + 1);
     };
     for (const voxel of this._voxels.values()) add(voxel);
     for (const module of this._modules.values()) for (const voxel of module.voxels.values()) add(voxel);
     this._materialUsageDirty = false;
-  }
-
-  private _findPaletteMaterialByColor(color: string): PbrPaletteMaterial | null {
-    for (const material of this._palette.values()) if (material.color === color) return material;
-    return null;
-  }
-
-  private _createPaletteMaterialInternal(color: string, name = ''): PbrPaletteMaterial {
-    let id = `material-${this._nextMaterialId++}`;
-    while (this._palette.has(id)) id = `material-${this._nextMaterialId++}`;
-    const material = {
-      id,
-      color,
-      name: name.trim() || color.toUpperCase(),
-      metallic: DEFAULT_PBR_METALLIC,
-      roughness: DEFAULT_PBR_ROUGHNESS,
-    };
-    this._palette.set(id, material);
-    return material;
-  }
-
-  private _resolveMaterialForWrite(color: string, preferredId?: string): PbrPaletteMaterial {
-    const preferred = preferredId ? this._palette.get(preferredId) : null;
-    if (preferred) return preferred;
-    const normalized = normalizeColor(color);
-    const current = this._palette.get(this._currentMaterialId);
-    if (current?.color === normalized) return current;
-    return this._findPaletteMaterialByColor(normalized) ?? this._createPaletteMaterialInternal(normalized);
   }
 
   private _getEditingModule(): {

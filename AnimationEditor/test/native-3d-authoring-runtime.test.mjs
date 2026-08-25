@@ -29,10 +29,9 @@ const spec3d = entry.native3dSpec;
 const core = entry.animationSpec;
 
 const animationSpecRoot = new URL('../', import.meta.resolve('@haiyue/animation-spec'));
-const extensionsRoot = new URL('../', import.meta.resolve('@haiyue/extensions'));
 const VALID_FIXTURE = new URL('schema/fixtures/native-3d-valid.hya.json', animationSpecRoot);
 const MIXED_FIXTURE = new URL('schema/fixtures/native-3d-mixed-invalid.hya.json', animationSpecRoot);
-const GLTF_FIXTURE = new URL('test/fixtures/gltf/animation-characterization.gltf', extensionsRoot);
+const GLTF_FIXTURE = new URL('./fixtures/gltf/animation-characterization.gltf', import.meta.url);
 
 test('native-3D extension validates JSON/binary, rejects mixed carriers, and leaves old 2D decode intact', async () => {
   const source = JSON.parse(await readFile(VALID_FIXTURE, 'utf8'));
