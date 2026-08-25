@@ -79,7 +79,7 @@
         });
         project = editor.setNative3dNodeTransform(project, 'box', { eulerYXZ: [0.05, 0.18, 0] });
 
-        const gltfSource = await fetch('../../node_modules/@haiyue/extensions/test/fixtures/gltf/animation-characterization.gltf').then(response => {
+        const gltfSource = await fetch('./fixtures/gltf/animation-characterization.gltf').then(response => {
           if (!response.ok) throw new Error(`加载真实 glTF fixture 失败：${response.status}`);
           return response.text();
         });

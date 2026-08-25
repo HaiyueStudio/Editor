@@ -4,7 +4,7 @@ import { toColorSRGB, type ColorValue } from '@haiyue/engine/color';
 import { DataComponent, ScriptComponent, ScriptResource } from '@haiyue/engine/components';
 import { Material } from '@haiyue/engine/material';
 import { CanvasTextComponent } from '@haiyue/extensions/canvas-text';
-import { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
+import type { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
 import type { GECheckbox } from '@haiyue/ui';
 import type { CommandBus } from '../../commands/CommandBus';
 import {
@@ -718,7 +718,9 @@ export function createInspectorCommitHandlers(deps: InspectorCommitHandlersDeps)
     commitTilemap2DEdit(): void {
       if (deps.getSuppressInspectorInput()) return;
       const entity = deps.getInspectorContext()?.getActiveEntity();
-      const tilemap = entity?.getComponent(Tilemap2DComponent);
+      const tilemap = entity
+        ? Array.from(entity.components.values()).find(component => component.constructor.name === 'Tilemap2DComponent') as Tilemap2DComponent | undefined
+        : undefined;
       if (!entity || !tilemap) return;
       const before = snapshotTilemap2D(tilemap);
       const after = readTilemap2DInputs(tilemap, {

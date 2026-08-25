@@ -69,7 +69,7 @@
         progress.textContent = '通过真实 HTTP 导入 glTF 并交给 G06';
         const gltfCoordinator = new g07.SourceImportCoordinator();
         coordinators.push(gltfCoordinator);
-        const gltfUrl = new URL('../../node_modules/@haiyue/extensions/test/fixtures/gltf/animation-characterization.gltf', location.href).href;
+        const gltfUrl = new URL('./fixtures/gltf/animation-characterization.gltf', location.href).href;
         const gltf = await gltfCoordinator.import({
           kind: 'gltf', input: { kind: 'url', url: gltfUrl }, adapter: gltfAdapter(g07),
         });

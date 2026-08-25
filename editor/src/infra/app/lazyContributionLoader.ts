@@ -50,12 +50,22 @@ export interface OptionalEditorCapabilityLoaderOptions {
 const defaultOptionalPluginFactories: Readonly<
   Record<OptionalEditorCapability, OptionalPluginFactory>
 > = Object.freeze({
-  gltf: () => import('@haiyue/extensions/gltf')
-    .then(module => module.createGltfPlugin()),
+  gltf: () => Promise.all([
+    import('@haiyue/extensions/gltf'),
+    import('../script/editorScriptRuntime'),
+  ]).then(([module, scripts]) => {
+    scripts.registerOptionalEditorScriptComponent('GltfModelComponent', module.GltfModelComponent);
+    return module.createGltfPlugin();
+  }),
   spine: () => import('@haiyue/extensions/spine')
     .then(module => module.createSpinePlugin()),
-  tilemap: () => import('@haiyue/extensions/tilemap')
-    .then(module => module.createTilemapPlugin()),
+  tilemap: () => Promise.all([
+    import('@haiyue/extensions/tilemap'),
+    import('../script/editorScriptRuntime'),
+  ]).then(([module, scripts]) => {
+    scripts.registerOptionalEditorScriptComponent('Tilemap2DComponent', module.Tilemap2DComponent);
+    return module.createTilemapPlugin();
+  }),
   tween: () => import('./tweenEditorContribution')
     .then(module => module.createTweenEditorPlugin()),
 });

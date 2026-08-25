@@ -44,21 +44,21 @@
       "maxStaticClosureGzipBytes": 440000
     },
     "gltf": {
-      "rootModules": ["../node_modules/@haiyue/extensions/src/gltf.ts"],
+      "rootModules": ["../node_modules/@haiyue/extensions/dist/gltf.js"],
       "allowedOptionalRuntimes": ["gltf"],
       "incrementalFrom": "editor-shell",
       "maxStaticClosureGzipBytes": 505000,
       "maxIncrementalGzipBytes": 30000
     },
     "spine": {
-      "rootModules": ["../node_modules/@haiyue/extensions/src/spine.ts"],
+      "rootModules": ["../node_modules/@haiyue/extensions/dist/spine.js"],
       "allowedOptionalRuntimes": ["spine"],
       "incrementalFrom": "editor-shell",
       "maxStaticClosureGzipBytes": 510000,
       "maxIncrementalGzipBytes": 43000
     },
     "tilemap": {
-      "rootModules": ["../node_modules/@haiyue/extensions/src/tilemap.ts"],
+      "rootModules": ["../node_modules/@haiyue/extensions/dist/tilemap.js"],
       "allowedOptionalRuntimes": ["tilemap"],
       "incrementalFrom": "editor-shell",
       "maxStaticClosureGzipBytes": 480000,

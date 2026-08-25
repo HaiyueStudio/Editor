@@ -3,7 +3,7 @@ import { toColorSRGB, type ColorValue } from '@haiyue/engine/color';
 import { type DataComponent, type JsonObject } from '@haiyue/engine/components';
 import { type CssMaterialStyle } from '@haiyue/engine/material';
 import { CanvasTextComponent } from '@haiyue/extensions/canvas-text';
-import { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
+import type { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
 import type { Tilemap2DSnapshot } from '../../types';
 import { toVec4 } from '../../domain/scene/tupleUtils';
 import { readNumber } from '../../utils/formValues';

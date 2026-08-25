@@ -1,6 +1,6 @@
 import { Camera2D, Camera3D, ColorSRGB, Component } from '@haiyue/engine';
 import { LightComponent } from '@haiyue/engine/lighting';
-import { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
+import type { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
 import type { GenericComponentEditorSchema, GenericEditorFieldSchema } from '../../types';
 
 export interface GenericComponentEditorElements {
@@ -70,7 +70,7 @@ export function setGenericFieldValue(
     fieldSchema.set(component, value);
     return;
   }
-  if (component instanceof Tilemap2DComponent && field === 'cells') {
+  if (isTilemap2DComponent(component) && field === 'cells') {
     component.cells = new Int16Array(component.columns * component.rows);
     component.cells.set((Array.isArray(value) ? value : []).slice(0, component.cells.length).map(item => Math.trunc(Number(item) || 0)));
     return;
@@ -90,7 +90,7 @@ export function applyGenericComponentSnapshot(component: Component, snapshot: Re
   for (const [field, fieldSchema] of Object.entries(schema.fields)) {
     setGenericFieldValue(component, field, cloneGenericFieldValue(snapshot[field]), fieldSchema);
   }
-  if (component instanceof Tilemap2DComponent) {
+  if (isTilemap2DComponent(component)) {
     component.resize(component.columns, component.rows);
   }
   if (component instanceof Camera2D) {
@@ -102,6 +102,10 @@ export function applyGenericComponentSnapshot(component: Component, snapshot: Re
   if (component instanceof LightComponent) {
     component.markDirty();
   }
+}
+
+function isTilemap2DComponent(component: Component): component is Tilemap2DComponent {
+  return component.constructor.name === 'Tilemap2DComponent';
 }
 
 function formatGenericValue(value: unknown, field: GenericEditorFieldSchema, formatNumber: (value: number) => string): string {

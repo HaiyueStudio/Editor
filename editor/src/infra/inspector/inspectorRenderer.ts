@@ -5,7 +5,7 @@ import { Camera2D, Camera3D, CartesianTransform3D, Mesh2D, Mesh3D, SphericalTran
 import { DataComponent, KeyboardComponent, ScriptComponent, Transform3D } from '@haiyue/engine/components';
 import { type Material } from '@haiyue/engine/material';
 import { CanvasTextComponent } from '@haiyue/extensions/canvas-text';
-import { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
+import type { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
 import {
   getGenericEditorSchema,
   renderGenericComponentEditor,
@@ -448,7 +448,15 @@ export function registerDefaultInspectorRenderers(registry: InspectorRegistry): 
   registry.register(Mesh2D, context => renderMesh2DSection(context.deps, context.entity.getComponent(Mesh2D), true));
   registry.register(CanvasTextComponent, context => renderComponentDataSections(context.deps, context.entity.getComponent(CanvasTextComponent), null, null, true, false, false));
   registry.register(DataComponent, context => renderComponentDataSections(context.deps, null, context.entity.getComponent(DataComponent), null, false, true, false));
-  registry.register(Tilemap2DComponent, context => renderComponentDataSections(context.deps, null, null, context.entity.getComponent(Tilemap2DComponent), false, false, true));
+  registry.register('Tilemap2DComponent', context => renderComponentDataSections(
+    context.deps,
+    null,
+    null,
+    context.component as Tilemap2DComponent,
+    false,
+    false,
+    true,
+  ));
   registry.register(Camera3D, context => renderCameraSection(context.deps, context.entity.getComponent(Camera3D), context.entity.getComponent(Camera2D), true, context.componentName));
   registry.register(Camera2D, context => renderCameraSection(context.deps, context.entity.getComponent(Camera3D), context.entity.getComponent(Camera2D), true, context.componentName));
   registry.register(KeyboardComponent, context => {

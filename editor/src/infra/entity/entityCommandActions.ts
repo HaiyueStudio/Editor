@@ -3,7 +3,6 @@ import type {
 import { Camera2D, CartesianTransform3D, Entity, Transform2D, Component, Mesh2D, Geometry3D, World } from '@haiyue/engine';
 import { ScriptResource } from '@haiyue/engine/components';
 import { Material } from '@haiyue/engine/material';
-import { GltfModelComponent } from '@haiyue/extensions/gltf';
 import type { CommandBus } from '../../commands/CommandBus';
 import { addEntityCommand } from '../../commands/entityCommands';
 import type { Command } from '../../types';
@@ -17,7 +16,7 @@ import {
 } from '../../scene/entityHierarchy';
 import { PrefabInstanceComponent } from '../../scene/prefabInstance';
 import { serializeEntity } from '../../domain/scene/serialization';
-import { deserializeEntity } from '../../domain/scene/deserialization';
+import { deserializeComponent, deserializeEntity } from '../../domain/scene/deserialization';
 import type { EditorComponentLibrary } from '../../domain/library/componentLibrary';
 import type { ModelResourceItem, PrefabResourceItem } from '../../types';
 
@@ -109,10 +108,18 @@ export function create2DCameraUnderTarget(
   }));
 }
 
-export function createModelEntity(world: World, model: ModelResourceItem): Entity {
-  const entity = new Entity(getUniqueEntityName(world, model.name));
+export function createModelEntity(deps: EntityCommandActionDeps, model: ModelResourceItem): Entity {
+  const entity = new Entity(getUniqueEntityName(deps.world, model.name));
   entity.addComponent(new CartesianTransform3D());
-  entity.addComponent(new GltfModelComponent({ src: model.src, autoLoad: true, clearPrevious: true }));
+  const component = deserializeComponent(
+    { type: 'GltfModelComponent', src: model.src, autoLoad: true, clearPrevious: true },
+    deps.getRuntimeGeometryMap(),
+    deps.getRuntimeMaterialMap(),
+    deps.getRuntimeScriptMap(),
+    deps.componentLibraries,
+  );
+  if (!component) throw new Error('glTF capability is active but did not provide GltfModelComponent.');
+  entity.addComponent(component);
   return entity;
 }
 
@@ -121,7 +128,7 @@ export function instantiateModelIntoScene(
   model: ModelResourceItem,
   target: Entity | null,
 ): void {
-  const entity = createModelEntity(deps.world, model);
+  const entity = createModelEntity(deps, model);
   executeCommand(deps, addEntityCommand({
     label: 'Instantiate Model',
     world: deps.world,

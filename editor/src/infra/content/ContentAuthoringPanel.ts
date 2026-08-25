@@ -11,7 +11,6 @@ import {
   type HyaAnimationAsset,
   type MaterialGraphAuthoringAsset,
 } from '../../domain/content/ContentAuthoringStore';
-import { prepareHyaAnimationAsset } from './HyaAnimationImport';
 import type {
   MaterialGraphAuthoringDescription,
   MaterialGraphDocumentV1,
@@ -154,6 +153,8 @@ export function createContentAuthoringPanel(options: ContentAuthoringPanelOption
     renderAnimationPanel();
     try {
       // Prepare the entire batch first so one invalid file cannot leave a partial import behind.
+      const { prepareHyaAnimationAsset } = await import('./HyaAnimationImport');
+      controller.signal.throwIfAborted();
       const prepared = await Promise.all(files.map(file => prepareHyaAnimationAsset(file, controller.signal)));
       controller.signal.throwIfAborted();
       let target = options.store.animations.find(animation => animation.id === activeAnimationId) ?? null;

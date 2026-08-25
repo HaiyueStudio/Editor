@@ -2,9 +2,7 @@ import { Camera2D, Camera3D, CartesianTransform3D, ColorSRGB, Component, Entity,
 import { DataComponent, KeyboardComponent, ScriptComponent, type ScriptRuntimeApi, type ScriptRuntimeReadApi, type ScriptRuntimeSceneApi, Transform3D } from '@haiyue/engine/components';
 import { InputMap } from '@haiyue/engine/input';
 import { CanvasTextComponent } from '@haiyue/extensions/canvas-text';
-import { GltfModelComponent } from '@haiyue/extensions/gltf';
 import { Grid2DComponent } from '@haiyue/extensions/grid';
-import { Tilemap2DComponent } from '@haiyue/extensions/tilemap';
 import { Tween2DComponent } from '@haiyue/extensions/tween';
 import type { SerializedGlobalSettings } from '../../export/runtimeScene';
 import { getWorldGlobalSettings } from '../../domain/settings/globalSettings';
@@ -19,16 +17,22 @@ export const DEFAULT_EDITOR_SCRIPT_COMPONENTS = Object.freeze({
   ColorSRGB,
   DataComponent,
   Entity,
-  GltfModelComponent,
   Grid2DComponent,
   InputMap,
   KeyboardComponent,
   SphericalTransform3D,
-  Tilemap2DComponent,
   Transform2D,
   Transform3D,
   Tween2DComponent,
 });
+
+const optionalEditorScriptComponents = new Map<string, unknown>();
+
+/** Registers a constructor only after its optional capability has loaded. */
+export function registerOptionalEditorScriptComponent(name: string, component: unknown): void {
+  if (component === undefined || component === null) return;
+  optionalEditorScriptComponents.set(name, component);
+}
 
 export interface EditorScriptRuntimeApiFactoryDeps {
   canvas: HTMLCanvasElement | null;
@@ -179,6 +183,14 @@ function createEditorScriptComponents(deps: EditorScriptRuntimeApiFactoryDeps): 
     for (const [name, value] of Object.entries(deps.extraComponents)) {
       if (value !== undefined && value !== null) exposed[name] = value;
     }
+  }
+  for (const name of ['GltfModelComponent', 'Tilemap2DComponent']) {
+    if (Object.hasOwn(exposed, name)) continue;
+    Object.defineProperty(exposed, name, {
+      configurable: false,
+      enumerable: true,
+      get: () => optionalEditorScriptComponents.get(name),
+    });
   }
   return Object.freeze(exposed);
 }

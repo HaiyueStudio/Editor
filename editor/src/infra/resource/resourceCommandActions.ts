@@ -1,4 +1,3 @@
-import { GltfModelComponent } from '@haiyue/extensions/gltf';
 import { BasicMaterial, CartesianTransform3D, ColorSRGB, Entity, Geometry2D, createBox3D, createPlane3D, createSphere3D, type Geometry3D, type HaiyueEngine } from '@haiyue/engine';
 import { BlinnPhongMaterial, CssMaterial, DepthMaterial, NormalMaterial, RadialShadowMaterial, ToonMaterial, type CssMaterialStyle, type Material } from '@haiyue/engine/material';
 import { ScriptResource, type ScriptComponent, type ScriptLifecycleName } from '@haiyue/engine/components';
@@ -10,6 +9,7 @@ import {
 import type { CommandBus } from '../../commands/CommandBus';
 import type { EditorComponentLibrary } from '../../domain/library/componentLibrary';
 import type { EditorRuntimeContext } from '../../domain/store/RuntimeState';
+import { deserializeComponent } from '../../domain/scene/deserialization';
 import { serializeEntity } from '../../domain/scene/serialization';
 import type { ModelPreviewData } from '../../resources/modelPreview';
 import type { ResourcePool } from '../../resources/ResourcePool';
@@ -578,7 +578,15 @@ export function createPrefabFromModel(deps: ResourceCommandActionDeps, model: Mo
   const prefabName = deps.resourcePool.getUniquePrefabName(model.name || 'Model Prefab');
   const entity = new Entity(model.name || 'glTF Model');
   entity.addComponent(new CartesianTransform3D());
-  entity.addComponent(new GltfModelComponent({ src: model.src, autoLoad: true, clearPrevious: true }));
+  const component = deserializeComponent(
+    { type: 'GltfModelComponent', src: model.src, autoLoad: true, clearPrevious: true },
+    new Map(),
+    new Map(),
+    new Map(),
+    deps.componentLibraries,
+  );
+  if (!component) throw new Error('glTF capability is active but did not provide GltfModelComponent.');
+  entity.addComponent(component);
   const snapshot = serializeEntity(entity, { includePrefabInstance: false }, deps.componentLibraries);
   let prefabItem: PrefabResourceItem | null = null;
   const execute = () => {

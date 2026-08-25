@@ -306,11 +306,10 @@ test('startup topology stays aligned with the post-paint shell boundary', () => 
   assert.match(shell, /requestAnimationFrame\(\(\) => \{[\s\S]*requestAnimationFrame/);
   assert.match(shell, /import\(['"]\.\/infra\/app\/mainEditorApp['"]\)/);
   assert.doesNotMatch(bootstrap, /await loadEditorComponentPlugins\(\)/);
-  for (const name of ['gltf', 'spine', 'tilemap']) {
-    assert.match(
-      loader,
-      new RegExp(`${name}:\\s*\\(\\)\\s*=>\\s*import\\(['"]@haiyue/extensions/${name}['"]\\)`),
-    );
+  assert.match(loader, /spine:\s*\(\)\s*=>\s*import\(['"]@haiyue\/extensions\/spine['"]\)/);
+  for (const name of ['gltf', 'tilemap']) {
+    assert.match(loader, new RegExp(`import\\(['"]@haiyue/extensions/${name}['"]\\)`));
+    assert.match(loader, new RegExp(`registerOptionalEditorScriptComponent\\(['"]${name === 'gltf' ? 'GltfModelComponent' : 'Tilemap2DComponent'}['"]`));
   }
   assert.match(loader, /tween:\s*\(\)\s*=>\s*import\(['"]\.\/tweenEditorContribution['"]\)/);
 });
@@ -355,6 +354,15 @@ test('bundle capability budget keeps every governed architecture root active', (
     'src/infra/content/materialGraphCompiler.worker.ts',
   ]);
   assert.equal(budget.capabilities['content-authoring'].incrementalFrom, 'editor-shell');
+  assert.deepEqual(budget.capabilities.gltf.rootModules, [
+    '../node_modules/@haiyue/extensions/dist/gltf.js',
+  ]);
+  assert.deepEqual(budget.capabilities.spine.rootModules, [
+    '../node_modules/@haiyue/extensions/dist/spine.js',
+  ]);
+  assert.deepEqual(budget.capabilities.tilemap.rootModules, [
+    '../node_modules/@haiyue/extensions/dist/tilemap.js',
+  ]);
   for (const id of ['gltf', 'spine', 'tilemap', 'tween', 'physics']) {
     assert.equal(budget.capabilities[id].incrementalFrom, 'editor-shell');
     assert.ok(budget.capabilities[id].maxIncrementalGzipBytes > 0);
