@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G08 Live2D import/reimport exact preview</title>
+    <style>
+      :root { color-scheme: dark; font: 13px/1.4 system-ui, sans-serif; background: #050817; color: #e6edff; }
+      body { margin: 0; display: grid; grid-template-columns: 420px 1fr; min-height: 100vh; }
+      #panel { padding: 16px; border-right: 1px solid #263352; }
+      #panel section { display: grid; gap: 8px; } #panel label { display: grid; grid-template-columns: 120px 1fr; }
+      canvas { width: 512px; height: 512px; margin: 24px; border: 1px solid #263352; }
+      #result { position: fixed; left: 0; right: 0; bottom: 0; max-height: 160px; overflow: auto; background: #080d1b; }
+    </style>
+  </head>
+  <body>
+    <div id="panel"></div><canvas id="preview" width="512" height="512"></canvas><pre id="result"></pre>
+    <script type="module">
+      const bundleDirectory = new URLSearchParams(location.search).get('bundle');
+      if (!bundleDirectory || !/^\.deformable-live2d-browser-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) throw new Error('Missing G08 browser bundle.');
+      const api = await import(`./${bundleDirectory}/entry.js`);
+      const resultNode = document.querySelector('#result');
+      const png = await makePng();
+      const observedErrors = [];
+      const exports = [];
+      let saved = '';
+      let call = 0;
+      let inspectionMode = 'available';
+      let emitWarning = false;
+      let objectUrlsCreated = 0;
+      let objectUrlsRevoked = 0;
+      const nativeCreate = URL.createObjectURL.bind(URL);
+      const nativeRevoke = URL.revokeObjectURL.bind(URL);
+      URL.createObjectURL = blob => { objectUrlsCreated++; return nativeCreate(blob); };
+      URL.revokeObjectURL = url => { objectUrlsRevoked++; nativeRevoke(url); };
+      const converter = {
+        id: 'g08-browser-cubism-port', version: '1.0.0',
+        async inspect() {
+          return {
+            modelName: 'Browser licensed-model surrogate',
+            core: inspectionMode === 'core-missing' ? { available: false, message: 'Core unavailable' } : { available: true, version: 'Core@5.2' },
+            motions: ['Idle:0', 'Tap:0'], expressions: ['Smile'], physicsAvailable: true, poseAvailable: true,
+            dependencies: [{ path: 'model.model3.json', kind: 'model', status: 'available' }, {
+              path: 'texture.png', kind: 'texture', status: inspectionMode === 'missing' ? 'missing' : inspectionMode === 'moved' ? 'moved' : 'available',
+              ...(inspectionMode === 'moved' ? { resolvedPath: 'textures/texture.png' } : {}),
+            }], diagnostics: [],
+          };
+        },
+        async convert(_request, context) {
+          call++;
+          context.progress(0, 1, 'capture');
+          if (call === 1) await new Promise((_resolve, reject) => context.signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true }));
+          if (call === 2) throw new Error('simulated converter crash');
+          return api.createBrowserDeformableFixtureOutput(png, emitWarning ? [{ severity: 'warning', code: 'W_G08_FIXTURE', path: '$.recipe', message: 'strict fixture warning' }] : [], call);
+        },
+      };
+      const preview = new api.Live2DExactPreviewSession(document.querySelector('#preview'), { autoplay: true, onError: error => observedErrors.push(errorCode(error)) });
+      const workflow = new api.Live2DImportWorkflow(converter);
+      const session = new api.Live2DImportSession({ converter, workflow, preview });
+      const panel = new api.Live2DAuthoringPanel(document.querySelector('#panel'), session, {
+        onError: error => observedErrors.push(errorCode(error)),
+        onSave: text => { saved = text; },
+        onExport: files => { exports.push(files); },
+      });
+      try {
+        const files = sourceFiles(png);
+        await panel.selectFiles(files);
+        assert(session.snapshot.phase === 'configuring', 'source inspection enters configuring');
+        click('convert');
+        await waitFor(() => session.snapshot.progress?.stage === 'capture');
+        click('cancel');
+        await waitFor(() => session.snapshot.phase === 'configuring');
+        click('convert');
+        await waitFor(() => session.snapshot.phase === 'error');
+        assert(session.snapshot.error?.code === 'E_LIVE2D_CONVERSION_FAILED', 'converter crash is structured');
+        click('retry');
+        await waitFor(() => session.snapshot.phase === 'ready' && preview.snapshot.state === 'ready');
+        assert(preview.snapshot.drawableCount === 1, 'real deformable runtime materialized one drawable');
+        const stableId = session.snapshot.asset.id;
+
+        click('save');
+        await waitFor(() => saved.length > 0);
+        await panel.reopen(saved);
+        assert(session.snapshot.asset.id === stableId && session.snapshot.asset.preview.source === 'binary', 'save/reopen exact HYA retains identity');
+
+        await panel.selectFiles(sourceFiles(new Uint8Array([...png.slice(0, -1), png.at(-1) ^ 1])));
+        assert(session.snapshot.phase === 'stale' && session.snapshot.staleReasons.join('/') === 'source-hash', 'source hash stale is exact');
+        click('reimport');
+        await waitFor(() => session.snapshot.phase === 'ready');
+        assert(session.snapshot.asset.id === stableId, 'reimport preserves asset identity');
+
+        emitWarning = true;
+        select('mode').value = 'strict'; select('mode').dispatchEvent(new Event('change'));
+        await waitFor(() => session.snapshot.recipe.mode === 'strict');
+        click('reimport');
+        await waitFor(() => session.snapshot.phase === 'error');
+        assert(session.snapshot.error?.code === 'E_LIVE2D_STRICT_DIAGNOSTIC', 'strict warning fails exactly');
+        emitWarning = false;
+        select('mode').value = 'normal'; select('mode').dispatchEvent(new Event('change'));
+        await waitFor(() => session.snapshot.recipe.mode === 'normal');
+        click('reimport');
+        await waitFor(() => session.snapshot.phase === 'ready');
+
+        for (const mode of ['missing', 'moved', 'core-missing']) {
+          inspectionMode = mode;
+          await panel.selectFiles(files);
+          assert(session.snapshot.phase === 'blocked', `${mode} inspection blocks conversion`);
+          const expected = mode === 'core-missing' ? 'E_LIVE2D_CORE_UNAVAILABLE' : 'E_LIVE2D_DEPENDENCY_MISSING';
+          try { await session.reimport(); } catch (error) {
+            const code = errorCode(error);
+            observedErrors.push(code);
+            assert(code === expected, `${mode} diagnostic code`);
+          }
+        }
+        inspectionMode = 'available';
+        await panel.selectFiles(files);
+        click('export');
+        await waitFor(() => exports.length === 1);
+        const paths = exports[0].map(file => file.path);
+        assert(paths.join('/') === 'model.hya/model.hydm/texture.png', `deterministic delivery paths: ${paths}`);
+        assert(paths.every(path => !/(?:moc3|model3\.json|wpk|\.js$)/iu.test(path)), 'delivery excludes Core/source');
+        const activeBeforeClose = preview.snapshot.activeObjectUrls;
+        assert(activeBeforeClose === 2 && preview.snapshot.pendingAssetJobs === 0, 'preview owns exactly two settled sidecar URLs');
+        await panel.destroy();
+        assert(preview.snapshot.state === 'closed' && preview.snapshot.activeObjectUrls === 0, 'close releases preview URLs');
+        assert(objectUrlsCreated === objectUrlsRevoked, 'all browser object URLs were revoked');
+        const resourceNames = performance.getEntriesByType('resource').map(item => item.name.toLowerCase());
+        assert(resourceNames.every(name => !/(live2dcubismcore|\.moc3|\.model3\.json|\.wpk)/u.test(name)), 'browser network closure excludes Cubism/source');
+        const payload = {
+          status: 'passed', calls: call, stableId, paths, preview: preview.snapshot,
+          objectUrlsCreated, objectUrlsRevoked, observedErrors,
+          strictObserved: observedErrors.includes('E_LIVE2D_STRICT_DIAGNOSTIC'),
+          missingObserved: observedErrors.includes('E_LIVE2D_DEPENDENCY_MISSING'),
+          coreObserved: observedErrors.includes('E_LIVE2D_CORE_UNAVAILABLE'),
+          forbiddenNetworkCount: resourceNames.filter(name => /(live2dcubismcore|\.moc3|\.model3\.json|\.wpk)/u.test(name)).length,
+        };
+        resultNode.textContent = JSON.stringify(payload);
+        resultNode.dataset.status = 'passed';
+      } catch (error) {
+        await panel.destroy().catch(() => {});
+        resultNode.textContent = JSON.stringify({ status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), observedErrors, preview: preview.snapshot });
+        resultNode.dataset.status = 'failed';
+      } finally {
+        URL.createObjectURL = nativeCreate;
+        URL.revokeObjectURL = nativeRevoke;
+      }
+
+      function sourceFiles(texture) {
+        const model = new File(['{"Version":3}'], 'model.model3.json', { type: 'application/json' });
+        const image = new File([texture], 'texture.png', { type: 'image/png' });
+        Object.defineProperty(model, 'webkitRelativePath', { value: 'fixture/model.model3.json' });
+        Object.defineProperty(image, 'webkitRelativePath', { value: 'fixture/texture.png' });
+        return [model, image];
+      }
+      function role(name) { return document.querySelector(`[data-live2d-role="${name}"]`); }
+      function click(name) { role(name).click(); }
+      function select(name) { return role(name); }
+      function errorCode(error) { return error && typeof error === 'object' && 'code' in error ? error.code : error instanceof Error ? error.message : String(error); }
+      function assert(value, message) { if (!value) throw new Error(message); }
+      async function waitFor(predicate, timeoutMs = 20000) { const deadline = performance.now() + timeoutMs; while (!predicate()) { if (performance.now() > deadline) throw new Error('Timed out waiting for browser condition.'); await new Promise(resolve => setTimeout(resolve, 16)); } }
+      async function makePng() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 64;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#36d7c8'; context.fillRect(0, 0, 64, 64);
+        context.fillStyle = '#0a1734'; context.fillRect(8, 8, 48, 48);
+        const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('PNG fixture encoding failed.')), 'image/png'));
+        return new Uint8Array(await blob.arrayBuffer());
+      }
+    </script>
+  </body>
+</html>

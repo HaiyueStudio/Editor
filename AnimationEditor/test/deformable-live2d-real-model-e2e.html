@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G08 real Live2D derived HYA preview</title>
+    <style>
+      :root { color-scheme: dark; background: #050817; color: #e6edff; font: 13px/1.4 system-ui, sans-serif; }
+      body { margin: 0; display: grid; place-items: center; min-height: 100vh; }
+      canvas { width: 720px; height: 720px; border: 1px solid #263352; }
+      #result { position: fixed; left: 0; right: 0; bottom: 0; max-height: 140px; overflow: auto; background: #080d1b; }
+    </style>
+  </head>
+  <body>
+    <canvas id="preview" width="720" height="720"></canvas><pre id="result"></pre>
+    <script type="module">
+      const query = new URLSearchParams(location.search);
+      const bundleDirectory = query.get('bundle');
+      const dataDirectory = query.get('data');
+      if (!bundleDirectory || !/^\.deformable-live2d-real-bundle-[a-zA-Z0-9_-]+$/u.test(bundleDirectory)) throw new Error('Missing real-model browser bundle.');
+      if (!dataDirectory || !/^\.deformable-live2d-real-data-[a-zA-Z0-9_-]+$/u.test(dataDirectory)) throw new Error('Missing real-model data directory.');
+      const resultNode = document.querySelector('#result');
+      let preview;
+      let objectUrlsCreated = 0;
+      let objectUrlsRevoked = 0;
+      const nativeCreate = URL.createObjectURL.bind(URL);
+      const nativeRevoke = URL.revokeObjectURL.bind(URL);
+      URL.createObjectURL = blob => { objectUrlsCreated++; return nativeCreate(blob); };
+      URL.revokeObjectURL = url => { objectUrlsRevoked++; nativeRevoke(url); };
+      try {
+        const [api, serialized, manifest] = await Promise.all([
+          import(`./${bundleDirectory}/entry.js`),
+          fetch(`./${dataDirectory}/asset.json`).then(response => response.text()),
+          fetch(`./${dataDirectory}/manifest.json`).then(response => response.json()),
+        ]);
+        const asset = api.parseLive2DDerivedAsset(serialized);
+        const hyaHash = await sha256(asset.hya);
+        assert(hyaHash === manifest.hyaSha256, `page HYA hash differs from CLI: ${hyaHash}`);
+        preview = new api.Live2DExactPreviewSession(document.querySelector('#preview'), { autoplay: true, timeoutMs: 60000 });
+        await preview.replace(asset);
+        await waitFor(() => preview.snapshot.visualCount > 0 && preview.snapshot.pendingAssetJobs === 0, 60000);
+        assert(preview.snapshot.drawableCount === manifest.drawableCount, `drawable count ${preview.snapshot.drawableCount}/${manifest.drawableCount}`);
+        const ready = preview.snapshot;
+        preview.close();
+        assert(preview.snapshot.activeObjectUrls === 0 && preview.snapshot.pendingAssetJobs === 0, 'real-model preview did not close cleanly');
+        assert(objectUrlsCreated === objectUrlsRevoked, `real-model object URL leak ${objectUrlsCreated}/${objectUrlsRevoked}`);
+        const resources = performance.getEntriesByType('resource').map(item => item.name.toLowerCase());
+        const forbiddenNetworkCount = resources.filter(name => /(?:live2dcubismcore|\.moc3|\.model3\.json|\.motion3\.json|\.wpk)/u.test(name)).length;
+        assert(forbiddenNetworkCount === 0, 'real-model preview requested Cubism/Core/source data');
+        const payload = { status: 'passed', hyaHash, ready, closed: preview.snapshot, objectUrlsCreated, objectUrlsRevoked, forbiddenNetworkCount };
+        resultNode.textContent = JSON.stringify(payload); resultNode.dataset.status = 'passed';
+      } catch (error) {
+        preview?.close();
+        resultNode.textContent = JSON.stringify({ status: 'failed', message: error instanceof Error ? error.stack ?? error.message : String(error), preview: preview?.snapshot, objectUrlsCreated, objectUrlsRevoked });
+        resultNode.dataset.status = 'failed';
+      } finally {
+        URL.createObjectURL = nativeCreate; URL.revokeObjectURL = nativeRevoke;
+      }
+      function assert(value, message) { if (!value) throw new Error(message); }
+      async function waitFor(predicate, timeoutMs) { const deadline = performance.now() + timeoutMs; while (!predicate()) { if (performance.now() > deadline) throw new Error('Timed out waiting for real-model preview.'); await new Promise(resolve => setTimeout(resolve, 16)); } }
+      async function sha256(bytes) { const digest = await crypto.subtle.digest('SHA-256', bytes); return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''); }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.rollup.json",
+  "include": [
+    "../src/**/*",
+    "./deformable-live2d-browser-entry.ts",
+    "../../node_modules/@haiyue/engine/src/**/*",
+    "../../node_modules/@haiyue/animation-spec/src/**/*",
+    "../../node_modules/@haiyue/extensions/src/**/*",
+    "../../node_modules/@haiyue/ui/src/**/*"
+  ]
+}
