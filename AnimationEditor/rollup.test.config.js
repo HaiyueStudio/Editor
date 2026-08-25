@@ -10,6 +10,7 @@ export default {
     'path-authoring': 'src/domain/PathAuthoring.ts',
     'path-geometry-cache': 'src/authoring/path/PathGeometryCache.ts',
     'source-import-entry': 'test/source-import-entry.ts',
+    'live2d-product-integration': 'src/platform/animationEditorLazyPlugins.ts',
     'spritesheet-authoring': 'src/domain/SpriteSheetAuthoring.ts',
     'spritesheet-resource': 'src/authoring/spritesheet/SpriteSheetResourceSession.ts',
     'timeline-production': 'src/domain/TimelineProduction.ts',
