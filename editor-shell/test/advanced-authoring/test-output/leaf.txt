@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: neutral leaf has no product/AI/runtime owner imports; lazy entry is safe without a DOM
+ok 1 - neutral leaf has no product/AI/runtime owner imports; lazy entry is safe without a DOM
+  ---
+  duration_ms: 24.1072
+  type: 'test'
+  ...
+# Subtest: real Electron advanced authoring panel and native Gizmo lifecycle
+ok 2 - real Electron advanced authoring panel and native Gizmo lifecycle
+  ---
+  duration_ms: 3168.562
+  type: 'test'
+  ...
+# Subtest: authoring read model preserves public Selection/History and rejects unknown versions, cycles, mixed ownership and live values
+ok 3 - authoring read model preserves public Selection/History and rejects unknown versions, cycles, mixed ownership and live values
+  ---
+  duration_ms: 40.7999
+  type: 'test'
+  ...
+# Subtest: complete hierarchy handles 0/1/100/1000 entities, deterministic ordering, ancestor search and pages without dropping deep rows
+ok 4 - complete hierarchy handles 0/1/100/1000 entities, deterministic ordering, ancestor search and pages without dropping deep rows
+  ---
+  duration_ms: 123.2222
+  type: 'test'
+  ...
+# Subtest: inspector input rejects invalid numeric, enum and JSON edits while keeping nested fields editable through their schema owner
+ok 5 - inspector input rejects invalid numeric, enum and JSON edits while keeping nested fields editable through their schema owner
+  ---
+  duration_ms: 3.3443
+  type: 'test'
+  ...
+# Subtest: a complete drag creates one shared History entry; preview, no-op and cancellation never mutate the source
+ok 6 - a complete drag creates one shared History entry; preview, no-op and cancellation never mutate the source
+  ---
+  duration_ms: 24.3601
+  type: 'test'
+  ...
+# Subtest: world translation honors rotated/scaled parents and selected ancestors are not transformed twice
+ok 7 - world translation honors rotated/scaled parents and selected ancestors are not transformed twice
+  ---
+  duration_ms: 4.4922
+  type: 'test'
+  ...
+# Subtest: local translation, center rotation, local scale and zero-extent axes use explicit geometry semantics
+ok 8 - local translation, center rotation, local scale and zero-extent axes use explicit geometry semantics
+  ---
+  duration_ms: 7.5144
+  type: 'test'
+  ...
+# Subtest: selection, document revision and opening epoch changes invalidate drag commits
+ok 9 - selection, document revision and opening epoch changes invalidate drag commits
+  ---
+  duration_ms: 4.013
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4010.466

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "checks": [
+    "1000-row hierarchy is paged and reveal reaches final entity",
+    "native pointer preview makes one shared History entry, then Undo/Redo",
+    "native keyboard transform shares History",
+    "selection and project changes cancel an in-flight drag",
+    "invalid inspector edit stays local; runtime is read-only; fields remain reachable",
+    "cancel suppresses late commit and allows retry",
+    "Chromium accessibility and narrow layout",
+    "aborted lazy import, repeated mount/unmount and failing viewport cleanup"
+  ],
+  "electron": "43.2.0",
+  "chromium": "150.0.7871.129",
+  "security": {
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "webSecurity": true
+  }
+}

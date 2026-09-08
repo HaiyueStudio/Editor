@@ -1,0 +1,4 @@
+test-output/user-data/
+test-output/browser.js
+test-output/browser.html
+test-output/panel-*.js

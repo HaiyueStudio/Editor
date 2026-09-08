@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: public conformance kit exercises dependency activation and reverse disposal
+ok 1 - public conformance kit exercises dependency activation and reverse disposal
+  ---
+  duration_ms: 6.8967
+  type: 'test'
+  ...
+# Subtest: history supports nested groups, cancellation, redo invalidation and readonly snapshots
+ok 2 - history supports nested groups, cancellation, redo invalidation and readonly snapshots
+  ---
+  duration_ms: 4.1606
+  type: 'test'
+  ...
+# Subtest: history rejects a command before mutation when it exceeds budget
+ok 3 - history rejects a command before mutation when it exceeds budget
+  ---
+  duration_ms: 0.9846
+  type: 'test'
+  ...
+# Subtest: history coalesces compatible consecutive commands without replaying them
+ok 4 - history coalesces compatible consecutive commands without replaying them
+  ---
+  duration_ms: 0.6456
+  type: 'test'
+  ...
+# Subtest: lifecycle scopes dispose owned resources once in reverse order
+ok 5 - lifecycle scopes dispose owned resources once in reverse order
+  ---
+  duration_ms: 2.1851
+  type: 'test'
+  ...
+# Subtest: plugin host activates required providers and rolls back a failed activation
+ok 6 - plugin host activates required providers and rolls back a failed activation
+  ---
+  duration_ms: 23.472
+  type: 'test'
+  ...
+# Subtest: required dependency cycles and dependent unloads fail closed
+ok 7 - required dependency cycles and dependent unloads fail closed
+  ---
+  duration_ms: 0.4474
+  type: 'test'
+  ...
+# Subtest: latest task wins and stale prepared results cannot commit
+ok 8 - latest task wins and stale prepared results cannot commit
+  ---
+  duration_ms: 2.3853
+  type: 'test'
+  ...
+# Subtest: document host and selection expose immutable identity snapshots and clean close
+ok 9 - document host and selection expose immutable identity snapshots and clean close
+  ---
+  duration_ms: 1.0018
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 495.548

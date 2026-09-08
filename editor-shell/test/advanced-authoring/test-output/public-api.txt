@@ -1,0 +1,1 @@
+[editor-platform-api] foundation package exports are intentional and versioned.

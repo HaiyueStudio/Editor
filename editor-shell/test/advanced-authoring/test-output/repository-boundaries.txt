@@ -1,0 +1,1 @@
+[editor-repository-boundary] 7 workspaces satisfy package, source, and AI-neutral boundaries.

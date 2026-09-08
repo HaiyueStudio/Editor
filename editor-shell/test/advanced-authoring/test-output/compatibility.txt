@@ -1,0 +1,1 @@
+[editor-dependency-compatibility] allowed Engine/UI resolution satisfies >=0.1.0 <0.2.0 and public-package-only declarations.
