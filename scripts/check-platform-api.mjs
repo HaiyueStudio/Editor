@@ -5,7 +5,7 @@ const root = resolve(import.meta.dirname, '..');
 const expected = new Map([
   ['editor-plugin-sdk', ['.']],
   ['editor-platform', ['.', './conformance']],
-  ['editor-shell', ['.']],
+  ['editor-shell', ['.', './advanced-authoring', './advanced-authoring.css']],
   ['editor-app-kit', ['.', './node']],
 ]);
 for (const [workspace, expectedExports] of expected) {

@@ -1,12 +1,15 @@
 import { app, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
 
 let window;
 console.log('advanced-browser: main entered');
 const checks = [];
-const output = new URL('./test-output/', import.meta.url);
+const output = process.env.HAIYUE_ADVANCED_TEST_OUTPUT
+  ? pathToFileURL(path.resolve(process.env.HAIYUE_ADVANCED_TEST_OUTPUT) + path.sep)
+  : new URL('./test-output/', import.meta.url);
 app.setPath('userData', fileURLToPath(new URL('user-data/',output)));
 const evaluate = code => window.webContents.executeJavaScript(code, true);
 const state = () => evaluate('advancedTest.state()');
@@ -28,7 +31,7 @@ async function run() { try {
   window.webContents.setWindowOpenHandler(()=>({action:'deny'})); window.webContents.on('will-navigate',event=>event.preventDefault());
   const errors = []; window.webContents.on('console-message', event => { console.log(`renderer: ${event.message}`); if (event.level === 'error') errors.push(event.message); });
   window.webContents.on('render-process-gone',(_event,details)=>console.error('renderer gone',details));
-  await window.loadFile(fileURLToPath(new URL('./test-output/browser.html',import.meta.url)));
+  await window.loadFile(fileURLToPath(new URL('browser.html',output)));
   console.log('advanced-browser: loaded');
   window.showInactive();
   for (let i=0;i<100 && !await evaluate('Boolean(window.advancedReady)');i++) await new Promise(r=>setTimeout(r,20));
@@ -60,6 +63,8 @@ async function run() { try {
     assert.equal((await state()).view.history.entries.length,before);
   });
   await check('invalid inspector edit stays local; runtime is read-only; fields remain reachable',async()=>{
+    assert.equal(await evaluate('document.querySelector("[data-advanced=runtime-refresh]").textContent'),'Refresh runtime');
+    await click('[data-advanced=runtime-refresh]'); assert.equal((await state()).intents.at(-1).type,'runtime.inspect');
     const before=(await state()).intents.length;
     await evaluate(`(()=>{const form=document.querySelector('form[data-field="/speed"]');form.querySelector('input').value='-2';form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));})()`); await settle(); assert.equal((await state()).intents.length,before);
     await evaluate('advancedTest.dense()'); assert.equal(await evaluate('document.querySelectorAll("form[data-field]").length'),50);
