@@ -11,6 +11,8 @@ import { EditorPluginHost } from './PluginHost.js';
 import { EditorProjectSessionState, type EditorProjectSessionPersistence } from './ProjectSessionState.js';
 import { EditorSelectionService } from './SelectionService.js';
 import { EditorOperationService, type EditorOperationServiceOptions } from './OperationService.js';
+import { EditorRpcHost } from './RpcHost.js';
+import { EditorResourceStore } from './ResourceStore.js';
 import { EditorTaskCoordinator } from './TaskCoordinator.js';
 
 export interface EditorPlatformOptions {
@@ -21,6 +23,7 @@ export interface EditorPlatformOptions {
 }
 
 export class EditorPlatform implements EditorDisposable {
+  readonly resources = new EditorResourceStore();
   readonly services = new EditorServiceRegistry();
   readonly contributions = new EditorContributionRegistry();
   readonly documents = new EditorDocumentHost();
@@ -28,6 +31,7 @@ export class EditorPlatform implements EditorDisposable {
   readonly selection = new EditorSelectionService();
   readonly tasks = new EditorTaskCoordinator();
   readonly operations: EditorOperationService;
+  readonly rpc: EditorRpcHost;
   readonly session: EditorProjectSessionState;
   readonly plugins: EditorPluginHost;
   private readonly registrations: EditorDisposable[];
@@ -36,6 +40,7 @@ export class EditorPlatform implements EditorDisposable {
   constructor(options: EditorPlatformOptions = {}) {
     this.history = new EditorHistoryService(options.history);
     this.operations = new EditorOperationService(this.documents, this.tasks, { ...options.operations, ...(options.diagnostic ? { diagnostic: options.diagnostic } : {}) });
+    this.rpc = new EditorRpcHost(this);
     this.session = new EditorProjectSessionState(options.sessionPersistence);
     this.plugins = new EditorPluginHost({
       services: this.services,
@@ -78,8 +83,10 @@ export class EditorPlatform implements EditorDisposable {
     const errors: unknown[] = [];
     for (const resource of [
       this.plugins,
+      this.rpc,
       this.operations,
       this.tasks,
+      this.resources,
       this.documents,
       this.selection,
       this.history,

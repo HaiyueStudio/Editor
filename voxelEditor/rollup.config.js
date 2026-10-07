@@ -2,6 +2,7 @@ import { cleanOutputDirectory, haiyuePlugins, libraryOutput } from '../config/ro
 
 export default {
   input: {
+    operations: 'src/platform/voxelEditorOperations.ts',
     main: 'src/main.ts', model: 'src/model.ts', picking: 'src/picking.ts',
     'shape-generator': 'src/shapeGenerator.ts', 'gltf-exporter': 'src/gltfExporter.ts',
     'gltf-scene-exporter': 'src/gltfSceneExporter.ts', 'vox-importer': 'src/voxImporter.ts',

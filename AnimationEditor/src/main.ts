@@ -1,3 +1,4 @@
+import type {} from '@haiyue/editor-app-kit';
 import {
   ANIMATION_VERSION,
   type HyaStateMachineParameter,
@@ -122,6 +123,7 @@ import { DesignerTaskCoordinator } from './integration/DesignerTaskCoordinator';
 import { DesignerViewportInteraction } from './integration/DesignerViewportInteraction';
 import {
   animationEditorPlatform,
+  animationEditorAPI,
   connectAnimationEditorPlatform,
   disposeAnimationEditorPlatform,
   startAnimationEditorPlatform,
@@ -136,6 +138,8 @@ const TIMELINE_END_PADDING = 32;
 const store = new AnimationEditorStore(createEmptyAnimationEditorProject());
 const selection = new SelectionStore();
 const platformBindings = connectAnimationEditorPlatform(store, selection);
+Object.defineProperty(globalThis, 'haiyueEditor', { value: animationEditorAPI, configurable: true });
+animationEditorPlatform.rpc.connect(window.haiyueEditorIPC);
 const history = new CommandHistory(100, 32 * 1024 * 1024, animationEditorPlatform.history);
 let playing = false;
 let statusMessage = translate('status.ready');

@@ -102,8 +102,13 @@ export async function validateAssembledEditorApp({ descriptorPath, packageRoot =
       throw new Error(`${descriptor.id} Electron renderer differs from the PWA tree.`);
     }
     const main = await readFile(resolveInside(root, 'electron/main.mjs'), 'utf8');
-    for (const policy of ['contextIsolation: true', 'nodeIntegration: false', 'sandbox: true', 'webSecurity: true']) {
+    for (const policy of ['contextIsolation: true', 'nodeIntegration: false', 'sandbox: true', 'webSecurity: true', 'preload: join', 'createElectronRpcHost']) {
       if (!main.includes(policy)) throw new Error(`${descriptor.id} Electron bootstrap is missing ${policy}.`);
+    }
+    const rpcPreload = await readFile(resolveInside(root, 'electron/preload.cjs'), 'utf8');
+    if (!rpcPreload.includes('haiyueEditorIPC')) throw new Error(`${descriptor.id} RPC preload is missing.`);
+    for (const name of ['electron.mjs', 'local-rpc.mjs']) {
+      if (await readFile(resolveInside(root, `electron/rpc/${name}`), 'utf8') !== await readFile(new URL(`./rpc/${name}`, import.meta.url), 'utf8')) throw new Error(`${descriptor.id} RPC host is stale.`);
     }
     if (descriptor.electron.unsavedCloseProtection) {
       for (const policy of ['preload: join', "will-prevent-unload", "showMessageBox", "save-and-close"]) {
@@ -194,13 +199,27 @@ async function writeElectronFiles(root, descriptor) {
   const entry = `${rendererRelative}/${descriptor.entries[0]}`;
   const e = descriptor.electron;
   const defaultMain = `import { app, BrowserWindow, Menu, shell } from 'electron';\nimport { join } from 'node:path';\nimport { pathToFileURL } from 'node:url';\nconst smoke = process.env.HAIYUE_ELECTRON_SMOKE === '1';\nlet mainWindow = null;\nlet smokeTimer = null;\nfunction finishSmoke(code, message) {\n  if (!smoke) return;\n  if (smokeTimer) clearTimeout(smokeTimer);\n  console.log(message);\n  app.exit(code);\n}\nfunction createWindow() {\n  if (mainWindow && !mainWindow.isDestroyed()) { if (!smoke) { mainWindow.show(); mainWindow.focus(); } return mainWindow; }\n  const window = new BrowserWindow({ width: ${e.width}, height: ${e.height}, minWidth: ${e.minWidth}, minHeight: ${e.minHeight}, show: false, backgroundColor: ${JSON.stringify(e.backgroundColor)}, title: ${JSON.stringify(descriptor.productName)}, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });\n  mainWindow = window;\n  const entry = join(import.meta.dirname, ${JSON.stringify(entry)});\n  const entryUrl = pathToFileURL(entry).href;\n  window.once('ready-to-show', () => { if (!smoke) { window.show(); window.focus(); } });\n  if (smoke) {\n    smokeTimer = setTimeout(() => finishSmoke(2, '[editor-app-kit] Electron smoke timed out.'), 30000);\n    window.webContents.once('did-finish-load', () => finishSmoke(0, '[editor-app-kit] Electron renderer loaded.'));\n    window.webContents.once('did-fail-load', (_event, code, description) => finishSmoke(1, \`[editor-app-kit] Electron renderer failed: \${code} \${description}\`));\n  }\n  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) void shell.openExternal(url); return { action: 'deny' }; });\n  window.webContents.on('will-navigate', (event, url) => { if (url !== entryUrl) event.preventDefault(); });\n  window.once('closed', () => { if (mainWindow === window) mainWindow = null; });\n  void window.loadFile(entry);\n  return window;\n}\nconst lock = app.requestSingleInstanceLock();\nif (!lock) app.quit(); else { app.on('second-instance', createWindow); void app.whenReady().then(() => { Menu.setApplicationMenu(null); createWindow(); }); }\napp.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });\napp.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });\n`;
-  const main = e.unsavedCloseProtection
+  let main = e.unsavedCloseProtection
     ? electronCloseProtectedMainSource(descriptor, entry)
     : defaultMain;
-  await writeFile(resolveInside(electronRoot, 'main.mjs'), main);
-  if (e.unsavedCloseProtection) {
-    await writeFile(resolveInside(electronRoot, 'preload.cjs'), electronCloseProtectionPreloadSource());
+  // Both generated bootstraps use the same native RPC implementation and sandboxed preload.
+  main = "import { createElectronRpcHost } from './rpc/electron.mjs';\n" + main;
+  if (!e.unsavedCloseProtection) {
+    main = main.replace("Menu, shell } from 'electron'", "Menu, shell, ipcMain } from 'electron'");
+    main = main.replace('webPreferences: { contextIsolation:', "webPreferences: { preload: join(import.meta.dirname, 'preload.cjs'), contextIsolation:");
   }
+  main = main.replace('  void window.loadFile(entry);', `  const rpcEnabled = process.env.HAIYUE_EDITOR_RPC === '1' || process.argv.includes('--editor-rpc');
+  const rpcHost = createElectronRpcHost({ ipcMain, webContents: window.webContents, entryUrl,
+    descriptorDirectory: app.getPath('userData'), enabled: rpcEnabled,
+    port: Number(process.env.HAIYUE_EDITOR_RPC_PORT ?? 0) });
+  window.once('closed', () => { void rpcHost.then(host => host.close()); });
+  void rpcHost.then(() => window.loadFile(entry)).catch(error => { console.error('[editor-rpc]', error.message); app.exit(1); });`);
+  await writeFile(resolveInside(electronRoot, 'main.mjs'), main);
+  await mkdir(resolveInside(electronRoot, 'rpc'), { recursive: true });
+  for (const name of ['electron.mjs', 'local-rpc.mjs']) await cp(new URL(`./rpc/${name}`, import.meta.url), resolveInside(electronRoot, `rpc/${name}`));
+  const rpcPreload = await readFile(new URL('./rpc/preload.cjs', import.meta.url), 'utf8');
+  await writeFile(resolveInside(electronRoot, 'preload.cjs'), (e.unsavedCloseProtection ? electronCloseProtectionPreloadSource() : '') + '\n' + rpcPreload);
+
   const packageJson = {
     name: descriptor.id,
     version: descriptor.version,
@@ -221,7 +240,8 @@ async function writeElectronFiles(root, descriptor) {
     files: [
       'app-dist/**/*',
       'main.mjs',
-      ...(e.unsavedCloseProtection ? ['preload.cjs'] : []),
+      'preload.cjs',
+      'rpc/*.mjs',
       'package.json',
       '!node_modules{,/**/*}',
     ],
@@ -509,3 +529,7 @@ function normalizeBasePath(value) {
   if (segments.some(segment => segment === '.' || segment === '..')) throw new Error(`Unsafe preview base path: ${value}`);
   return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
 }
+
+export { createLocalRpcServer } from './rpc/local-rpc.mjs';
+export { createElectronRpcHost } from './rpc/electron.mjs';
+export { createEditorRpcClient } from './rpc/client.mjs';

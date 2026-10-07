@@ -121,6 +121,15 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
     const layer = makeLayer(white ? '背景' : '图层 1', bitmap);
     return new ImageDocument({ id: uid(), name, width, height, layers: [layer], selectedId: layer.id, revision: 1 });
   }
+  runAtomic<T>(operation: () => T): T {
+    const before = this.current, saved = this.saved, nextRevision = this.nextRevision;
+    try { return this.history.runAtomic(operation); }
+    catch (error) {
+      this.current = before; this.saved = saved; this.nextRevision = nextRevision;
+      for (const listener of this.listeners) { try { listener(); } catch { /* Keep the original failure. */ } }
+      throw error;
+    }
+  }
   get state() { return this.current; }
   get identity() { return { id: this.current.id, name: this.current.name, kind: 'haiyue.image' }; }
   get revision() { return this.current.revision; }

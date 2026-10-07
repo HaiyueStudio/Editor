@@ -3,6 +3,7 @@ import { cleanOutputDirectory, haiyuePlugins, libraryOutput } from '../config/ro
 export default {
   input: {
     testing: 'src/testing.ts',
+    operations: 'src/platform/animationEditorOperations.ts',
     'particle-authoring': 'src/domain/ParticleAuthoring.ts',
     'particle-preview': 'src/authoring/particle/Particle2DPreviewSession.ts',
     'particle-resource': 'src/authoring/particle/ParticleTextureResourceSession.ts',

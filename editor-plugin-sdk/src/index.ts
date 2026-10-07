@@ -257,3 +257,5 @@ function requireIdentifier(value: string, kind: string): string {
 function freezeStrings(values: readonly string[] | undefined): readonly string[] {
   return Object.freeze([...(values ?? [])]);
 }
+
+export * from './rpc.js';

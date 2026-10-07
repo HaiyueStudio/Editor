@@ -38,6 +38,7 @@ export interface EditorElectronRendererBridge {
 declare global {
   interface Window {
     readonly haiyueEditorHost?: EditorElectronRendererBridge;
+    readonly haiyueEditorIPC?: import('@haiyue/editor-plugin-sdk').EditorRpcBridge;
   }
 }
 

@@ -10,7 +10,7 @@
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
     "./node": "./node.mjs"
   },
-  "files": ["README.md", "dist", "src", "node.mjs"],
+  "files": ["README.md", "dist", "src", "node.mjs", "rpc"],
   "engines": { "node": ">=22" },
   "publishConfig": { "access": "public", "tag": "latest" },
   "scripts": {

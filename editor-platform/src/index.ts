@@ -8,3 +8,7 @@ export * from './Registries.js';
 export * from './SelectionService.js';
 export * from './TaskCoordinator.js';
 export * from './OperationService.js';
+export * from './ResourceStore.js';
+export * from './AutomationAPI.js';
+
+export * from './RpcHost.js';

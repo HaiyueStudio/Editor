@@ -150,6 +150,30 @@ export class VoxelDocument extends EventTarget {
     return this._transactions.begin(this._dispatchDocumentChange);
   }
 
+  runAtomic<T>(operation: () => T): T {
+    const aggregates = [this._aggregate, this._hierarchy, this._paletteState, this._timeline];
+    const snapshots = aggregates.map(value => structuredClone(value));
+    const projections = [this._viewVoxels, this._sceneVoxels, this._moduleInstanceCollisions, this._materialUsageCounts];
+    const caches = projections.map(value => structuredClone(value));
+    const flags = [this._viewDirty, this._sceneDirty, this._materialUsageDirty] as const;
+    const transaction = this.beginTransaction();
+    try { const result = operation(); transaction.commit(); return result; }
+    catch (error) {
+      aggregates.forEach((value, index) => {
+        const target = value as unknown as Record<string, unknown>;
+        for (const [key, entry] of Object.entries(snapshots[index]!)) {
+          if (target[key] instanceof Map && entry instanceof Map) replaceMap(target[key], entry);
+          else target[key] = entry;
+        }
+      });
+      // Keep the maps used by the public read-only projection views stable.
+      projections.forEach((value, index) => { value.clear(); for (const [key, item] of caches[index]!) (value as Map<unknown, unknown>).set(key, item); });
+      [this._viewDirty, this._sceneDirty, this._materialUsageDirty] = flags;
+      transaction.cancel();
+      throw error;
+    }
+  }
+
   transact<T>(operation: () => T): T {
     return this._transactions.transact(operation, this._dispatchDocumentChange);
   }

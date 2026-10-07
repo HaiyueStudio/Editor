@@ -1,5 +1,5 @@
 import type { EditorDisposable, EditorProductAdapter, EditorSelectionReference } from '@haiyue/editor-plugin-sdk';
-import { EditorPlatform } from '@haiyue/editor-platform';
+import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import { BrowserEditorShell, EditorLazyPluginLoader } from '@haiyue/editor-shell';
 import {
   cloneAnimationEditorProject,
@@ -8,6 +8,7 @@ import {
 } from '../domain/AnimationEditorProject';
 import type { AnimationEditorStore } from '../domain/AnimationEditorStore';
 import type { SelectionStore } from '../domain/SelectionStore';
+import { registerAnimationEditorOperations } from './animationEditorOperations';
 import { animationEditorProductManifest } from './animationEditorProductManifest';
 
 export interface AnimationEditorProductMutation {
@@ -19,6 +20,7 @@ export const animationEditorPlatform = new EditorPlatform({
   history: { maxEntries: 100, byteBudget: 32 * 1024 * 1024 },
   diagnostic: diagnostic => console.warn(`[${diagnostic.code}] ${diagnostic.message}`, diagnostic.cause ?? ''),
 });
+export const animationEditorAPI = createEditorAutomationAPI(animationEditorPlatform);
 export const animationEditorShell = new BrowserEditorShell(animationEditorPlatform.contributions);
 const lazyPlugins = new EditorLazyPluginLoader(
   animationEditorPlatform.plugins,
@@ -61,7 +63,7 @@ export function connectAnimationEditorPlatform(
   selection: SelectionStore,
 ): EditorDisposable {
   const document = animationEditorPlatform.documents.attach({
-    identity: Object.freeze({ id: 'animation.current', kind: 'haiyue.animation-project', name: store.project.name }),
+    get identity() { return Object.freeze({ id: 'animation.current', kind: 'haiyue.animation-project', name: store.project.name }); },
     get revision() { return store.revision; },
     get savedRevision() { return store.isDirty ? Math.max(0, store.revision - 1) : store.revision; },
     serialize: signal => {
@@ -75,6 +77,7 @@ export function connectAnimationEditorPlatform(
     },
     dispose() {},
   });
+  const operations = registerAnimationEditorOperations(animationEditorPlatform, store);
   const sync = (items = selection.items, primary = selection.primary): void => {
     const references = items.map<EditorSelectionReference>(item => Object.freeze({
       kind: `animation.${item.kind}`,
@@ -89,6 +92,7 @@ export function connectAnimationEditorPlatform(
   const unsubscribeSelection = selection.subscribe(sync);
   sync();
   return once(() => {
+    void operations.dispose();
     unsubscribeSelection();
     void document.dispose();
   });

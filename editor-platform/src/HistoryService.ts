@@ -35,6 +35,42 @@ export class EditorHistoryService implements EditorDisposable {
   private revision = 0;
   private busy = false;
   private disposed = false;
+  private atomicDisposals: HistoryEntry[] | undefined;
+  private publishingAtomic = false;
+
+  /** Synchronous transaction. The caller restores domain state if operation/observers throw. */
+  runAtomic<T>(operation: () => T): T {
+    this.assertReadyForMutation();
+    if (this.atomicDisposals || this.groups.length) throw new Error('History transaction is already active.');
+    if (operation.constructor.name === 'AsyncFunction') throw new TypeError('History transactions must be synchronous.');
+    const undo = [...this.undoEntries], redo = [...this.redoEntries], revision = this.revision, nextId = this.nextId;
+    const discarded: HistoryEntry[] = [];
+    this.atomicDisposals = discarded;
+    try {
+      const result = operation();
+      if (result && typeof (result as { then?: unknown }).then === 'function') throw new TypeError('History transactions must be synchronous.');
+      if (this.groups.length) throw new Error('History transaction left an open group.');
+      this.atomicDisposals = undefined;
+      this.publishingAtomic = true;
+      try { this.emit(); } finally { this.publishingAtomic = false; }
+      for (const entry of discarded) { try { entry.command.dispose?.(); } catch { /* Cleanup cannot invalidate committed state. */ } }
+      return result;
+    } catch (error) {
+      const retained = new Set([...undo, ...redo]);
+      const abandoned = new Set([...this.undoEntries, ...this.redoEntries, ...discarded, ...this.groups.flatMap(group => group.entries)]);
+      this.atomicDisposals = undefined;
+      this.groups.length = 0;
+      this.undoEntries.splice(0, this.undoEntries.length, ...undo);
+      this.redoEntries.splice(0, this.redoEntries.length, ...redo);
+      this.revision = revision; this.nextId = nextId;
+      for (const entry of abandoned) if (!retained.has(entry)) { try { entry.command.dispose?.(); } catch { /* Preserve the original error. */ } }
+      const snapshot = this.snapshot();
+      this.publishingAtomic = true;
+      try { for (const listener of this.listeners) { try { listener(snapshot); } catch { /* Best effort rollback notification. */ } } }
+      finally { this.publishingAtomic = false; }
+      throw error;
+    }
+  }
 
   constructor(options: EditorHistoryOptions = {}) {
     this.byteBudget = Math.max(1, options.byteBudget ?? 32 * 1024 * 1024);
@@ -65,6 +101,7 @@ export class EditorHistoryService implements EditorDisposable {
 
   beginGroup(label: string): void {
     this.assertReadyForMutation();
+    if (this.atomicDisposals) throw new Error('Cannot begin a group inside an atomic history transaction.');
     if (!label.trim()) throw new TypeError('History group label is required.');
     this.groups.push({ label, entries: [], estimatedBytes: 0 });
     this.emit();
@@ -147,7 +184,7 @@ export class EditorHistoryService implements EditorDisposable {
   }
 
   clear(): void {
-    this.assertActive();
+    this.assertReadyForMutation();
     if (this.groups.length > 0) throw new Error('Cannot clear history while a group is active.');
     this.disposeEntries(this.undoEntries.splice(0));
     this.disposeEntries(this.redoEntries.splice(0));
@@ -183,6 +220,7 @@ export class EditorHistoryService implements EditorDisposable {
 
   dispose(): void {
     if (this.disposed) return;
+    if (this.atomicDisposals || this.publishingAtomic) throw new Error('Cannot dispose history during an atomic transaction.');
     while (this.groups.length > 0) this.cancelGroup();
     this.disposeEntries(this.undoEntries.splice(0));
     this.disposeEntries(this.redoEntries.splice(0));
@@ -253,7 +291,7 @@ export class EditorHistoryService implements EditorDisposable {
   private enforceBudget(): void {
     while ((this.totalBytes() > this.byteBudget || this.undoEntries.length > this.maxEntries) && this.undoEntries.length > 1) {
       const removed = this.undoEntries.shift();
-      removed?.command.dispose?.();
+      if (removed) this.disposeEntries([removed]);
     }
   }
 
@@ -262,6 +300,7 @@ export class EditorHistoryService implements EditorDisposable {
   }
 
   private disposeEntries(entries: readonly HistoryEntry[]): void {
+    if (this.atomicDisposals) { this.atomicDisposals.push(...entries); return; }
     for (const entry of entries) entry.command.dispose?.();
   }
 
@@ -277,6 +316,7 @@ export class EditorHistoryService implements EditorDisposable {
   }
 
   private emit(): void {
+    if (this.atomicDisposals) return;
     this.revision++;
     const snapshot = this.snapshot();
     for (const listener of [...this.listeners]) listener(snapshot);
@@ -284,7 +324,7 @@ export class EditorHistoryService implements EditorDisposable {
 
   private assertReadyForMutation(): void {
     this.assertActive();
-    if (this.busy) throw new Error('History is busy.');
+    if (this.busy || this.publishingAtomic) throw new Error('History is busy.');
     if (this.groups.length > 0 && (this.canUndo || this.canRedo)) throw new Error('Invalid history group state.');
   }
 

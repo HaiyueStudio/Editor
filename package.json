@@ -17,6 +17,8 @@
     "imageEditor"
   ],
   "scripts": {
+    "test:operations:electron": "node scripts/editor-e2e/rpc-electron.mjs",
+    "test:operations:browser": "node scripts/editor-e2e/operations-browser.mjs",
     "test:image:p0": "npm run p0 -w ./imageEditor",
     "deps:local": "node scripts/install-local-dependencies.mjs",
     "build:foundations": "npm run build -w ./editor-plugin-sdk && npm run build -w ./editor-platform && npm run build -w ./editor-shell && npm run build -w ./editor-app-kit",

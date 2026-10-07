@@ -35,6 +35,7 @@ import { createVoxelCameraStatePort, runPreservingCamera } from './cameraHistory
 import { UiRenderScheduler, type VoxelRenderInvalidation } from './uiRenderScheduler';
 import { initializeEditorLocalization, translate } from './localization';
 import {
+  voxelEditorAPI,
   connectVoxelEditorPlatform,
   disposeVoxelEditorPlatform,
   startVoxelEditorPlatform,
@@ -288,6 +289,8 @@ projectSessionController = new ProjectSessionController({
 });
 const electronCloseController = new ElectronCloseController(projectSessionController);
 const platformBindings = connectVoxelEditorPlatform(documentModel, voxelSelection, projectSessionController);
+Object.defineProperty(globalThis, 'haiyueEditor', { value: voxelEditorAPI, configurable: true });
+voxelEditorPlatform.rpc.connect(window.haiyueEditorIPC);
 window.addEventListener('pagehide', () => {
   electronCloseController.dispose();
   platformBindings.dispose();

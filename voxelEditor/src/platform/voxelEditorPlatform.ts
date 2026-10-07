@@ -1,9 +1,10 @@
 import type { EditorDisposable, EditorProductAdapter, EditorSelectionReference } from '@haiyue/editor-plugin-sdk';
-import { EditorPlatform } from '@haiyue/editor-platform';
+import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import { BrowserEditorShell, EditorLazyPluginLoader } from '@haiyue/editor-shell';
 import type { ProjectSessionController } from '../controllers/ProjectSessionController';
 import type { VoxelDocument, VoxelDocumentChangeDetail, VoxelProject } from '../model';
 import type { VoxelSelection } from '../selection';
+import { registerVoxelEditorOperations } from './voxelEditorOperations';
 import { voxelEditorProductManifest } from './voxelEditorProductManifest';
 
 export interface VoxelEditorProductMutation {
@@ -15,6 +16,7 @@ export const voxelEditorPlatform = new EditorPlatform({
   history: { maxEntries: 100, byteBudget: 64 * 1024 * 1024 },
   diagnostic: diagnostic => console.warn(`[${diagnostic.code}] ${diagnostic.message}`, diagnostic.cause ?? ''),
 });
+export const voxelEditorAPI = createEditorAutomationAPI(voxelEditorPlatform);
 export const voxelEditorShell = new BrowserEditorShell(voxelEditorPlatform.contributions);
 const lazyPlugins = new EditorLazyPluginLoader(voxelEditorPlatform.plugins, voxelEditorProductManifest.lazyPlugins ?? []);
 let started: Promise<void> | null = null;
@@ -104,6 +106,7 @@ export function connectVoxelEditorPlatform(
     dispose() { documentListeners.clear(); },
   });
 
+  const operations = registerVoxelEditorOperations(voxelEditorPlatform, documentModel);
   const syncSelection = (): void => {
     const references = [...selection.keys].map<EditorSelectionReference>(id => Object.freeze({
       kind: 'voxel.cell', id, documentId: 'voxel.current',
@@ -114,6 +117,7 @@ export function connectVoxelEditorPlatform(
   syncSelection();
 
   return once(() => {
+    void operations.dispose();
     selection.removeEventListener('change', syncSelection);
     unsubscribeSession();
     documentModel.removeEventListener('change', onDocumentChange);

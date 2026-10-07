@@ -17,6 +17,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const icon = (name: string) => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg; };
 const button = (title: string, symbol: string, action: () => void) => { const el = document.createElement('button'); el.title = title; el.setAttribute('aria-label', title); el.append(icon(symbol)); el.addEventListener('click', event => { event.stopPropagation(); action(); }); return el; };
 const workspace = new ImageWorkspace();
+Object.defineProperty(globalThis, 'haiyueEditor', { value: workspace.api, configurable: true });
+workspace.platform.rpc.connect(window.haiyueEditorIPC);
 const store = new IndexedDbRecovery(), recovery = new RecoveryQueue(store);
 const lifecycle = new AbortController(), options = { signal: lifecycle.signal };
 let zoom = 1, renderPending = false, ready = false, disposed = false, importing = false;

@@ -7,6 +7,8 @@ dist-test/
 */electron/app-dist/
 */release-electron/
 */.electron-candidate.json
+*/electron/rpc/
+*/electron/preload.cjs
 */electron/main.mjs
 */electron/package.json
 */electron-builder.generated.json

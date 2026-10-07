@@ -14,6 +14,7 @@ export function haiyuePlugins({
   localPackages = {},
   commonjsInterop = true,
   minify = false,
+  mangle = false,
   extra = [],
 } = {}) {
   return [
@@ -25,7 +26,7 @@ export function haiyuePlugins({
     typescript({ tsconfig, ...(declaration === undefined ? {} : { declaration }) }),
     minify ? terser({
       compress: { passes: 2 },
-      mangle: false,
+      mangle,
       keep_classnames: true,
       keep_fnames: true,
       format: { comments: false },

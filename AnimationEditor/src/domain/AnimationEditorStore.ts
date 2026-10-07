@@ -37,6 +37,18 @@ export class AnimationEditorStore {
     this._dirty = new DirtyState(animationEditorProjectFingerprint(this._project));
   }
 
+  runAtomic<T>(operation: () => T): T {
+    const before = this._project, revision = this._revision, saved = this.savedFingerprint;
+    try { return operation(); }
+    catch (error) {
+      const previousProject = this._project;
+      this._project = before; this._revision = revision;
+      this._dirty.restore(saved, animationEditorProjectFingerprint(before));
+      const change = { project: before, previousProject, revision, reason: 'rollback', contentChanged: true, dirtyChanged: true, isDirty: this.isDirty };
+      for (const listener of this._listeners) { try { listener(change); } catch { /* Preserve original failure. */ } }
+      throw error;
+    }
+  }
   get project(): AnimationEditorProject { return this._project; }
   get revision(): number { return this._revision; }
   get isDirty(): boolean { return this._dirty.isDirty; }

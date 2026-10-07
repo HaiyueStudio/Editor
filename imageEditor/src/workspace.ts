@@ -1,4 +1,4 @@
-import { EditorPlatform } from '@haiyue/editor-platform';
+import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import { BrowserEditorShell } from '@haiyue/editor-shell';
 import { defineEditorPlugin, defineEditorProduct, EDITOR_PLUGIN_API_VERSION } from '@haiyue/editor-plugin-sdk';
 import { ImageDocument, IMAGE_LIMITS } from './document.js';
@@ -14,11 +14,16 @@ const product = defineEditorProduct({ schemaVersion: 1, id: 'haiyue.image-editor
 
 export class ImageWorkspace {
   readonly platform = new EditorPlatform();
+  readonly api = createEditorAutomationAPI(this.platform);
+  private operationBindings?: import('@haiyue/editor-plugin-sdk').EditorDisposable;
   readonly shell = new BrowserEditorShell(this.platform.contributions);
   private items = new Map<string, ImageDocument>();
   private subscriptions = new Map<string, () => void>();
   private listeners = new Set<() => void>();
-  async start() { await this.platform.start(product); }
+  async start() {
+    await this.platform.start(product);
+    if (!this.operationBindings) this.operationBindings = (await import('./operations.js')).registerImageOperations(this);
+  }
   get documents() { return [...this.items.values()]; }
   get active(): ImageDocument | undefined { return this.items.get(this.platform.documents.active()?.identity.id ?? ''); }
   get dirty() { return this.documents.some(doc => doc.dirty); }
@@ -61,6 +66,7 @@ export class ImageWorkspace {
   }
   subscribe(listener: () => void) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   async dispose() {
+    await this.operationBindings?.dispose();
     for (const unsubscribe of this.subscriptions.values()) unsubscribe(); this.subscriptions.clear();
     this.listeners.clear(); this.items.clear(); this.shell.dispose(); await this.platform.dispose();
   }
