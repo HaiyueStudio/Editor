@@ -1,0 +1,26 @@
+
+> @haiyue/image-editor@0.1.0 app:check
+> npm run build:app && node ../scripts/run-editor-app-kit.mjs validate
+
+
+> @haiyue/image-editor@0.1.0 build:app
+> npm run build && node ../scripts/run-editor-app-kit.mjs assemble
+
+
+> @haiyue/image-editor@0.1.0 build
+> npm run build:types && node ../scripts/build-rollup-once.mjs --expect web
+
+
+> @haiyue/image-editor@0.1.0 build:types
+> tsc -p tsconfig.json
+
+
+src/main.ts, src/psdWorker.ts, src/filterWorker.ts → web...
+(!) Circular dependencies
+../node_modules/ag-psd/dist/additionalInfo.js -> ../node_modules/ag-psd/dist/effectsHelpers.js -> ../node_modules/ag-psd/dist/psdReader.js -> ../node_modules/ag-psd/dist/additionalInfo.js
+../node_modules/ag-psd/dist/psdReader.js -> ../node_modules/ag-psd/dist/imageResources.js -> ../node_modules/ag-psd/dist/psdReader.js
+../node_modules/ag-psd/dist/psdWriter.js -> ../node_modules/ag-psd/dist/additionalInfo.js -> ../node_modules/ag-psd/dist/effectsHelpers.js -> ../node_modules/ag-psd/dist/psdReader.js -> ../node_modules/ag-psd/dist/imageResources.js -> ../node_modules/ag-psd/dist/psdWriter.js
+...and 4 more
+created web in 43s
+[editor-app-kit] haiyue-image-editor@0.1.0: 11 files, 767071B raw, 294437B gzip.
+[editor-app-kit] haiyue-image-editor artifact validated (12 files, 6519d41ac4e09aaf).

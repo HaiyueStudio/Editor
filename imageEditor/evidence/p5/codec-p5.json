@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-07T03:09:40.084Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "runner": {
+    "node": "v24.19.0",
+    "platform": "darwin",
+    "arch": "x64"
+  },
+  "sourceFingerprints": {
+    "imageEditor/src/advancedPanel.ts": "d2c82d02c4aabc5f1abd9d41593849b949cc0ddb52878752ca93119edee56b9c",
+    "imageEditor/src/canvasView.ts": "94ffe67e438d370b7660cd71451e9bd1d30af0410022e60744e805830b9ecc1c",
+    "imageEditor/src/compositor.ts": "25f2ef087490c626fa1b7dd6eddfccf83986894fb154dd608e93c78d405c3c6b",
+    "imageEditor/src/contentRaster.ts": "00a303703f88f9d7401677d5e50e2435848c8c3d08b1e63dabc73f15ed58f967",
+    "imageEditor/src/document.ts": "d9dbe1f0b343bd91ba140398d876662c14c910a8a9aefdfc38935a630b9dce82",
+    "imageEditor/src/editingTools.ts": "d37d0b0f54e57e9ca1d0d09a7df187cea155751316e8a34f24cbe51c12491656",
+    "imageEditor/src/filterPanel.ts": "68ad93a8dead1d6804df772d0c4061b8328319d2b8b377fe3a9614bef629e772",
+    "imageEditor/src/filterWorker.ts": "9b1320935e3e4951ce56f5193ec67fab0a4469b88fe0d3bf7214e2537a9ca138",
+    "imageEditor/src/filters.ts": "5a1c754b41b41aac151aa1811862e5add50ed85f20b0cd365e394384caec35b2",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/layerFeatures.ts": "bb3246d28209336247388361b97db7ce8ebd7414b4810994259f3030dd8e2373",
+    "imageEditor/src/main.ts": "67300051b1a0dda624348e08a7a96ba53bdc659883fe11ab8c0e77e08d35eb1f",
+    "imageEditor/src/maskTools.ts": "b06872acf5d44775b938812007e891679406de37aa8cfcd406142b47eb89c24e",
+    "imageEditor/src/pixelHistory.ts": "540a18acedb92157344bdb1f8bfe5c71a4cc787272eebb004a30c7a86357a73c",
+    "imageEditor/src/pixelTools.ts": "13e10db83f263dfe4aff3a92b405494a648177910fe4ab03a94c767ce2c93262",
+    "imageEditor/src/projectFile.ts": "b05c0ecb54d97740c4441306c6209a96deb6afb74ee33d1edd5aa82b23ca2dac",
+    "imageEditor/src/psdAdapter.ts": "ce0434fa8061e007843cfdb71f43e148675d20867bf72ec393dc04c5610be9af",
+    "imageEditor/src/psdExportPolicy.ts": "9a0701619aa0b3efcd78a5f9b06382e0c69ada8c38d4a914a220120736eea438",
+    "imageEditor/src/psdJobs.ts": "9074577ffc5f07810aa6e678575c4b1adf224c825dd6ab73113f07c2f1d31746",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "fd5c07a57c87a0dd5bfcce47dfa55fa2f35f253c9e73392269386c31f6fb8015",
+    "imageEditor/src/recovery.ts": "0077ba205ca8469fae0d6adf502e9a7be8d1a3342b163a7835b16166e010cce0",
+    "imageEditor/src/recoveryCodec.ts": "19258e692e5b911f65b47da3db6e0c8029ed26c521f077b52b11c0b60a9e0a8c",
+    "imageEditor/src/selection.ts": "3aaecaedf06d58433f905fdc051a62649627109d5c779c295c803026a84f8394",
+    "imageEditor/src/workspace.ts": "688066263e57e4c80fe5118cdf01f31e8cf084c90b03ef0f068428ad1dfd1e00",
+    "imageEditor/scripts/run-p5.mjs": "ef7fcf6a39e644f00d70af603d42ac6f8bec1ec5ec8d09c927b21ab3c12a07f4",
+    "imageEditor/scripts/independent-p3.py": "f9f09fe1c381fd7c42dbe01c1dcbc90a551ab8bd73781583112a1d877b32d3d6",
+    "imageEditor/test/psdAdapter.test.mjs": "c8168ade2bc079773e1e20b9f73d8fe337220a679e13015b905bc9642fe56687",
+    "imageEditor/test/p5-cases.mjs": "1e2197b2198c383227d2dbb53f6f8f2e7ea05b6032d353015432325571f4a271",
+    "imageEditor/app/descriptor.json": "bccfcfd3ee957178adfb3d79f7e20ca903fded12657b663204e213405440160c",
+    "imageEditor/rollup.config.js": "763682b5455e2e7dc19a4906185be2062b8837881beae91aec2c9e8f09e4e20a",
+    "package-lock.json": "1d79fd02ff3edd5942f7cebd3540fc87d34ecab34f5b962fe4236ab4aa81280d"
+  },
+  "cases": [
+    {
+      "id": "p5-normal",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "83608950918f9a1948897c9c60550df0f418dbfe18b9105e76534817b384b58d",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-multiply",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "multiply",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "601064bc16399e5b656cc20f7144291d5149c072b5ec692eb61abd6f9298b23c",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-screen",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "screen",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "0d0e7e2fff654b0b93140a9ae63dc962b773d14c0f203f3d5f5a3feb25d5328a",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-overlay",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "overlay",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "c637df5b8584597907e59340d3b217fa7c8dced6e6d760d403bfc7d07fc71007",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-darken",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "darken",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "73b22184d4a816029f9619aa139913187986f84a9569aa0eb74d7cd4d9425776",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-lighten",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "lighten",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "132a4a3b5a9d3d8439e37d1f2489a11b63930a69ae9dcab562281cf15b897089",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-hard-light",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "hard light",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "97b3bd6486ef80d5b08b6aca49156eff2c89012a3eae117f431ffb5aff72ee0e",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-difference",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "difference",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "7625365e37595e08d9f3077cc709680559e384d855d84c93e9700ff098f191f7",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "p5-exclusion",
+      "width": 8,
+      "height": 8,
+      "layers": [
+        {
+          "name": "背景",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "2277d18d113a66e12018b1fe6c09b759d34ed32ea7f453597dc6097c6bfdfc4e"
+          },
+          "children": null
+        },
+        {
+          "name": "灰度蒙版",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "exclusion",
+          "pixels": {
+            "width": 8,
+            "height": 8,
+            "sha256": "e0770c502f8ee1e89db2725c7d368469faa50e46809d03f90b7cdc829ab9c219"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "445b405d810a8d5225c448c5ea9e8d554261c741dc7e42cd914f8021eebdac57",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    }
+  ],
+  "independent": {
+    "decoderWarnings": [],
+    "schemaVersion": 1,
+    "status": "passed",
+    "decoder": "psd-tools@1.10.9",
+    "python": "3.9.6",
+    "cases": [
+      {
+        "id": "p5-normal",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-multiply",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-screen",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-overlay",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-darken",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-lighten",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-hard-light",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-difference",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      },
+      {
+        "id": "p5-exclusion",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 1
+      }
+    ],
+    "photoshopEquivalent": false
+  },
+  "photoshop": "pending-manual-acceptance"
+}

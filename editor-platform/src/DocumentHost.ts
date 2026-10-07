@@ -6,6 +6,7 @@ import type {
 
 interface HostedDocument {
   readonly adapter: EditorDocumentAdapter;
+  readonly generation: number;
   readonly subscription: EditorDisposable;
   closed: boolean;
 }
@@ -19,6 +20,7 @@ export interface EditorDocumentHostSnapshot {
 export class EditorDocumentHost implements EditorDisposable {
   private readonly documents = new Map<string, HostedDocument>();
   private readonly listeners = new Set<(snapshot: EditorDocumentHostSnapshot) => void>();
+  private nextGeneration = 1;
   private activeId: string | null = null;
   private revision = 0;
   private disposed = false;
@@ -30,6 +32,7 @@ export class EditorDocumentHost implements EditorDisposable {
     if (this.documents.has(id)) throw new Error(`Document ${id} is already attached.`);
     const hosted: HostedDocument = {
       adapter,
+      generation: this.nextGeneration++,
       subscription: adapter.subscribe(() => this.emit()),
       closed: false,
     };
@@ -51,6 +54,8 @@ export class EditorDocumentHost implements EditorDisposable {
     return this.activeId ? this.documents.get(this.activeId)?.adapter ?? null : null;
   }
 
+  generation(id: string): number | undefined { return this.documents.get(id)?.generation; }
+
   get(id: string): EditorDocumentAdapter | undefined { return this.documents.get(id)?.adapter; }
 
   async close(id: string): Promise<void> {
@@ -60,8 +65,10 @@ export class EditorDocumentHost implements EditorDisposable {
     hosted.subscription.dispose();
     this.documents.delete(id);
     if (this.activeId === id) this.activeId = this.documents.keys().next().value ?? null;
-    try { await hosted.adapter.dispose(); }
-    finally { this.emit(); }
+    // Notify invalidation before cleanup: active operations must receive abort
+    // even when adapter disposal waits for their workers to settle.
+    try { this.emit(); }
+    finally { await hosted.adapter.dispose(); }
   }
 
   snapshot(): EditorDocumentHostSnapshot {

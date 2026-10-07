@@ -1,0 +1,20 @@
+  • electron-builder  version=26.15.3 os=25.6.0
+  • loaded configuration  file=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/electron-builder.generated.json
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=npm detected=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor
+  • detected workspace root for project using lock file  pm=npm config=undefined resolved=/Users/qingque/Desktop/HaiyueStudio/Editor projectDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=darwin arch=x64 electron=43.2.0 appOutDir=release-electron/candidate-1791339041701-79132/mac
+  • using custom unpacked Electron distribution  electronDist=/Users/qingque/Desktop/HaiyueStudio/Editor/node_modules/electron/dist
+  • copying unpacked Electron  source=/Users/qingque/Desktop/HaiyueStudio/Editor/node_modules/electron/dist/Electron.app destination=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/release-electron/candidate-1791339041701-79132/mac/Electron.app
+  • searching for node modules  pm=npm searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/electron
+  • no node modules found in collection, trying next search directory  searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/electron attempt=0
+  • searching for node modules  pm=npm searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor
+  • no node modules found in collection, trying next search directory  searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor attempt=1
+  • searching for node modules  pm=npm searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor
+  • searching for node modules  pm=traversal searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/electron
+  • using manual traversal of node_modules to build dependency tree
+  • no node modules found in collection, trying next search directory  searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor/electron attempt=0
+  • searching for node modules  pm=traversal searchDir=/Users/qingque/Desktop/HaiyueStudio/Editor/imageEditor
+  • using manual traversal of node_modules to build dependency tree
+  • skipped macOS application code signing  reason=, see https://electron.build/code-signing CSC_IDENTITY_AUTO_DISCOVERY=false
+[editor-app-kit] haiyue-image-editor Electron candidate: release-electron/candidate-1791339041701-79132

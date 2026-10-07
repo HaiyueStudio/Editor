@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-07T01:24:44.675Z",
+  "checks": [
+    "contiguous magic wand and inverse selection affect exact regions instead of bounding rectangles",
+    "color range samples all matching islands and accepts a numeric target color",
+    "ellipse and intersection keep curved edges and clip clear operations",
+    "freehand lasso closes to a pixel mask; Escape preserves the previous selection",
+    "polygon lasso closes with Enter; feather applies fractional alpha and is undoable",
+    "worker filter preview and original comparison do not edit pixels; apply is one exact undo/redo with mask clipping",
+    "cancel terminates pending filter jobs; retry cannot receive stale preview results",
+    "queued dialog close from a previous session cannot cancel a freshly reopened filter preview",
+    "soft selection masks persist in version 2 project downloads and IndexedDB recovery",
+    "PWA caches the filter worker and chunks for offline processing",
+    "merged sampling selects underlying visible colors while editing a separate transparent layer"
+  ],
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "runner": {
+    "chrome": "/Users/qingque/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-x64/chrome-headless-shell",
+    "platform": "darwin",
+    "arch": "x64"
+  },
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "buildHash": "c73039f80bdc751a6cf6b3ce5ca3ee9d3973d8018a8bfc009d2a99d88baca712",
+  "sourceFingerprints": {
+    "imageEditor/src/canvasView.ts": "538b5bfed8cb81730ff6a77ea8038d333507cf7c09bfd955bdaad319c81c9177",
+    "imageEditor/src/document.ts": "799a4ae13de613f733f8fe3d4719c06c41bb70989d99c037187b3d3f298692e6",
+    "imageEditor/src/editingTools.ts": "9560d7d96ae050229c4bcefc1ba23eefe1047bcd33e63df7e09bc3629281d158",
+    "imageEditor/src/filterPanel.ts": "de1d2a803a923689c00c338b304594a8f7310690d7565c3a6f77937c660fc2a6",
+    "imageEditor/src/filterWorker.ts": "d7a25624cbea5bb38e9714789d26a8e92da8249a5f53b4eb3bd7898247b48bd4",
+    "imageEditor/src/filters.ts": "5a1c754b41b41aac151aa1811862e5add50ed85f20b0cd365e394384caec35b2",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "9c6755723a7191581662099c968581331cf314353acad64fd3af41a08f5ed5ff",
+    "imageEditor/src/pixelTools.ts": "c73e9ef1db72a7cbe58486ccd9a643795c947a27b9844d0d38329abb10dbe74c",
+    "imageEditor/src/projectFile.ts": "e30902f8627b442015c0a7cc1f41cfd30ccb4dda1d48ee4df7f169b7103488fe",
+    "imageEditor/src/psdAdapter.ts": "ab02ed9d3cacd4f14832e6068999c589fafc16580001450ee929bd0be46f408d",
+    "imageEditor/src/psdJobs.ts": "7aeaf9ada352193587bbb892fea805030d13c4f09190b24204ca365df9b4ff24",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "2bee5267ff23db5e7afbc5aa96d24a8d2f1249b803d3e94d95f77ccdf31915bb",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/selection.ts": "3aaecaedf06d58433f905fdc051a62649627109d5c779c295c803026a84f8394",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/index.html": "e86fe10640612f816931ab025b73551e5adf635561f000c1c94711c38f273146",
+    "imageEditor/styles.css": "5728866a095bee7715487674d67fc18bcf04bce8bc0283a2a7e7928848e5edc7",
+    "imageEditor/package.json": "f9ccf0d212b4e9fbccb69e1741839897f80903dbb4672175da12412b492279ea",
+    "imageEditor/app/descriptor.json": "bccfcfd3ee957178adfb3d79f7e20ca903fded12657b663204e213405440160c",
+    "imageEditor/rollup.config.js": "763682b5455e2e7dc19a4906185be2062b8837881beae91aec2c9e8f09e4e20a",
+    "imageEditor/tsconfig.web.json": "b18d2b3c02c3aab0efb64bd1a363d85b63d1184de9178e51b6e840e4b5d7d718",
+    "imageEditor/test/advancedEditing.test.mjs": "d165e0f910df9d3d913e95855cfdfb1c837c96070ccdc952e5c2e4e9a6cc62f0",
+    "imageEditor/test/advanced-browser-smoke.mjs": "741c2430589c08d50d3a6b29d9763d204842449908be64b49138a9bcdfb3aeb0",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "scripts/editor-e2e/browserDriver.mjs": "5e886d96b124fc4378ddd96dba6b47a9c121c232e0e74d82a2c36aa300a194fe"
+  },
+  "fixture": {
+    "name": "color-regions.hyimage",
+    "provenance": "deterministic locally authored RGBA: red islands separated by blue stripe, 96x64",
+    "sha256": "beecd5ad71d47c7568e1359d306f51cecbc2e74ee93665fb9d7409327ff617b9"
+  }
+}

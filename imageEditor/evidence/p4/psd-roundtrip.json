@@ -1,0 +1,441 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-07T02:09:53.067Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "runner": {
+    "node": "v24.19.0",
+    "platform": "darwin",
+    "arch": "x64"
+  },
+  "sourceFingerprints": {
+    "imageEditor/src/canvasView.ts": "2dd5dd20b451b9f2ff2c630466dcd09be31a305d6602042129c8e2761c54dfe4",
+    "imageEditor/src/document.ts": "a619b4a0e26b2c11d512f488723be38c761ff1b2093c95731929951576ee6687",
+    "imageEditor/src/editingTools.ts": "c998db44a0ef934ab09abff6f6ed6dfab55aeb903fc31153ecbdc76dbb14ef49",
+    "imageEditor/src/filterPanel.ts": "68ad93a8dead1d6804df772d0c4061b8328319d2b8b377fe3a9614bef629e772",
+    "imageEditor/src/filterWorker.ts": "9b1320935e3e4951ce56f5193ec67fab0a4469b88fe0d3bf7214e2537a9ca138",
+    "imageEditor/src/filters.ts": "5a1c754b41b41aac151aa1811862e5add50ed85f20b0cd365e394384caec35b2",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "7e93f224b9c0cd3e5f814e14b4520ac4ebc2b199fa12c47a695cd46a8da69e44",
+    "imageEditor/src/pixelHistory.ts": "56526ee82b208b3cc83a6d7ccca6fffb0bd56396d74ef3034b74e88cd123e1e9",
+    "imageEditor/src/pixelTools.ts": "dab3c8253630915d9cb1e40cc96afdccc27a7dd59de8cf89e8c538355cdb5802",
+    "imageEditor/src/projectFile.ts": "e30902f8627b442015c0a7cc1f41cfd30ccb4dda1d48ee4df7f169b7103488fe",
+    "imageEditor/src/psdAdapter.ts": "ab02ed9d3cacd4f14832e6068999c589fafc16580001450ee929bd0be46f408d",
+    "imageEditor/src/psdJobs.ts": "7aeaf9ada352193587bbb892fea805030d13c4f09190b24204ca365df9b4ff24",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "2bee5267ff23db5e7afbc5aa96d24a8d2f1249b803d3e94d95f77ccdf31915bb",
+    "imageEditor/src/recovery.ts": "a5ad544c0726855de87d0e9002ebe88d4d5214460499fdc7474995e1025e183d",
+    "imageEditor/src/recoveryCodec.ts": "62a9f42ed5b9de65e89abd6543d47e67c995393d29af00f2171630201f37f5f3",
+    "imageEditor/src/selection.ts": "3aaecaedf06d58433f905fdc051a62649627109d5c779c295c803026a84f8394",
+    "imageEditor/src/workspace.ts": "688066263e57e4c80fe5118cdf01f31e8cf084c90b03ef0f068428ad1dfd1e00",
+    "imageEditor/scripts/run-p3.mjs": "3cf73930dc94a0dab6e1bd1f02c46f829970e7875ab89300f14adaee71ba33c9",
+    "imageEditor/scripts/independent-p3.py": "f9f09fe1c381fd7c42dbe01c1dcbc90a551ab8bd73781583112a1d877b32d3d6",
+    "imageEditor/test/psdAdapter.test.mjs": "c8168ade2bc079773e1e20b9f73d8fe337220a679e13015b905bc9642fe56687",
+    "imageEditor/test/p3-cases.mjs": "5f32219b64f607aebfae020624feb9c053a1f6cdeeb5f5d50d5b3768f5919a09",
+    "imageEditor/app/descriptor.json": "bccfcfd3ee957178adfb3d79f7e20ca903fded12657b663204e213405440160c",
+    "imageEditor/rollup.config.js": "763682b5455e2e7dc19a4906185be2062b8837881beae91aec2c9e8f09e4e20a",
+    "package-lock.json": "1d79fd02ff3edd5942f7cebd3540fc87d34ecab34f5b962fe4236ab4aa81280d"
+  },
+  "cases": [
+    {
+      "id": "alpha-1x1",
+      "width": 1,
+      "height": 1,
+      "layers": [
+        {
+          "name": "图层 1",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "半透明",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 1,
+            "height": 1,
+            "sha256": "e99cc6057faa309fd297bf72ea61a2a0dbe7d4e0db6d1dabc2ffa727b102f8a5"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "ad6fda1a12646d67c47d959f0b712623f17829f08396712d994c0d33cb258c3d",
+      "maxStraightError": 3,
+      "maxPremultipliedError": 0.43529411764705883,
+      "resourceIds": []
+    },
+    {
+      "id": "alpha-1x32",
+      "width": 1,
+      "height": 32,
+      "layers": [
+        {
+          "name": "图层 1",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "半透明",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 1,
+            "height": 32,
+            "sha256": "e293723919046beda4329c7f74e10d344d7129f40d443a85af4d9f86d1632b99"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "5b6acb8827515eb4c1a69dea2714f100b97d0e4e331d0b2a7cbf3e9432894044",
+      "maxStraightError": 3,
+      "maxPremultipliedError": 0.43529411764705883,
+      "resourceIds": []
+    },
+    {
+      "id": "alpha-2x1",
+      "width": 2,
+      "height": 1,
+      "layers": [
+        {
+          "name": "图层 1",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "半透明",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 2,
+            "height": 1,
+            "sha256": "93f2809a52ea28bd11653b309899eec493bf1edd4315e0c05532020728808417"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "aad3f26a5538a278534dc84471632faa7eded8c8ea256ab992022748cdb5d762",
+      "maxStraightError": 3,
+      "maxPremultipliedError": 0.43529411764705883,
+      "resourceIds": []
+    },
+    {
+      "id": "alpha-17x9",
+      "width": 17,
+      "height": 9,
+      "layers": [
+        {
+          "name": "图层 1",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "半透明",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 17,
+            "height": 9,
+            "sha256": "faacfbc6b0ed7ad0dfeaa894336e006f88d4fbc2fab1b5761684177adcbf5877"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "5293941dfc64b44f834d49d3bbc307dd134129d896323bc5557c04cee5ef516c",
+      "maxStraightError": 3,
+      "maxPremultipliedError": 0.43529411764705883,
+      "resourceIds": []
+    },
+    {
+      "id": "group-edit",
+      "width": 32,
+      "height": 24,
+      "layers": [
+        {
+          "name": "图层 1",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "底色",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 32,
+            "height": 24,
+            "sha256": "38519a124f0b7d06b39f76d08e54f941ad0941686004ad760ad1dff610cdeb64"
+          },
+          "children": null
+        },
+        {
+          "name": "滤色",
+          "left": -2,
+          "top": 16,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "screen",
+          "pixels": {
+            "width": 6,
+            "height": 5,
+            "sha256": "f1c76c5453e381ca75c8ea4190c6148eaa23c147b985ceba022d4b570eb15faf"
+          },
+          "children": null
+        },
+        {
+          "name": "隐藏",
+          "left": 0,
+          "top": 0,
+          "hidden": true,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 2,
+            "height": 2,
+            "sha256": "d47df54a067aa85c5e8bfc1b100fc0f95a917733400bd10963594f2d6bc59ba4"
+          },
+          "children": null
+        },
+        {
+          "name": "组 Group",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 120,
+          "blend": "normal",
+          "pixels": null,
+          "children": [
+            {
+              "name": "半透明 编辑",
+              "left": 5,
+              "top": 3,
+              "hidden": false,
+              "opacity": 255,
+              "blend": "multiply",
+              "pixels": {
+                "width": 7,
+                "height": 6,
+                "sha256": "0c64235060cb066a25e62d055fa4df04cdd2ddf971ac0152a100c16b21be975a"
+              },
+              "children": null
+            }
+          ]
+        }
+      ],
+      "sha256": "70843a6e60f9dddb6a5b8753060e9c540ac8a25fb7027355eca454a7b6a08fcc",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    },
+    {
+      "id": "layers-edited",
+      "width": 300,
+      "height": 200,
+      "layers": [
+        {
+          "name": "Layer 0",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": {
+            "width": 300,
+            "height": 200,
+            "sha256": "096b07c1af6669afd44db126f622af851cd019905d1ca2822e316336223cc1f6"
+          },
+          "children": null
+        },
+        {
+          "name": "Layer 3",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 255,
+          "blend": "normal",
+          "pixels": null,
+          "children": null
+        },
+        {
+          "name": "编辑后 图层",
+          "left": 0,
+          "top": 0,
+          "hidden": false,
+          "opacity": 179,
+          "blend": "normal",
+          "pixels": {
+            "width": 300,
+            "height": 200,
+            "sha256": "9a29384ff859f2f772443f2891b7a2a716af1f3df4199bbf850ba2b1975bd0f6"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "ea8cd5db8dd3d9bef932e430e4f163884244143f6931c947f02b1bfb4ee95255",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": [
+        1028,
+        1061,
+        1060,
+        1082,
+        1083,
+        1005,
+        1010,
+        1037,
+        1049,
+        1011,
+        10000,
+        1013,
+        1016,
+        1032,
+        1054,
+        1050,
+        1064,
+        1039,
+        1044,
+        1057,
+        1058
+      ]
+    },
+    {
+      "id": "layer-offsets-read-edited",
+      "width": 300,
+      "height": 200,
+      "layers": [
+        {
+          "name": "编辑后 图层",
+          "left": 0,
+          "top": -100,
+          "hidden": false,
+          "opacity": 179,
+          "blend": "normal",
+          "pixels": {
+            "width": 400,
+            "height": 300,
+            "sha256": "f1a668886704891f079711b9f2877907a9f67359c4b0cad8cbd44684fe0bda0d"
+          },
+          "children": null
+        }
+      ],
+      "sha256": "6da1fefd6227f5fe513681d90fb2b32869b5b4032567c68f8f170e2744ce7fa2",
+      "maxStraightError": 0,
+      "maxPremultipliedError": 0,
+      "resourceIds": []
+    }
+  ],
+  "independent": {
+    "decoderWarnings": [],
+    "schemaVersion": 1,
+    "status": "passed",
+    "decoder": "psd-tools@1.10.9",
+    "python": "3.9.6",
+    "cases": [
+      {
+        "id": "alpha-1x1",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 4,
+        "cachedPremultipliedMaxError": 0.5803921568627451,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 0.1450980392156893
+      },
+      {
+        "id": "alpha-1x32",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 4,
+        "cachedPremultipliedMaxError": 0.5803921568627451,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 0.1450980392156893
+      },
+      {
+        "id": "alpha-2x1",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 4,
+        "cachedPremultipliedMaxError": 0.5803921568627451,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 0.1450980392156893
+      },
+      {
+        "id": "alpha-17x9",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 4,
+        "cachedPremultipliedMaxError": 0.5803921568627451,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 0.1450980392156893
+      },
+      {
+        "id": "group-edit",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 1,
+        "recompositePremultipliedMaxError": 1.7254901960784252
+      },
+      {
+        "id": "layers-edited",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 1,
+        "recompositePremultipliedMaxError": 1.9803921568627345
+      },
+      {
+        "id": "layer-offsets-read-edited",
+        "layerPixels": "exact",
+        "cachedAlpha": "exact",
+        "cachedStraightMaxError": 0,
+        "cachedPremultipliedMaxError": 0,
+        "recompositeAlphaMaxError": 0,
+        "recompositePremultipliedMaxError": 0
+      }
+    ],
+    "photoshopEquivalent": false
+  },
+  "photoshop": "pending-manual-acceptance"
+}

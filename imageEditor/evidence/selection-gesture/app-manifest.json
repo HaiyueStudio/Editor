@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "descriptor": {
+    "id": "haiyue-image-editor",
+    "version": "0.1.0",
+    "supportTier": "experimental"
+  },
+  "entries": [
+    "index.html"
+  ],
+  "workers": [
+    "web/psd-worker.js",
+    "web/filter-worker.js"
+  ],
+  "buildHash": "c73039f80bdc751a6cf6b3ce5ca3ee9d3973d8018a8bfc009d2a99d88baca712",
+  "rawBytes": 596423,
+  "gzipBytes": 153393,
+  "files": [
+    {
+      "path": "icon.svg",
+      "bytes": 221,
+      "gzipBytes": 189,
+      "sha256": "085b833aa0c6b7468bde6aadc6e0270481bd0396ad14887355943b9f7ac79682"
+    },
+    {
+      "path": "index.html",
+      "bytes": 22551,
+      "gzipBytes": 6574,
+      "sha256": "f459c3b2ef1e7f00a891d96a9e38499655859345a72e07ef940ae5aec1057610"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 395,
+      "gzipBytes": 270,
+      "sha256": "f6a2a93fd114d5ebd5f144853b31da473a534c4e4c756f24b505768dca4f463e"
+    },
+    {
+      "path": "pwa/register.js",
+      "bytes": 146,
+      "gzipBytes": 130,
+      "sha256": "67835a4e060bb0692c2a3ed9d8248ce77e293a8b4bc518cfca5a99faad098674"
+    },
+    {
+      "path": "service-worker.js",
+      "bytes": 901,
+      "gzipBytes": 485,
+      "sha256": "c001b44a02cbe118e218de485a7b70199a43b34f3666c41b9f503dc2b4781cf2"
+    },
+    {
+      "path": "styles.css",
+      "bytes": 16676,
+      "gzipBytes": 4686,
+      "sha256": "5728866a095bee7715487674d67fc18bcf04bce8bc0283a2a7e7928848e5edc7"
+    },
+    {
+      "path": "web/chunks/document-arc7xDGE.js",
+      "bytes": 28077,
+      "gzipBytes": 8773,
+      "sha256": "893a591acedb60ef1901cc7191a925a8cd220b7707e28c307be4793133bbf0d4"
+    },
+    {
+      "path": "web/chunks/filters-BdT-SkMV.js",
+      "bytes": 10728,
+      "gzipBytes": 3870,
+      "sha256": "0a15a161dd5ffea040cc32f3775080afc27bb024b56fb91c1c00667975721e8b"
+    },
+    {
+      "path": "web/filter-worker.js",
+      "bytes": 331,
+      "gzipBytes": 225,
+      "sha256": "2770e9101535f368d3c380c95d294955b7afd9e99a42b2e8f2ea0a12310de52c"
+    },
+    {
+      "path": "web/main.js",
+      "bytes": 88685,
+      "gzipBytes": 25623,
+      "sha256": "379aa33c98952e3ebfb3d87f50e53576cf2ac4b9a745b0bd7e9742b3aa2330d2"
+    },
+    {
+      "path": "web/psd-worker.js",
+      "bytes": 427712,
+      "gzipBytes": 102568,
+      "sha256": "1570770d7df7a08bc378434947537ece28180618f084bb58185792e1397913c3"
+    }
+  ],
+  "errors": []
+}

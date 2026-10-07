@@ -1,0 +1,326 @@
+[
+  {
+    "id": "alpha-1x1",
+    "width": 1,
+    "height": 1,
+    "layers": [
+      {
+        "name": "图层 1",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "半透明",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 1,
+          "height": 1,
+          "sha256": "e99cc6057faa309fd297bf72ea61a2a0dbe7d4e0db6d1dabc2ffa727b102f8a5"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "ad6fda1a12646d67c47d959f0b712623f17829f08396712d994c0d33cb258c3d",
+    "maxStraightError": 3,
+    "maxPremultipliedError": 0.43529411764705883,
+    "resourceIds": []
+  },
+  {
+    "id": "alpha-1x32",
+    "width": 1,
+    "height": 32,
+    "layers": [
+      {
+        "name": "图层 1",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "半透明",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 1,
+          "height": 32,
+          "sha256": "e293723919046beda4329c7f74e10d344d7129f40d443a85af4d9f86d1632b99"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "5b6acb8827515eb4c1a69dea2714f100b97d0e4e331d0b2a7cbf3e9432894044",
+    "maxStraightError": 3,
+    "maxPremultipliedError": 0.43529411764705883,
+    "resourceIds": []
+  },
+  {
+    "id": "alpha-2x1",
+    "width": 2,
+    "height": 1,
+    "layers": [
+      {
+        "name": "图层 1",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "半透明",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 2,
+          "height": 1,
+          "sha256": "93f2809a52ea28bd11653b309899eec493bf1edd4315e0c05532020728808417"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "aad3f26a5538a278534dc84471632faa7eded8c8ea256ab992022748cdb5d762",
+    "maxStraightError": 3,
+    "maxPremultipliedError": 0.43529411764705883,
+    "resourceIds": []
+  },
+  {
+    "id": "alpha-17x9",
+    "width": 17,
+    "height": 9,
+    "layers": [
+      {
+        "name": "图层 1",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "半透明",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 17,
+          "height": 9,
+          "sha256": "faacfbc6b0ed7ad0dfeaa894336e006f88d4fbc2fab1b5761684177adcbf5877"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "5293941dfc64b44f834d49d3bbc307dd134129d896323bc5557c04cee5ef516c",
+    "maxStraightError": 3,
+    "maxPremultipliedError": 0.43529411764705883,
+    "resourceIds": []
+  },
+  {
+    "id": "group-edit",
+    "width": 32,
+    "height": 24,
+    "layers": [
+      {
+        "name": "图层 1",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "底色",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 32,
+          "height": 24,
+          "sha256": "38519a124f0b7d06b39f76d08e54f941ad0941686004ad760ad1dff610cdeb64"
+        },
+        "children": null
+      },
+      {
+        "name": "滤色",
+        "left": -2,
+        "top": 16,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "screen",
+        "pixels": {
+          "width": 6,
+          "height": 5,
+          "sha256": "f1c76c5453e381ca75c8ea4190c6148eaa23c147b985ceba022d4b570eb15faf"
+        },
+        "children": null
+      },
+      {
+        "name": "隐藏",
+        "left": 0,
+        "top": 0,
+        "hidden": true,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 2,
+          "height": 2,
+          "sha256": "d47df54a067aa85c5e8bfc1b100fc0f95a917733400bd10963594f2d6bc59ba4"
+        },
+        "children": null
+      },
+      {
+        "name": "组 Group",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 120,
+        "blend": "normal",
+        "pixels": null,
+        "children": [
+          {
+            "name": "半透明 编辑",
+            "left": 5,
+            "top": 3,
+            "hidden": false,
+            "opacity": 255,
+            "blend": "multiply",
+            "pixels": {
+              "width": 7,
+              "height": 6,
+              "sha256": "0c64235060cb066a25e62d055fa4df04cdd2ddf971ac0152a100c16b21be975a"
+            },
+            "children": null
+          }
+        ]
+      }
+    ],
+    "sha256": "70843a6e60f9dddb6a5b8753060e9c540ac8a25fb7027355eca454a7b6a08fcc",
+    "maxStraightError": 0,
+    "maxPremultipliedError": 0,
+    "resourceIds": []
+  },
+  {
+    "id": "layers-edited",
+    "width": 300,
+    "height": 200,
+    "layers": [
+      {
+        "name": "Layer 0",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": {
+          "width": 300,
+          "height": 200,
+          "sha256": "096b07c1af6669afd44db126f622af851cd019905d1ca2822e316336223cc1f6"
+        },
+        "children": null
+      },
+      {
+        "name": "Layer 3",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 255,
+        "blend": "normal",
+        "pixels": null,
+        "children": null
+      },
+      {
+        "name": "编辑后 图层",
+        "left": 0,
+        "top": 0,
+        "hidden": false,
+        "opacity": 179,
+        "blend": "normal",
+        "pixels": {
+          "width": 300,
+          "height": 200,
+          "sha256": "9a29384ff859f2f772443f2891b7a2a716af1f3df4199bbf850ba2b1975bd0f6"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "ea8cd5db8dd3d9bef932e430e4f163884244143f6931c947f02b1bfb4ee95255",
+    "maxStraightError": 0,
+    "maxPremultipliedError": 0,
+    "resourceIds": [
+      1028,
+      1061,
+      1060,
+      1082,
+      1083,
+      1005,
+      1010,
+      1037,
+      1049,
+      1011,
+      10000,
+      1013,
+      1016,
+      1032,
+      1054,
+      1050,
+      1064,
+      1039,
+      1044,
+      1057,
+      1058
+    ]
+  },
+  {
+    "id": "layer-offsets-read-edited",
+    "width": 300,
+    "height": 200,
+    "layers": [
+      {
+        "name": "编辑后 图层",
+        "left": 0,
+        "top": -100,
+        "hidden": false,
+        "opacity": 179,
+        "blend": "normal",
+        "pixels": {
+          "width": 400,
+          "height": 300,
+          "sha256": "f1a668886704891f079711b9f2877907a9f67359c4b0cad8cbd44684fe0bda0d"
+        },
+        "children": null
+      }
+    ],
+    "sha256": "6da1fefd6227f5fe513681d90fb2b32869b5b4032567c68f8f170e2744ce7fa2",
+    "maxStraightError": 0,
+    "maxPremultipliedError": 0,
+    "resourceIds": []
+  }
+]

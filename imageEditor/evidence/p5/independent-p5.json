@@ -1,0 +1,91 @@
+{
+  "decoderWarnings": [],
+  "schemaVersion": 1,
+  "status": "passed",
+  "decoder": "psd-tools@1.10.9",
+  "python": "3.9.6",
+  "cases": [
+    {
+      "id": "p5-normal",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-multiply",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-screen",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-overlay",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-darken",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-lighten",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-hard-light",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-difference",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    },
+    {
+      "id": "p5-exclusion",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 1.0
+    }
+  ],
+  "photoshopEquivalent": false
+}

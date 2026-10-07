@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "descriptor": {
+    "id": "haiyue-image-editor",
+    "version": "0.1.0",
+    "supportTier": "experimental"
+  },
+  "entries": [
+    "index.html"
+  ],
+  "workers": [
+    "web/psd-worker.js"
+  ],
+  "buildHash": "166c0182ae8ca23e0f2637c1493c6ca95b7cadb586ba36f0db4fc66a1757c971",
+  "rawBytes": 566264,
+  "gzipBytes": 144410,
+  "files": [
+    {
+      "path": "icon.svg",
+      "bytes": 221,
+      "gzipBytes": 189,
+      "sha256": "085b833aa0c6b7468bde6aadc6e0270481bd0396ad14887355943b9f7ac79682"
+    },
+    {
+      "path": "index.html",
+      "bytes": 18005,
+      "gzipBytes": 5518,
+      "sha256": "41cc5702b7a699b50bcae61aaa924951acc33a43313b9465a14196d9ae339132"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 395,
+      "gzipBytes": 270,
+      "sha256": "f6a2a93fd114d5ebd5f144853b31da473a534c4e4c756f24b505768dca4f463e"
+    },
+    {
+      "path": "pwa/register.js",
+      "bytes": 146,
+      "gzipBytes": 130,
+      "sha256": "67835a4e060bb0692c2a3ed9d8248ce77e293a8b4bc518cfca5a99faad098674"
+    },
+    {
+      "path": "service-worker.js",
+      "bytes": 835,
+      "gzipBytes": 469,
+      "sha256": "20f0b4b2256d6bf219dd071228641646fe05119075c40283f3e0206569135a81"
+    },
+    {
+      "path": "styles.css",
+      "bytes": 14015,
+      "gzipBytes": 4124,
+      "sha256": "a9c57debd913122153bacb623c85806939df24afc89c8d58300ff2124c9d2b10"
+    },
+    {
+      "path": "web/chunks/document-VkQ_SUYa.js",
+      "bytes": 22584,
+      "gzipBytes": 6996,
+      "sha256": "e7762e393849db24568eb3d9681775e08fa210010966fc9dcd28cadbe08b283c"
+    },
+    {
+      "path": "web/main.js",
+      "bytes": 82351,
+      "gzipBytes": 24145,
+      "sha256": "6a573e0b93cc6615bd6be93b8adb8be490d779e26483042b120f62e5d322b6f2"
+    },
+    {
+      "path": "web/psd-worker.js",
+      "bytes": 427712,
+      "gzipBytes": 102569,
+      "sha256": "e0302bc18507147cbcc676c9bb327db5e60887151c7a1424cdab63c3e38e5fcb"
+    }
+  ],
+  "errors": []
+}

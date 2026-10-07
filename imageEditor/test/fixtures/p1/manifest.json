@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Procedurally generated P1 regression fixtures; no external assets",
+  "files": {
+    "import.jpg": {
+      "bytes": 635,
+      "sha256": "952c54df8f9a3e09aa8899d8aec87156f14a11b16db50d552c43f36f2f63b5f9"
+    },
+    "import.png": {
+      "bytes": 85,
+      "sha256": "0077c409ceccc27d8e93ae6f93151b54c9ed93350cc7df3e113bb09305671207"
+    },
+    "invalid.hyimage": {
+      "bytes": 38,
+      "sha256": "cbde2bbf4652401a61ae1d89c5e8827f647672e82503b06a4eedd5feedb90dea"
+    }
+  }
+}

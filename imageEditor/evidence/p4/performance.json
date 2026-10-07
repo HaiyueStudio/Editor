@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "classification": "local CPU diagnostic; not a cross-device performance release gate",
+  "generatedAt": "2026-10-07T02:10:07.626Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "runner": {
+    "node": "v24.19.0",
+    "platform": "darwin",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
+    "memoryBytes": 17179869184
+  },
+  "limits": {
+    "dimension": 8192,
+    "pixels": 16777216,
+    "bytes": 134217728,
+    "layers": 128,
+    "depth": 16,
+    "documents": 8
+  },
+  "cases": [
+    {
+      "canvas": [
+        2048,
+        2048
+      ],
+      "layers": 20,
+      "layout": "one full canvas plus cropped 64x64 raster sprites",
+      "pixelBytes": 17088512,
+      "openMs": 83.74739299999999,
+      "stroke": {
+        "samples": 24,
+        "p50Ms": 50.4329630000002,
+        "p95Ms": 226.46764900000005,
+        "maxMs": 306.488167
+      },
+      "undo24Ms": 807.7369020000001,
+      "redo24Ms": 493.0256560000007,
+      "historyBytes": 17655072,
+      "recovery": {
+        "firstMs": 356.72207400000025,
+        "unchangedMs": 2.2722429999994347,
+        "decodeMs": 89.17874599999959,
+        "storedChunkBytes": 1097728,
+        "unchangedChunkWrites": 0
+      },
+      "peakProcessMemory": {
+        "rss": 130580480,
+        "heapTotal": 11272192,
+        "heapUsed": 7076184,
+        "external": 76798199,
+        "arrayBuffers": 74445051
+      },
+      "baselineProcessMemory": {
+        "rss": 45281280,
+        "heapTotal": 11010048,
+        "heapUsed": 5540984,
+        "external": 2454019,
+        "arrayBuffers": 143611
+      },
+      "fullCanvasStack": {
+        "requiredBytes": 335544320,
+        "status": "rejected-by-existing-128MiB-budget"
+      }
+    },
+    {
+      "canvas": [
+        4096,
+        4096
+      ],
+      "layers": 50,
+      "layout": "one full canvas plus cropped 64x64 raster sprites",
+      "pixelBytes": 67911680,
+      "openMs": 161.79271700000027,
+      "stroke": {
+        "samples": 24,
+        "p50Ms": 174.60075799999868,
+        "p95Ms": 402.69765200000074,
+        "maxMs": 409.2793709999996
+      },
+      "undo24Ms": 2441.504272,
+      "redo24Ms": 1724.1466040000014,
+      "historyBytes": 41248032,
+      "recovery": {
+        "firstMs": 1460.7778590000016,
+        "unchangedMs": 1.0536209999991115,
+        "decodeMs": 245.9024759999993,
+        "storedChunkBytes": 1851392,
+        "unchangedChunkWrites": 0
+      },
+      "peakProcessMemory": {
+        "rss": 364466176,
+        "heapTotal": 11796480,
+        "heapUsed": 5971296,
+        "external": 308336424,
+        "arrayBuffers": 305934587
+      },
+      "baselineProcessMemory": {
+        "rss": 91582464,
+        "heapTotal": 9175040,
+        "heapUsed": 5112144,
+        "external": 19633960,
+        "arrayBuffers": 17232123
+      },
+      "fullCanvasStack": {
+        "requiredBytes": 3355443200,
+        "status": "rejected-by-existing-128MiB-budget"
+      }
+    }
+  ],
+  "release": {
+    "cycles": 20,
+    "residualArrayBufferBytes": 0
+  },
+  "sourceFingerprints": {
+    "imageEditor/src/canvasView.ts": "2dd5dd20b451b9f2ff2c630466dcd09be31a305d6602042129c8e2761c54dfe4",
+    "imageEditor/src/document.ts": "a619b4a0e26b2c11d512f488723be38c761ff1b2093c95731929951576ee6687",
+    "imageEditor/src/editingTools.ts": "c998db44a0ef934ab09abff6f6ed6dfab55aeb903fc31153ecbdc76dbb14ef49",
+    "imageEditor/src/filterPanel.ts": "68ad93a8dead1d6804df772d0c4061b8328319d2b8b377fe3a9614bef629e772",
+    "imageEditor/src/filterWorker.ts": "9b1320935e3e4951ce56f5193ec67fab0a4469b88fe0d3bf7214e2537a9ca138",
+    "imageEditor/src/filters.ts": "5a1c754b41b41aac151aa1811862e5add50ed85f20b0cd365e394384caec35b2",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "7e93f224b9c0cd3e5f814e14b4520ac4ebc2b199fa12c47a695cd46a8da69e44",
+    "imageEditor/src/pixelHistory.ts": "56526ee82b208b3cc83a6d7ccca6fffb0bd56396d74ef3034b74e88cd123e1e9",
+    "imageEditor/src/pixelTools.ts": "dab3c8253630915d9cb1e40cc96afdccc27a7dd59de8cf89e8c538355cdb5802",
+    "imageEditor/src/projectFile.ts": "e30902f8627b442015c0a7cc1f41cfd30ccb4dda1d48ee4df7f169b7103488fe",
+    "imageEditor/src/psdAdapter.ts": "ab02ed9d3cacd4f14832e6068999c589fafc16580001450ee929bd0be46f408d",
+    "imageEditor/src/psdJobs.ts": "7aeaf9ada352193587bbb892fea805030d13c4f09190b24204ca365df9b4ff24",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "2bee5267ff23db5e7afbc5aa96d24a8d2f1249b803d3e94d95f77ccdf31915bb",
+    "imageEditor/src/recovery.ts": "a5ad544c0726855de87d0e9002ebe88d4d5214460499fdc7474995e1025e183d",
+    "imageEditor/src/recoveryCodec.ts": "62a9f42ed5b9de65e89abd6543d47e67c995393d29af00f2171630201f37f5f3",
+    "imageEditor/src/selection.ts": "3aaecaedf06d58433f905fdc051a62649627109d5c779c295c803026a84f8394",
+    "imageEditor/src/workspace.ts": "688066263e57e4c80fe5118cdf01f31e8cf084c90b03ef0f068428ad1dfd1e00",
+    "imageEditor/scripts/run-p4-performance.mjs": "a1d0346d6bd3a50ff73d057bb64f58915a101a824e4aa494d13441c43ad2dacc",
+    "imageEditor/package.json": "f17c6bd77d8bcd1aede5310c6263dc419ffbb59736af0e1f663aef94c42a150c",
+    "package-lock.json": "1d79fd02ff3edd5942f7cebd3540fc87d34ecab34f5b962fe4236ab4aa81280d"
+  }
+}

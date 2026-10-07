@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-06T20:48:10.088Z",
+  "checks": [
+    "continuous brush stroke is one undo/redo step with exact rendered pixels",
+    "Escape cancels live brush preview without committing pixels",
+    "rectangular selection bounds fill, clear and brush; clear is undoable",
+    "eraser respects opacity; locked layers reject pixel editing",
+    "move and transform commit atomically; undo restores dimensions; oversize transform rejects",
+    "crop shifts rendered contents and dimensions; undo restores pixels and selection",
+    "translated groups composite negative child coordinates; image import stays canvas-centered",
+    "PNG export/reimport retains transparent pixels; JPEG export flattens onto white",
+    "multiline raster text creates a real independent layer; undo/redo restores it",
+    "edited RGBA, raster text and selection survive project save and session reload"
+  ],
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "runner": {
+    "platform": "darwin",
+    "arch": "x64",
+    "chrome": "/Users/qingque/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-x64/chrome-headless-shell"
+  },
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "sourceFingerprints": {
+    "imageEditor/app/descriptor.json": "8aae2a26f591a8ab6240971ea501cf8e3bdb181adce72f03eb2047016df033ad",
+    "imageEditor/index.html": "7c6c1c1770265fffbfc059d8676135035f3224524f0299eb4a81c1040509bf9d",
+    "imageEditor/package.json": "e31ae099aa5cdac31ebdf6c700d4d92e8f22ebf77102b37fede54e5f8750946d",
+    "imageEditor/rollup.config.js": "17cdcd2e42c418b489e3c7bdce6665170ce0de9a5eda1199a67e968ec1aa3319",
+    "imageEditor/src/canvasView.ts": "538b5bfed8cb81730ff6a77ea8038d333507cf7c09bfd955bdaad319c81c9177",
+    "imageEditor/src/document.ts": "4c5fc1c91b216c4807c6a272e6ad009e307f06be2c1c6a992f914522f4a34c98",
+    "imageEditor/src/editingTools.ts": "ab30c9778b6fb15ee17ee825329727940cc5db27b41bb82180b430f9fd2ce23d",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "8759d0799a4356abbd583a17b0679a2677a63088e392470f9429f0dffb753bc1",
+    "imageEditor/src/pixelTools.ts": "6f902f3bbf13e609b888ee00b2380d201da750b25cea6b621505de3c6231de3d",
+    "imageEditor/src/projectFile.ts": "8bc748ff595c83ca1d84bac7edc8d5757565305d5bf75961e2c8a72c249625f9",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/styles.css": "9b9a481701ed78734ffc4315c311cda98df98f7979108e18c8100627186ee72d",
+    "imageEditor/test/p2-browser-smoke.mjs": "bc843f0a0c360b63f387a348cf4cf0b285be9bf79652fd11a7356b260c2329b7",
+    "imageEditor/test/pixelTools.test.mjs": "be740c0b1d49c52418eed6e453fdeac909f1efc477c2c0eda9a75dd1c5da4bd9",
+    "imageEditor/tsconfig.json": "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7",
+    "imageEditor/tsconfig.web.json": "340b9fed123027f0a9a1c6e123c422582dd52c7753cd2c4254e9ea2b35a287f8",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "scripts/editor-e2e/browserDriver.mjs": "5e886d96b124fc4378ddd96dba6b47a9c121c232e0e74d82a2c36aa300a194fe"
+  },
+  "buildHash": "6ba2a2d7eb0904cba3ea7b187d38d0507dcf036aec2f6457e50e3ea3298d22e2",
+  "workload": {
+    "canvas": [
+      96,
+      64
+    ],
+    "brushDiameter": 8,
+    "selection": [
+      16,
+      16,
+      24,
+      16
+    ],
+    "exportFormats": [
+      "png",
+      "jpeg"
+    ],
+    "input": "synthetic UI-authored RGBA; local P1 PNG fixture"
+  },
+  "fixture": {
+    "schemaVersion": 1,
+    "provenance": "Procedurally generated P1 regression fixtures; no external assets",
+    "files": {
+      "import.jpg": {
+        "bytes": 635,
+        "sha256": "952c54df8f9a3e09aa8899d8aec87156f14a11b16db50d552c43f36f2f63b5f9"
+      },
+      "import.png": {
+        "bytes": 85,
+        "sha256": "0077c409ceccc27d8e93ae6f93151b54c9ed93350cc7df3e113bb09305671207"
+      },
+      "invalid.hyimage": {
+        "bytes": 38,
+        "sha256": "cbde2bbf4652401a61ae1d89c5e8827f647672e82503b06a4eedd5feedb90dea"
+      }
+    }
+  }
+}

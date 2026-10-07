@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-07T02:18:24.392Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "platform": "darwin",
+  "arch": "x64",
+  "electron": "43.2.0",
+  "candidate": "release-electron/candidate-1791339041701-79132",
+  "buildHash": "f06c595bd6c6a5a5cdf3ff31033fa7bb27e2a559a7a3bc41653abeb29d5b59c8",
+  "asarSha256": "8aea15a73890032f2728a389c9686e83339e1149a2f259b19cde64a3be35b777",
+  "runnerSha256": "3d0f2d9bcf3842bbdf9d51fae6d51f30a0da3bc0d5be7c31ac7588665d6109e8",
+  "checks": [
+    "packaged native application reaches ready workspace",
+    "sandboxed renderer has no Node.js globals and exposes only frozen close bridge",
+    "file-protocol filter Worker computes and applies preview",
+    "native IndexedDB commits automatic recovery",
+    "file-protocol PSD Worker exports four editable layers verified on reopen"
+  ],
+  "signing": "local unsigned candidate; distribution signing/notarization not claimed"
+}

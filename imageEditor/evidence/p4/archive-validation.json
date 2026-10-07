@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-07T02:18:50.957Z",
+  "buildHash": "f06c595bd6c6a5a5cdf3ff31033fa7bb27e2a559a7a3bc41653abeb29d5b59c8",
+  "candidate": "release-electron/candidate-1791339041701-79132",
+  "asarSha256": "8aea15a73890032f2728a389c9686e83339e1149a2f259b19cde64a3be35b777",
+  "validatedFiles": 11,
+  "forbiddenFiles": 0
+}

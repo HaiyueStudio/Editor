@@ -1,0 +1,12 @@
+✔ CDP rejects outstanding commands when Chrome closes without replying to Browser.close (14.52692ms)
+✔ CDP still resolves responses and rejects pending commands on transport error (14.232471ms)
+✔ native candidate paths support macOS, Windows and Linux layouts (21.41161ms)
+✔ candidate paths reject traversal, external roots, invalid names and unknown platforms (3.76738ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1346.957347

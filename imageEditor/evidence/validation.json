@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sourceFingerprint": "3a9165d395cc02dbf9d13da91ffcefd144e8bf9b412522d189bd80a384c55a9f",
+  "generatedAt": "2026-10-06T14:07:50.885Z",
+  "checks": [
+    {
+      "command": "PSD_P0_PYTHON=<isolated-python> npm run test:image:p0",
+      "exitCode": 0,
+      "nodeTests": 29,
+      "nodeTestsPassed": 29,
+      "independentStatus": "completed-with-findings"
+    },
+    {
+      "command": "npm run typecheck -w ./imageEditor",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run check:boundaries",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run api:check",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "photoshop": "pending",
+  "note": "Diagnostic completion does not imply all PSD features are compatible."
+}

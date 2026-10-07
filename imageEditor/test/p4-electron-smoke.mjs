@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { connectCdp } from '../../scripts/editor-e2e/browserDriver.mjs';
+import { packagedElectronPath } from '../../scripts/editor-electron-layout.mjs';
+import { importPsd } from '../dist/psdAdapter.js';
+const root=fileURLToPath(new URL('../../',import.meta.url)),product=resolve(root,'imageEditor'),out=resolve(product,'artifacts/p4');mkdirSync(out,{recursive:true});
+const pointer=JSON.parse(readFileSync(resolve(product,'.electron-candidate.json'))),descriptor=JSON.parse(readFileSync(resolve(product,'app/descriptor.json')));
+const executable=packagedElectronPath({packageRoot:product,outputDirectory:pointer.outputDirectory,productName:descriptor.productName,appName:descriptor.id});
+const profile=mkdtempSync(resolve(tmpdir(),'haiyue-image-p4-native-')),downloads=resolve(profile,'downloads');mkdirSync(downloads);
+const child=spawn(executable,['--remote-debugging-port=0',`--user-data-dir=${profile}`],{stdio:['ignore','pipe','pipe'],env:{...process.env,HAIYUE_ELECTRON_SMOKE:'0'}});let stderr='',cdp;child.stdout.resume();child.stderr.on('data',chunk=>stderr+=chunk);const exited=new Promise(resolve=>child.once('exit',resolve));
+const wait=async(read,label)=>{const deadline=Date.now()+30000;while(Date.now()<deadline){if(child.exitCode!==null)throw new Error('Electron exited: '+stderr);const value=await read();if(value)return value;await new Promise(r=>setTimeout(r,100));}throw new Error('Timed out: '+label+'\n'+stderr);};
+try{
+ const endpoint=await wait(()=>/DevTools listening on (ws:\/\/[^\s]+)/.exec(stderr)?.[1],'native DevTools');
+ const target=await wait(async()=>{const list=await fetch(`http://${new URL(endpoint).host}/json/list`).then(r=>r.json());return list.find(t=>t.type==='page'&&t.url.startsWith('file:'));},'packaged renderer');
+ cdp=await connectCdp(target.webSocketDebuggerUrl);await cdp.call('Runtime.enable');await cdp.call('Page.enable');const errors=[];cdp.on('Runtime.exceptionThrown',e=>errors.push(e.exceptionDetails?.text));
+ const evaluate=async expression=>{const result=await cdp.call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.result.exceptionDetails)throw new Error(JSON.stringify(result.result.exceptionDetails));return result.result.result.value;};
+ await wait(()=>evaluate('document.querySelector("#app")?.getAttribute("aria-busy")==="false"'),'application initialized');
+ assert.deepEqual(await evaluate('[typeof require,typeof process,typeof window.haiyueEditorHost?.onSaveAndClose,Object.isFrozen(window.haiyueEditorHost)]'),['undefined','undefined','function',true]);
+ const click=selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+ await click('[data-action=demo]');await wait(()=>evaluate('document.querySelectorAll(".document-tab").length===1'),'demo opened');
+ await click('[data-action=filters]');await wait(()=>evaluate('document.querySelector("#filter-apply").disabled===false'),'native filter Worker');await click('#filter-apply');
+ await wait(()=>evaluate('document.querySelector("#recovery-status").textContent.includes("已存")'),'native IndexedDB');
+ await cdp.call('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloads,eventsEnabled:true});
+ await click('[data-action=export-psd]');await click('#psd-export-confirm');const psd=await wait(()=>readdirSync(downloads).find(n=>n.endsWith('.psd')),'native PSD Worker export');
+ const reopened=importPsd(new Uint8Array(readFileSync(resolve(downloads,psd))),psd);assert(reopened.layered,reopened.blockers.join('\n'));assert.equal(reopened.layered.layers.length,4);
+ const shot=await cdp.call('Page.captureScreenshot',{format:'png'});writeFileSync(resolve(out,'electron.png'),Buffer.from(shot.result.data,'base64'));assert.deepEqual(errors,[]);
+ const manifest=JSON.parse(readFileSync(resolve(product,'electron/app-dist/app-manifest.json')));
+ const asar=resolve(executable,'../../Resources/app.asar');
+ const report={schemaVersion:1,status:'passed',generatedAt:new Date().toISOString(),revision:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),dirty:true,platform:process.platform,arch:process.arch,electron:readFileSync(resolve(root,'node_modules/electron/dist/version'),'utf8').trim(),candidate:pointer.outputDirectory,buildHash:manifest.buildHash,asarSha256:createHash('sha256').update(readFileSync(asar)).digest('hex'),runnerSha256:createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex'),checks:['packaged native application reaches ready workspace','sandboxed renderer has no Node.js globals and exposes only frozen close bridge','file-protocol filter Worker computes and applies preview','native IndexedDB commits automatic recovery','file-protocol PSD Worker exports four editable layers verified on reopen'],signing:'local unsigned candidate; distribution signing/notarization not claimed'};
+ writeFileSync(resolve(out,'electron.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({status:report.status,checks:report.checks.length,candidate:pointer.outputDirectory}));
+}finally{cdp?.close();if(child.exitCode===null)child.kill('SIGKILL');await exited;rmSync(profile,{recursive:true,force:true});}

@@ -6,3 +6,8 @@ test('public conformance kit exercises dependency activation and reverse disposa
   const result = await runEditorPluginConformance();
   assert.deepEqual(result.disposed, ['consumer', 'provider']);
 });
+
+test('public operation conformance verifies structured invocation and stale-write rejection',async()=>{
+ const {runEditorOperationConformance}=await import('../dist/conformance.js');
+ assert.deepEqual(await runEditorOperationConformance(),{revision:2,value:7});
+});

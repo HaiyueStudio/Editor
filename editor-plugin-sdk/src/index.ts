@@ -1,3 +1,5 @@
+import type { EditorOperationServicePort } from './operations.js';
+export * from './operations.js';
 export const EDITOR_PLUGIN_API_VERSION = '1' as const;
 
 export type EditorPluginApiVersion = typeof EDITOR_PLUGIN_API_VERSION;
@@ -201,6 +203,7 @@ export interface EditorProductAdapter<Snapshot = unknown, Mutation = unknown, Re
 
 export const editorServiceTokens = Object.freeze({
   document: createEditorServiceToken<unknown>('document'),
+  operations: createEditorServiceToken<EditorOperationServicePort>('operations'),
   history: createEditorServiceToken<unknown>('history'),
   selection: createEditorServiceToken<unknown>('selection'),
   tasks: createEditorServiceToken<unknown>('tasks'),

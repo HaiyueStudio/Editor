@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "descriptor": {
+    "id": "haiyue-image-editor",
+    "version": "0.1.0",
+    "supportTier": "experimental"
+  },
+  "entries": [
+    "index.html"
+  ],
+  "workers": [],
+  "buildHash": "6ba2a2d7eb0904cba3ea7b187d38d0507dcf036aec2f6457e50e3ea3298d22e2",
+  "rawBytes": 126254,
+  "gzipBytes": 36631,
+  "files": [
+    {
+      "path": "icon.svg",
+      "bytes": 221,
+      "gzipBytes": 189,
+      "sha256": "085b833aa0c6b7468bde6aadc6e0270481bd0396ad14887355943b9f7ac79682"
+    },
+    {
+      "path": "index.html",
+      "bytes": 16320,
+      "gzipBytes": 4860,
+      "sha256": "eba59025aafc76e7441462175c4f0d62e3f0157209ce899fafc66dcf88c73870"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 395,
+      "gzipBytes": 270,
+      "sha256": "f6a2a93fd114d5ebd5f144853b31da473a534c4e4c756f24b505768dca4f463e"
+    },
+    {
+      "path": "pwa/register.js",
+      "bytes": 146,
+      "gzipBytes": 130,
+      "sha256": "67835a4e060bb0692c2a3ed9d8248ce77e293a8b4bc518cfca5a99faad098674"
+    },
+    {
+      "path": "service-worker.js",
+      "bytes": 771,
+      "gzipBytes": 435,
+      "sha256": "b292624e8d60d82d6a97ba5bbbe8b6db7733e8877340168ca6a3c82320a5b94a"
+    },
+    {
+      "path": "styles.css",
+      "bytes": 13199,
+      "gzipBytes": 3926,
+      "sha256": "9b9a481701ed78734ffc4315c311cda98df98f7979108e18c8100627186ee72d"
+    },
+    {
+      "path": "web/main.js",
+      "bytes": 95202,
+      "gzipBytes": 26821,
+      "sha256": "b74decdc5b6a9572f209ad7d41066c6356c5fb6aa9a115929ffd14fb98e02a9a"
+    }
+  ],
+  "errors": []
+}

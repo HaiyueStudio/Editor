@@ -1,0 +1,5 @@
+
+> @haiyue/editor-repository@0.1.0 api:check
+> node scripts/check-platform-api.mjs
+
+[editor-platform-api] foundation package exports are intentional and versioned.

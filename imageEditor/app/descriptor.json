@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "haiyue-image-editor",
+  "version": "0.1.0",
+  "productName": "Haiyue Image Editor",
+  "appId": "studio.haiyue.image-editor",
+  "artifactName": "Haiyue-Image-Editor-${version}-${os}-${arch}.${ext}",
+  "storageNamespace": "haiyue.image-editor.v1",
+  "supportTier": "experimental",
+  "entries": [
+    "index.html"
+  ],
+  "staticFiles": [
+    "styles.css",
+    "assets/branding/haiyue-moon.png"
+  ],
+  "workers": [
+    "web/psd-worker.js",
+    "web/filter-worker.js"
+  ],
+  "distDirectory": "web",
+  "outputDirectory": "app-dist",
+  "electronRendererDirectory": "electron/app-dist",
+  "budget": {
+    "maxRawBytes": 1000000,
+    "maxGzipBytes": 300000
+  },
+  "pwa": {
+    "enabled": true,
+    "shortName": "Haiyue Image",
+    "description": "本地分层图像编辑工作区",
+    "themeColor": "#202226",
+    "backgroundColor": "#202226",
+    "icons": [
+      {
+        "src": "./assets/branding/haiyue-moon.png",
+        "sizes": "384x384",
+        "type": "image/png",
+        "purpose": "any"
+      }
+    ]
+  },
+  "electron": {
+    "enabled": true,
+    "width": 1440,
+    "height": 960,
+    "minWidth": 760,
+    "minHeight": 600,
+    "backgroundColor": "#202226",
+    "unsavedCloseProtection": true
+  }
+}

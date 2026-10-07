@@ -25,6 +25,7 @@ export async function runEditorBrowserScenario({
   downloadDirectory,
   failureScreenshotPath,
   timeoutMs = 90_000,
+  readinessExpression,
   scenario,
 }) {
   const chrome = process.env.CHROME_PATH ?? defaultChromePath();
@@ -153,7 +154,7 @@ export async function runEditorBrowserScenario({
       await cdp.call('Page.navigate', { url });
 
       const driver = createBrowserDriver(cdp, timeoutMs, browserErrors);
-      await driver.waitFor(() => driver.evaluate(`
+      await driver.waitFor(() => driver.evaluate(readinessExpression ?? `
         (() => {
           const tree = document.querySelector('#hierarchy-tree');
           const row = tree?.shadowRoot?.querySelector('.row');
@@ -499,20 +500,28 @@ function createStaticServer(root) {
   });
 }
 
-function connectCdp(url) {
+export function connectCdp(url) {
   return new Promise((resolveConnect, reject) => {
     const socket = new WebSocket(url);
     const pending = new Map();
     const listeners = new Map();
     let nextId = 0;
+    const disconnect = () => {
+      const error = new Error('Chrome DevTools connection closed.');
+      for (const request of pending.values()) request.rejectCall(error);
+      pending.clear();
+      reject(error);
+    };
+    socket.addEventListener('close', disconnect, { once: true });
     socket.addEventListener(
       'error',
-      () => reject(new Error(`Could not connect to Chrome DevTools at ${url}.`)),
+      disconnect,
       { once: true },
     );
     socket.addEventListener('open', () => resolveConnect({
       call(method, params = {}) {
         return new Promise((resolveCall, rejectCall) => {
+          if (socket.readyState !== WebSocket.OPEN) { rejectCall(new Error('Chrome DevTools connection is not open.')); return; }
           const id = ++nextId;
           pending.set(id, { resolveCall, rejectCall });
           socket.send(JSON.stringify({ id, method, params }));
@@ -525,6 +534,7 @@ function connectCdp(url) {
         return () => methodListeners.delete(listener);
       },
       close() {
+        disconnect();
         socket.close();
       },
     }), { once: true });
@@ -581,4 +591,3 @@ function contentType(path) {
     default: return 'application/octet-stream';
   }
 }
-

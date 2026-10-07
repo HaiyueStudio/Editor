@@ -1,0 +1,1260 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-06T14:07:50.885Z",
+  "kind": "local-p0-diagnostic",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "sourceFingerprint": "3a9165d395cc02dbf9d13da91ffcefd144e8bf9b412522d189bd80a384c55a9f",
+  "files": [
+    [
+      "config/architecture-boundaries.json",
+      "0de796a2f5a7b225f163a70d47172fa294bc57645f052df8fc2ae81f4c7e8fa3"
+    ],
+    [
+      "imageEditor/package.json",
+      "ee0e2b5aa7741f289ffd833a98500bfe4c5c77f50be27a1499900152c5328793"
+    ],
+    [
+      "imageEditor/scripts/independent-check.py",
+      "87647ab98cbafccf48d9a8c84da86d81281221a1c093e1f6ffda99423046916a"
+    ],
+    [
+      "imageEditor/scripts/requirements-p0.txt",
+      "3e179276a363c3e9c12830f35cacb5ba69f7c2919e785899b033917ee80d74c4"
+    ],
+    [
+      "imageEditor/scripts/run-p0.mjs",
+      "d47c7dadc6b4dff2f233edc1277276663320d4fbf2374c97db07a5f617b198de"
+    ],
+    [
+      "imageEditor/src/psdPrototype.ts",
+      "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0"
+    ],
+    [
+      "imageEditor/test/fixtures/16bits.expected.json",
+      "15a9e1dd9c02ac578afe21ac4a074e26a55e134fe9218cb9090729beb7d2cf0d"
+    ],
+    [
+      "imageEditor/test/fixtures/16bits.psd",
+      "0984374b18fd7e17993b3f0b391b41d956d8257a6ba933f0a45d3ad17b4da282"
+    ],
+    [
+      "imageEditor/test/fixtures/32bits.expected.json",
+      "f0415a0aa4f83b669b30c526d710646f4ae41631e495f612398f412455d42c27"
+    ],
+    [
+      "imageEditor/test/fixtures/32bits.psd",
+      "c901a22a89dbe9f0a1601f2f122bf269ed55af837b8720619475937b0ce48eb8"
+    ],
+    [
+      "imageEditor/test/fixtures/UPSTREAM-LICENSE.txt",
+      "035430250509b801de02201d2f9bc9388a1220198f9276d38f4059df882e585c"
+    ],
+    [
+      "imageEditor/test/fixtures/adjustment-layers.expected.json",
+      "a960906e92bd45b216af78e092b88a75db812e325cb12f36908659cbfc782f8e"
+    ],
+    [
+      "imageEditor/test/fixtures/adjustment-layers.psd",
+      "60a8e5f4226345bc5adc8ea6a1ce2f65c36ff03000fdb94be98c8931a71c7bc2"
+    ],
+    [
+      "imageEditor/test/fixtures/blend-mode.expected.json",
+      "09f476f6206adf09e809b794433cdfe47ee784ea08b84f69edb793b2ced28d55"
+    ],
+    [
+      "imageEditor/test/fixtures/blend-mode.psd",
+      "4c98c6bf3014331121633887d91c0db5f50de1ce14b507c28eceea59e5dc0301"
+    ],
+    [
+      "imageEditor/test/fixtures/cmyk.psd",
+      "4f65d52bbe87c656b8a5927d8c3f8cbaa144f15c9ba8c4ff843bcdb90f2676c1"
+    ],
+    [
+      "imageEditor/test/fixtures/effects.expected.json",
+      "2af7265f11856b498fb69ff326f91caca45bd8c6e92fc59200177f9149144f72"
+    ],
+    [
+      "imageEditor/test/fixtures/effects.psd",
+      "b7f467529c585537fd982ab9c0879b18b0d05340e72b06d705b324c11fb00d25"
+    ],
+    [
+      "imageEditor/test/fixtures/groups.expected.json",
+      "7a84126406650fd8f4a293e027261b8a1c2948d13f19c185b6890d737c2d013b"
+    ],
+    [
+      "imageEditor/test/fixtures/groups.psd",
+      "da9d52eb04b46214eb478d788ade06c332320cac067e42254ba8e2f80cb7d8a7"
+    ],
+    [
+      "imageEditor/test/fixtures/layer-mask.expected.json",
+      "0924631f7d6a36742c115ff5d751dde1c4ae50be67399f2595829469641a37e4"
+    ],
+    [
+      "imageEditor/test/fixtures/layer-mask.psd",
+      "0995a612edd4f9a316775a973d8429f1615533933b393d4df424f8ef8baf96a9"
+    ],
+    [
+      "imageEditor/test/fixtures/layer-offsets-read.expected.json",
+      "b23db894eb4b23513c7151f87f7a7d8cfa4ef3741533558f8637a890ca7d23ac"
+    ],
+    [
+      "imageEditor/test/fixtures/layer-offsets-read.psd",
+      "54e9699e931a470febacce8c220388a1f5a5e3cd8329e949d0779b95f252a555"
+    ],
+    [
+      "imageEditor/test/fixtures/layers.expected.json",
+      "c19f2e6b783c916ae221a1daa601744021fbc8d627f90ed916952e44c2edafe4"
+    ],
+    [
+      "imageEditor/test/fixtures/layers.psd",
+      "e1763b0c94dbfa2a3e0fe089866232831d6ec410ab3db09a207f285bec51dd2c"
+    ],
+    [
+      "imageEditor/test/fixtures/manifest.json",
+      "6d06f937f2a49e32d7d2ff456eef4855e833dd0b7386d136de935604971c3476"
+    ],
+    [
+      "imageEditor/test/fixtures/pass-through.expected.json",
+      "453dcb0fa96b898c06825e214bef3fd8e3cc3d66e98bc7bb7ea3ff7183503886"
+    ],
+    [
+      "imageEditor/test/fixtures/pass-through.psd",
+      "82cfa5819418424e054809a0d03167de7eb5c2fda364a298c2022af29706e8ff"
+    ],
+    [
+      "imageEditor/test/fixtures/psb.expected.json",
+      "d03914824444bda9385b34d979ae97f4e60a554c6c91030add2d27457b75cc28"
+    ],
+    [
+      "imageEditor/test/fixtures/psb.psb",
+      "3aae71e57e7e6044c3df63ee9292151007eec7e63c44587e79c607d0eda34449"
+    ],
+    [
+      "imageEditor/test/fixtures/smart-object.expected.json",
+      "c4340ca0a17ce0e2020e110cd859721fbf0fce45b2b931800b20def527dd1a1e"
+    ],
+    [
+      "imageEditor/test/fixtures/smart-object.psd",
+      "cf8b16d265d6e5f970e75d933b9a8a18eaf5dd3b927e4aa993d3a1817f7f79a3"
+    ],
+    [
+      "imageEditor/test/fixtures/text-layer.expected.json",
+      "0f8139df67e1f009ed20fc923d8e16893858ecf3198d8b0f38c8a4b94b45fce8"
+    ],
+    [
+      "imageEditor/test/fixtures/text-layer.psd",
+      "043201cf804518dd60a8419a67f40ce0af1d639a1984230781a55704d36d7e04"
+    ],
+    [
+      "imageEditor/test/fixtures/vector-layer.expected.json",
+      "65e14a7eec1ea20d92c4519a8de531489bacaa3278dad2df75965d5cf72b1dac"
+    ],
+    [
+      "imageEditor/test/fixtures/vector-layer.psd",
+      "dd76c94c575e735191ded3858c494f2c36334f21e6a079da8086677a007c7ff5"
+    ],
+    [
+      "imageEditor/test/psd.test.mjs",
+      "f2f8b86ca4c56bb5ff7efb48634d30453d14139a0191fc6cc431f4979312c18d"
+    ],
+    [
+      "imageEditor/test/synthetic.mjs",
+      "090b327e1bb09dbcb4a7d3606984658b489e7ebbf8fdac67fe7cf7f4f27a4da3"
+    ],
+    [
+      "imageEditor/tsconfig.json",
+      "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7"
+    ],
+    [
+      "package-lock.json",
+      "4b733ca8402e916217b2296b2bf74856e3f16da10e757a0c0e3032ff85a21d4a"
+    ],
+    [
+      "package.json",
+      "a405b3a4c79a41c42857b7ca367d0bc42509981e786d3d9f85c9072e6db7f3a5"
+    ]
+  ],
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "darwin",
+    "arch": "x64",
+    "os": "25.6.0",
+    "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
+    "codec": "ag-psd@31.0.2"
+  },
+  "photoshop": {
+    "status": "pending",
+    "reason": "No Photoshop execution evidence supplied; automated checks cannot satisfy the Photoshop acceptance gate."
+  },
+  "cases": [
+    {
+      "id": "layers",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/layers/src.psd",
+      "inputSha256": "e1763b0c94dbfa2a3e0fe089866232831d6ec410ab3db09a207f285bec51dd2c",
+      "inputBytes": 194443,
+      "readMs": 16.563165999999995,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 300,
+      "height": 200,
+      "estimatedPixelBytes": 720000,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        }
+      ],
+      "writeMs": 20.412608000000006,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "f5daba480e3681d4086b005c354a84d4b99dcca1e926e69b546e7e51255d444e",
+      "outputBytes": 186984,
+      "recomposite": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "groups",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/groups/src.psd",
+      "inputSha256": "da9d52eb04b46214eb478d788ade06c332320cac067e42254ba8e2f80cb7d8a7",
+      "inputBytes": 226613,
+      "readMs": 6.712953000000027,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 300,
+      "height": 200,
+      "estimatedPixelBytes": 789652,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "pass-through-opacity",
+          "path": "/1:Group 1/0:Group 2",
+          "detail": "pass-through-opacity"
+        }
+      ],
+      "writeMs": 8.259963999999968,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "different",
+        "maxError": 63,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 1.30980392156863,
+        "changedChannels": 27378,
+        "meanAbsoluteError": 0.2710916666666667,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "922561ad89d59cc74edd61e981b37acf09e1bb2a59fd1aa1f32a9a1e7e65a118",
+      "outputBytes": 204541,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"pass-through-opacity\",\"path\":\"/1:Group 1/0:Group 2\",\"detail\":\"pass-through-opacity\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "layer-offsets-read",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/layer-offsets-read/src.psd",
+      "inputSha256": "54e9699e931a470febacce8c220388a1f5a5e3cd8329e949d0779b95f252a555",
+      "inputBytes": 20031,
+      "readMs": 4.944720000000018,
+      "admission": "readable",
+      "authoringMetadata": null,
+      "width": 300,
+      "height": 200,
+      "estimatedPixelBytes": 720000,
+      "diagnostics": [],
+      "writeMs": 1.2265659999999912,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [],
+      "outputSha256": "961738c5326b4f47e01504c9794a0f69c26bcd036c9af4c251be4f0400e9088a",
+      "outputBytes": 23067,
+      "recomposite": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0
+      },
+      "guardedExport": "admitted-prototype"
+    },
+    {
+      "id": "layer-mask",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/layer-mask/src.psd",
+      "inputSha256": "0995a612edd4f9a316775a973d8429f1615533933b393d4df424f8ef8baf96a9",
+      "inputBytes": 50156,
+      "readMs": 3.8175840000000107,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 200,
+      "height": 200,
+      "estimatedPixelBytes": 436820,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "mask",
+          "path": "/0:Layer 1",
+          "detail": "mask"
+        }
+      ],
+      "writeMs": 1.4457219999999893,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "different",
+        "maxError": 31,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 1.3019607843137209,
+        "changedChannels": 1598,
+        "meanAbsoluteError": 0.03773125,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "3819a16a91a22695ef02673418e73a43461d7e3182a48a610780934867460ab3",
+      "outputBytes": 44840,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"mask\",\"path\":\"/0:Layer 1\",\"detail\":\"mask\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "blend-mode",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/blend-mode/src.psd",
+      "inputSha256": "4c98c6bf3014331121633887d91c0db5f50de1ce14b507c28eceea59e5dc0301",
+      "inputBytes": 85507,
+      "readMs": 4.740688999999975,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 300,
+      "height": 200,
+      "estimatedPixelBytes": 338696,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "effects",
+          "path": "/0:ść猫",
+          "detail": "effects"
+        }
+      ],
+      "writeMs": 3.0278600000000324,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "different",
+        "maxError": 63,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 1.301960784313728,
+        "changedChannels": 8732,
+        "meanAbsoluteError": 0.1715875,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "406087675ef9b84733b4148e915df5f1f6a7ade3d802fcbbf9037bf4bcad6bfa",
+      "outputBytes": 78517,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"effects\",\"path\":\"/0:ść猫\",\"detail\":\"effects\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "pass-through",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/pass-through/src.psd",
+      "inputSha256": "82cfa5819418424e054809a0d03167de7eb5c2fda364a298c2022af29706e8ff",
+      "inputBytes": 26898,
+      "readMs": 0.9934169999999654,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": false,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 200,
+      "height": 200,
+      "estimatedPixelBytes": 160000,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        }
+      ],
+      "writeMs": 1.0440209999999865,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "727d7e66f306bc0d8beffcb6a6c8fec939934849f4b8f984c052ce358c4da1e1",
+      "outputBytes": 22148,
+      "recomposite": {
+        "status": "unavailable",
+        "reason": "Source declares no real merged image"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "text-layer",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/text-layer/src.psd",
+      "inputSha256": "043201cf804518dd60a8419a67f40ce0af1d639a1984230781a55704d36d7e04",
+      "inputBytes": 43114,
+      "readMs": 6.150324000000012,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 100,
+      "height": 50,
+      "estimatedPixelBytes": 41548,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "text",
+          "path": "/1:Test text",
+          "detail": "text"
+        }
+      ],
+      "writeMs": 4.040596999999991,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1083,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "4d1dbc52d65844f8db5c956f3066cfc6916923d44bf26bf5493bd16f18a64ffa",
+      "outputBytes": 38984,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"text\",\"path\":\"/1:Test text\",\"detail\":\"text\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "vector-layer",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/vector-layer/src.psd",
+      "inputSha256": "dd76c94c575e735191ded3858c494f2c36334f21e6a079da8086677a007c7ff5",
+      "inputBytes": 31168,
+      "readMs": 1.6529750000000263,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 200,
+      "height": 200,
+      "estimatedPixelBytes": 242000,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "vectorFill",
+          "path": "/0:Rectangle 1",
+          "detail": "vectorFill"
+        },
+        {
+          "code": "vectorMask",
+          "path": "/0:Rectangle 1",
+          "detail": "vectorMask"
+        },
+        {
+          "code": "mask",
+          "path": "/0:Rectangle 1",
+          "detail": "mask"
+        }
+      ],
+      "writeMs": 1.5413449999999784,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "433e3fb6a0026aec2f5f13eaca90e7bebf45409e8cf8f1eb75d6c74f07478650",
+      "outputBytes": 26216,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"vectorFill\",\"path\":\"/0:Rectangle 1\",\"detail\":\"vectorFill\"},{\"code\":\"vectorMask\",\"path\":\"/0:Rectangle 1\",\"detail\":\"vectorMask\"},{\"code\":\"mask\",\"path\":\"/0:Rectangle 1\",\"detail\":\"mask\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "smart-object",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/smart-object/src.psd",
+      "inputSha256": "cf8b16d265d6e5f970e75d933b9a8a18eaf5dd3b927e4aa993d3a1817f7f79a3",
+      "inputBytes": 302478,
+      "readMs": 3.261775,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 300,
+      "height": 300,
+      "estimatedPixelBytes": 608128,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "placedLayer",
+          "path": "/0:picture",
+          "detail": "placedLayer"
+        },
+        {
+          "code": "placedLayer",
+          "path": "/1:kitty",
+          "detail": "placedLayer"
+        }
+      ],
+      "writeMs": 3.671824000000015,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "exact",
+        "maxError": 0,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 0,
+        "changedChannels": 0,
+        "meanAbsoluteError": 0,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "ba0c49723e662c672d2e086b1ad924b5c8b08fcf67d6be78f2e36872a56dfc1e",
+      "outputBytes": 295826,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"placedLayer\",\"path\":\"/0:picture\",\"detail\":\"placedLayer\"},{\"code\":\"placedLayer\",\"path\":\"/1:kitty\",\"detail\":\"placedLayer\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "adjustment-layers",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/adjustment-layers/src.psd",
+      "inputSha256": "60a8e5f4226345bc5adc8ea6a1ce2f65c36ff03000fdb94be98c8931a71c7bc2",
+      "inputBytes": 229398,
+      "readMs": 4.0533399999999915,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 200,
+      "height": 200,
+      "estimatedPixelBytes": 174820,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "adjustment",
+          "path": "/1:Brightness/Contrast 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/1:Brightness/Contrast 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/2:Levels 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/2:Levels 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/3:Curves 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/3:Curves 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/4:Exposure 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/4:Exposure 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/5:Vibrance 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/5:Vibrance 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/6:Hue/Saturation 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/6:Hue/Saturation 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/7:Color Balance 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/7:Color Balance 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/8:Black & White 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/8:Black & White 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/9:Photo Filter 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/9:Photo Filter 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/10:Channel Mixer 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/10:Channel Mixer 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/11:Color Lookup 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/11:Color Lookup 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/12:Invert 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/12:Invert 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/13:Posterize 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/13:Posterize 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/14:Threshold 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/14:Threshold 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/15:Gradient Map 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/15:Gradient Map 1",
+          "detail": "mask"
+        },
+        {
+          "code": "adjustment",
+          "path": "/16:Selective Color 1",
+          "detail": "adjustment"
+        },
+        {
+          "code": "mask",
+          "path": "/16:Selective Color 1",
+          "detail": "mask"
+        }
+      ],
+      "writeMs": 3.0186580000000163,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "different",
+        "maxError": 42,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 1.1764705882353041,
+        "changedChannels": 656,
+        "meanAbsoluteError": 0.01775,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1085,
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "874a3c66e435e06b04527130ed1979724705180128ddfa781c0d1ec2baa15550",
+      "outputBytes": 214485,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"adjustment\",\"path\":\"/1:Brightness/Contrast 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/1:Brightness/Contrast 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/2:Levels 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/2:Levels 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/3:Curves 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/3:Curves 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/4:Exposure 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/4:Exposure 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/5:Vibrance 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/5:Vibrance 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/6:Hue/Saturation 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/6:Hue/Saturation 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/7:Color Balance 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/7:Color Balance 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/8:Black & White 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/8:Black & White 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/9:Photo Filter 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/9:Photo Filter 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/10:Channel Mixer 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/10:Channel Mixer 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/11:Color Lookup 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/11:Color Lookup 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/12:Invert 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/12:Invert 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/13:Posterize 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/13:Posterize 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/14:Threshold 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/14:Threshold 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/15:Gradient Map 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/15:Gradient Map 1\",\"detail\":\"mask\"},{\"code\":\"adjustment\",\"path\":\"/16:Selective Color 1\",\"detail\":\"adjustment\"},{\"code\":\"mask\",\"path\":\"/16:Selective Color 1\",\"detail\":\"mask\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "effects",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/effects/src.psd",
+      "inputSha256": "b7f467529c585537fd982ab9c0879b18b0d05340e72b06d705b324c11fb00d25",
+      "inputBytes": 103944,
+      "readMs": 3.24526800000001,
+      "admission": "readable",
+      "authoringMetadata": {
+        "hasRealMergedData": true,
+        "writerName": "Adobe Photoshop",
+        "readerName": "Adobe Photoshop CS6",
+        "fileVersion": 1
+      },
+      "width": 200,
+      "height": 200,
+      "estimatedPixelBytes": 285004,
+      "diagnostics": [
+        {
+          "code": "icc-profile",
+          "path": "/",
+          "detail": "ag-psd 31.0.2 does not preserve the ICC resource; color-managed editing is unverified"
+        },
+        {
+          "code": "effects",
+          "path": "/0:other2",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/1:other",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/2:drop shadow",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/3:inner shadow",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/4:inner outer glow",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/5:bevel",
+          "detail": "effects"
+        },
+        {
+          "code": "effects",
+          "path": "/6:solid fill",
+          "detail": "effects"
+        }
+      ],
+      "writeMs": 2.7916799999999853,
+      "layerAndMaskPixelRoundtrip": "exact",
+      "cachedCompositeRoundtrip": {
+        "status": "different",
+        "maxError": 63,
+        "alphaMaxError": 0,
+        "premultipliedMaxError": 1.30980392156863,
+        "changedChannels": 7577,
+        "meanAbsoluteError": 0.25985,
+        "note": "Copied cache, not a rendering test. Partial-alpha white-matte quantization can change RGB."
+      },
+      "lostResourceIds": [
+        1028,
+        1083,
+        1077,
+        10000,
+        1013,
+        1016,
+        1039,
+        1058
+      ],
+      "outputSha256": "51dde44e411193f29b1b54ac8db83f309c12411ff300eb91d2cde99ed9910a05",
+      "outputBytes": 95319,
+      "recomposite": {
+        "status": "unsupported",
+        "reason": "[{\"code\":\"effects\",\"path\":\"/0:other2\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/1:other\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/2:drop shadow\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/3:inner shadow\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/4:inner outer glow\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/5:bevel\",\"detail\":\"effects\"},{\"code\":\"effects\",\"path\":\"/6:solid fill\",\"detail\":\"effects\"}]"
+      },
+      "guardedExport": "blocked",
+      "exportReason": "unsafe-export"
+    },
+    {
+      "id": "cmyk",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/cmyk/src.psd",
+      "inputSha256": "4f65d52bbe87c656b8a5927d8c3f8cbaa144f15c9ba8c4ff843bcdb90f2676c1",
+      "inputBytes": 736185,
+      "admission": "rejected-as-specified",
+      "reason": "unsupported-color-mode"
+    },
+    {
+      "id": "16bits",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/16bits/src.psd",
+      "inputSha256": "0984374b18fd7e17993b3f0b391b41d956d8257a6ba933f0a45d3ad17b4da282",
+      "inputBytes": 722758,
+      "admission": "rejected-as-specified",
+      "reason": "unsupported-depth"
+    },
+    {
+      "id": "32bits",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/32bits/src.psd",
+      "inputSha256": "c901a22a89dbe9f0a1601f2f122bf269ed55af837b8720619475937b0ce48eb8",
+      "inputBytes": 1211902,
+      "admission": "rejected-as-specified",
+      "reason": "unsupported-depth"
+    },
+    {
+      "id": "psb",
+      "source": "https://github.com/Agamnentzar/ag-psd/blob/387049670cb89b88fb8fe1b7c01aeacf98dd2e3b/test/read/psb/src.psb",
+      "inputSha256": "3aae71e57e7e6044c3df63ee9292151007eec7e63c44587e79c607d0eda34449",
+      "inputBytes": 135246,
+      "admission": "rejected-as-specified",
+      "reason": "unsupported-version"
+    }
+  ],
+  "synthetic": {
+    "status": "passed",
+    "sourceSha256": "0c9f0ad6dd04d822a46870c5a722bafde489fba98b222aad0f5a689ba4e10e3a",
+    "editedSha256": "00139714691213d16d50a3c8ad89348576fb850e4cce0947dd653673a5364aa4",
+    "operations": [
+      "Unicode layer rename",
+      "pixel edit",
+      "layer translation",
+      "layer opacity"
+    ],
+    "regeneratedComposite": "exact on reread",
+    "layerTree": [
+      {
+        "name": "底色 Background",
+        "left": 0,
+        "top": 0,
+        "right": 32,
+        "bottom": 24,
+        "blendMode": "normal",
+        "opacity": 1,
+        "hidden": false,
+        "clipping": false,
+        "transparencyProtected": true,
+        "pixels": {
+          "width": 32,
+          "height": 24,
+          "sha256": "80fdb5ad227e9ac7e9307b9ef13451935748d8778b3a9a2070c3b0f10056d984"
+        },
+        "mask": null,
+        "realMask": null,
+        "children": null
+      },
+      {
+        "name": "组 Group",
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "blendMode": "normal",
+        "opacity": 0.5019607843137255,
+        "hidden": false,
+        "clipping": false,
+        "transparencyProtected": false,
+        "pixels": null,
+        "mask": null,
+        "realMask": null,
+        "children": [
+          {
+            "name": "Edited 编辑",
+            "left": 5,
+            "top": 4,
+            "right": 15,
+            "bottom": 12,
+            "blendMode": "normal",
+            "opacity": 1,
+            "hidden": false,
+            "clipping": false,
+            "transparencyProtected": false,
+            "pixels": {
+              "width": 10,
+              "height": 8,
+              "sha256": "c959416f8642ed10a326a61c044d8568a43afb57c7f26f13891ae0eb916959fc"
+            },
+            "mask": null,
+            "realMask": null,
+            "children": null
+          },
+          {
+            "name": "Multiply",
+            "left": 5,
+            "top": 6,
+            "right": 13,
+            "bottom": 12,
+            "blendMode": "multiply",
+            "opacity": 1,
+            "hidden": false,
+            "clipping": false,
+            "transparencyProtected": false,
+            "pixels": {
+              "width": 8,
+              "height": 6,
+              "sha256": "7ed917cd20781f6c07bde7ade4601fb43c05956ede10ef837306c70a4ab49638"
+            },
+            "mask": null,
+            "realMask": null,
+            "children": null
+          }
+        ]
+      },
+      {
+        "name": "Screen",
+        "left": -2,
+        "top": 12,
+        "right": 7,
+        "bottom": 21,
+        "blendMode": "screen",
+        "opacity": 0.5019607843137255,
+        "hidden": false,
+        "clipping": false,
+        "transparencyProtected": false,
+        "pixels": {
+          "width": 9,
+          "height": 9,
+          "sha256": "a60db32a32cee47f47353bf8d19ecbc09d80741a0458a04e4d717bbffc6b0102"
+        },
+        "mask": null,
+        "realMask": null,
+        "children": null
+      },
+      {
+        "name": "Hidden",
+        "left": 0,
+        "top": 0,
+        "right": 32,
+        "bottom": 24,
+        "blendMode": "normal",
+        "opacity": 1,
+        "hidden": true,
+        "clipping": false,
+        "transparencyProtected": false,
+        "pixels": {
+          "width": 32,
+          "height": 24,
+          "sha256": "a6e2a1a9b08e1afea38be60f7be46887619cd2eb874001cc5e21ecf0e7c4a505"
+        },
+        "mask": null,
+        "realMask": null,
+        "children": null
+      }
+    ]
+  },
+  "independent": {
+    "schemaVersion": 1,
+    "status": "completed-with-findings",
+    "python": "3.9.6",
+    "decoder": "psd-tools@1.10.9",
+    "cases": [
+      {
+        "id": "layers",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 0,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "groups",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 64,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "layer-offsets-read",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 0,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "layer-mask",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 32,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "blend-mode",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 64,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "pass-through",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedComposite": "unavailable: source declares no real merged image"
+      },
+      {
+        "id": "text-layer",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 0,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "vector-layer",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 0,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "smart-object",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 0,
+        "storedCompositeAlpha": "exact"
+      },
+      {
+        "id": "adjustment-layers",
+        "status": "incompatible",
+        "error": "ValueError: Invalid signature b'\\x00\\x00\\x00\\xff'"
+      },
+      {
+        "id": "effects",
+        "layerPixelsMasksAndStructure": "exact",
+        "storedCompositeMaxError": 64,
+        "storedCompositeAlpha": "exact"
+      }
+    ],
+    "dependencies": {
+      "psd-tools": "1.10.9",
+      "Pillow": "11.3.0",
+      "numpy": "2.0.2",
+      "scipy": "1.13.1",
+      "scikit-image": "0.24.0",
+      "aggdraw": "1.3.19"
+    },
+    "incompatibleCases": [
+      "adjustment-layers"
+    ],
+    "syntheticEdited": {
+      "structureAndCachedPixels": "exact",
+      "forcedRecompositeMaxError": 1,
+      "tolerance": 2,
+      "meanAbsoluteError": 0.0732421875
+    },
+    "photoshopEquivalent": false
+  },
+  "summary": {
+    "fixtures": 15,
+    "readable": 11,
+    "rejectedAsSpecified": 4,
+    "exactLayerRoundtrips": 11,
+    "resourceLossCases": 10,
+    "cachedCompositeDriftCases": 5,
+    "exactRecomposites": 2,
+    "p0Acceptance": "pending-photoshop"
+  }
+}

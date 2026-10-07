@@ -15,3 +15,5 @@ synchronous transaction. Superseded or disposed work cannot commit.
 Every registration and long-lived resource has one owner. Plugin activation is transactional; failed activation rolls
 back its scope, and successful plugins dispose in reverse activation order. Optional plugin failures surface structured,
 capability-local diagnostics and do not disable unrelated editing.
+
+Public product operations are registered through `platform.operations`; see [operation API v1](operations.md). It reuses the task coordinator through FIFO document lanes, independently of existing latest-wins preview lanes. Products supply transactional commit/rollback and history integration.

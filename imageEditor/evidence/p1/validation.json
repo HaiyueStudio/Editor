@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "buildHash": "e3674820d35e032f18d78575c1ebc8e239068bbbbf24b600678649457cc1025f",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "sourceFingerprints": {
+    "config/architecture-boundaries.json": "6ab6edd9685094d2b8fc1054c909ba148c8339a0237464f3e1161a9887775637",
+    "imageEditor/app/descriptor.json": "8aae2a26f591a8ab6240971ea501cf8e3bdb181adce72f03eb2047016df033ad",
+    "imageEditor/package.json": "502306f22fcbdc647c6d3b940fc75e88c5480adb5ee927d32a301a24f9b2dc50",
+    "imageEditor/rollup.config.js": "17cdcd2e42c418b489e3c7bdce6665170ce0de9a5eda1199a67e968ec1aa3319",
+    "imageEditor/src/canvasView.ts": "5b9503426e49acf9a1e64e754ef8fce26a931edd89ca73ed210d61e22fc177fa",
+    "imageEditor/src/document.ts": "cab960ab38f79508b68c11e21ac44439a580ad1aee60941d26a92d55d84d7243",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "3493b88071e104a32aa9dfb270fe2a65f3feab660c0b0e5504f1857b90d3d5d9",
+    "imageEditor/src/projectFile.ts": "07ef20ae18d4f1f254ceb9645d759b3becb247e03b9747a3f676df3f2b01bfe2",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/test/browser-smoke.mjs": "0a2811ba1482be239b2d358ab141f2396f110503b5b8c0714671762b6bf736ad",
+    "imageEditor/tsconfig.json": "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7",
+    "imageEditor/tsconfig.web.json": "340b9fed123027f0a9a1c6e123c422582dd52c7753cd2c4254e9ea2b35a287f8",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "scripts/editor-e2e/browserDriver.mjs": "6a5130d9c9f4ecf0140985b751088ae31817afd6218603ef6dabc2ef4333206a",
+    "scripts/pwa-smoke.mjs": "e06320c14d16e2692496831c4393c2abcc1a8496a67d2073dc15c38a0224ef9e"
+  },
+  "generatedAt": "2026-10-06T15:04:59.320460+00:00",
+  "status": "passed",
+  "kind": "local P1 functional acceptance; not formal performance evidence",
+  "checks": [
+    {
+      "command": "npm run typecheck -w ./imageEditor",
+      "result": "passed"
+    },
+    {
+      "command": "npm test -w ./imageEditor",
+      "result": "39 passed, including 29 P0 regression tests"
+    },
+    {
+      "command": "npm run app:check -w ./imageEditor",
+      "result": "passed; Web/PWA and Electron renderer assembly validated"
+    },
+    {
+      "command": "npm run test:browser -w ./imageEditor",
+      "result": "10 workflow groups passed; no browser errors"
+    },
+    {
+      "command": "node scripts/pwa-smoke.mjs imageEditor",
+      "result": "nested-base and offline reload passed"
+    },
+    {
+      "command": "npm test -w ./editor-app-kit",
+      "result": "2 passed"
+    },
+    {
+      "command": "npm run check:boundaries",
+      "result": "8 workspaces passed"
+    },
+    {
+      "command": "npm run api:check",
+      "result": "passed"
+    },
+    {
+      "command": "npm run release:artifact:check",
+      "result": "4 product descriptors passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "limitations": [
+    "Native Electron runtime and signed installers not exercised",
+    "PSD editing import/export belongs to P3; P0 Photoshop validation remains pending",
+    "No large-document performance or cross-browser acceptance claim"
+  ],
+  "artifacts": {
+    "app-manifest.json": "a652070f3c0972872674015acc9f35ee85def6ccf86237cb75512ac41014ef37",
+    "browser.json": "eb2fd95ec1413337a00d52165fda135dd30a4c2ac4af89a80a66828a73516f7d",
+    "final-workspace.png": "92db94f41324241facee01dfac1b0bb8a5eaa368cccb3722aa7cebe80022727c",
+    "welcome.png": "83eeaed9f99e23402cbf4d47f1a8fad92c7b6d3001fd690058aa2e45f1c94ea4",
+    "workspace.png": "189a1e86613c3043c755f53b89a0923dc0f7fca7a87102ab8b642501d5723e88"
+  }
+}

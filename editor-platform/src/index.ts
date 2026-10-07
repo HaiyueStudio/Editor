@@ -7,3 +7,4 @@ export * from './ProjectSessionState.js';
 export * from './Registries.js';
 export * from './SelectionService.js';
 export * from './TaskCoordinator.js';
+export * from './OperationService.js';

@@ -41,3 +41,31 @@ export async function runEditorDocumentConformance(factory: () => EditorDocument
   if (platform.documents.snapshot().documents.length !== 0) throw new Error('Document adapter did not close cleanly.');
   await platform.dispose();
 }
+
+/** Exercise the public invocation contract without DOM, product models, or transport adapters. */
+export async function runEditorOperationConformance(): Promise<Readonly<{ revision: number; value: number }>> {
+  const platform = new EditorPlatform();
+  let revision = 1, value = 0;
+  platform.documents.attach({
+    identity: { id: 'operation-fixture', name: 'Operation fixture', kind: 'conformance.document' },
+    get revision() { return revision; }, savedRevision: 1,
+    serialize: () => ({ value }), markSaved() {}, subscribe: () => ({ dispose() {} }), dispose() {},
+  });
+  platform.operations.register({
+    ownerId: 'conformance',
+    descriptor: {
+      id: 'conformance.set', version: 1, title: 'Set fixture value', target: 'document', access: 'write',
+      input: { type: 'integer', minimum: 0 }, output: { type: 'integer' },
+    },
+    prepare(next: number) { return { next, value, revision }; },
+    commit(prepared) { value = prepared.next; revision++; return value; },
+    rollback(prepared, context) { if (prepared && context.commitStarted) { value = prepared.value; revision = prepared.revision; } },
+  });
+  try {
+    const first = await platform.operations.execute({ apiVersion: '1', requestId: 'first', operation: 'conformance.set', documentId: 'operation-fixture', expectedRevision: 1, params: 7 });
+    if (first.status !== 'completed' || first.value !== 7 || first.document?.revision !== 2) throw new Error('Operation conformance: successful commit was not observable.');
+    const stale = await platform.operations.execute({ apiVersion: '1', requestId: 'stale', operation: 'conformance.set', documentId: 'operation-fixture', expectedRevision: 1, params: 9 });
+    if (stale.status !== 'failed' || stale.error.code !== 'REVISION_CONFLICT' || value !== 7) throw new Error('Operation conformance: stale mutation was not rejected.');
+    return Object.freeze({ revision, value });
+  } finally { await platform.dispose(); }
+}

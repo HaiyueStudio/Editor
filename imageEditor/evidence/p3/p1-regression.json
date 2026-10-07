@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-06T23:47:10.482Z",
+  "checks": [
+    "empty workspace",
+    "visibility changes real pixels; undo restores pixels",
+    "rename, opacity, lock, duplicate, group creation",
+    "multi-document histories isolated; imported pixels and position verified",
+    "cancelled file picker retains unsaved state",
+    "IndexedDB refresh restores both documents, active tab, dirty state and pixels",
+    "close cancel/discard, recovery removal, downloaded project reopening",
+    "PNG/JPEG opening and malformed-project rejection without data loss",
+    "zoom, actual pixels, fit and pointer panning",
+    "corrupt recovery preserved; new work remains possible without overwriting it"
+  ],
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "sourceFingerprints": {
+    "config/architecture-boundaries.json": "6ab6edd9685094d2b8fc1054c909ba148c8339a0237464f3e1161a9887775637",
+    "imageEditor/app/descriptor.json": "56a74300813c80a334eae0636d6c9aa9037e378f0b596ea5a4c1301e23ccc442",
+    "imageEditor/package.json": "da669f5842bb4d362bd68644e87139f0e87c1c11f15b4559bfa0fdbba276490b",
+    "imageEditor/rollup.config.js": "d3029210fdb8f2e702dfdaeb4ef984dd4b7ea55f728c24cd2b67724fb63712f4",
+    "imageEditor/src/canvasView.ts": "538b5bfed8cb81730ff6a77ea8038d333507cf7c09bfd955bdaad319c81c9177",
+    "imageEditor/src/document.ts": "3ea54e5c24e60af32340ddc4df0394a46228257d51dcec2a64e47bc2c5518a3f",
+    "imageEditor/src/editingTools.ts": "ab30c9778b6fb15ee17ee825329727940cc5db27b41bb82180b430f9fd2ce23d",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "8ce4a0b04c2b4f98afebf06f10042cf87a15690e23af0bdbe2eb77b1f87918cd",
+    "imageEditor/src/pixelTools.ts": "6f902f3bbf13e609b888ee00b2380d201da750b25cea6b621505de3c6231de3d",
+    "imageEditor/src/projectFile.ts": "d90d7fa884f68ba9de9161f670f451e623e9878c93d21fcaf70f095f2e2b8426",
+    "imageEditor/src/psdAdapter.ts": "ab02ed9d3cacd4f14832e6068999c589fafc16580001450ee929bd0be46f408d",
+    "imageEditor/src/psdJobs.ts": "7aeaf9ada352193587bbb892fea805030d13c4f09190b24204ca365df9b4ff24",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "2bee5267ff23db5e7afbc5aa96d24a8d2f1249b803d3e94d95f77ccdf31915bb",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/test/browser-smoke.mjs": "0a2811ba1482be239b2d358ab141f2396f110503b5b8c0714671762b6bf736ad",
+    "imageEditor/tsconfig.json": "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7",
+    "imageEditor/tsconfig.web.json": "088365d003bc0f6560e3ccc04017fce77aa1434bd0f016fa1a384ce23f097c62",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "scripts/editor-e2e/browserDriver.mjs": "5e886d96b124fc4378ddd96dba6b47a9c121c232e0e74d82a2c36aa300a194fe",
+    "scripts/pwa-smoke.mjs": "e06320c14d16e2692496831c4393c2abcc1a8496a67d2073dc15c38a0224ef9e"
+  },
+  "buildHash": "166c0182ae8ca23e0f2637c1493c6ca95b7cadb586ba36f0db4fc66a1757c971",
+  "fixtures": {
+    "schemaVersion": 1,
+    "provenance": "Procedurally generated P1 regression fixtures; no external assets",
+    "files": {
+      "import.jpg": {
+        "bytes": 635,
+        "sha256": "952c54df8f9a3e09aa8899d8aec87156f14a11b16db50d552c43f36f2f63b5f9"
+      },
+      "import.png": {
+        "bytes": 85,
+        "sha256": "0077c409ceccc27d8e93ae6f93151b54c9ed93350cc7df3e113bb09305671207"
+      },
+      "invalid.hyimage": {
+        "bytes": 38,
+        "sha256": "cbde2bbf4652401a61ae1d89c5e8827f647672e82503b06a4eedd5feedb90dea"
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-10-06T20:49:06.166Z",
+  "checks": [
+    "empty workspace",
+    "visibility changes real pixels; undo restores pixels",
+    "rename, opacity, lock, duplicate, group creation",
+    "multi-document histories isolated; imported pixels and position verified",
+    "cancelled file picker retains unsaved state",
+    "IndexedDB refresh restores both documents, active tab, dirty state and pixels",
+    "close cancel/discard, recovery removal, downloaded project reopening",
+    "PNG/JPEG opening and malformed-project rejection without data loss",
+    "zoom, actual pixels, fit and pointer panning",
+    "corrupt recovery preserved; new work remains possible without overwriting it"
+  ],
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "sourceFingerprints": {
+    "config/architecture-boundaries.json": "6ab6edd9685094d2b8fc1054c909ba148c8339a0237464f3e1161a9887775637",
+    "imageEditor/app/descriptor.json": "8aae2a26f591a8ab6240971ea501cf8e3bdb181adce72f03eb2047016df033ad",
+    "imageEditor/package.json": "e31ae099aa5cdac31ebdf6c700d4d92e8f22ebf77102b37fede54e5f8750946d",
+    "imageEditor/rollup.config.js": "17cdcd2e42c418b489e3c7bdce6665170ce0de9a5eda1199a67e968ec1aa3319",
+    "imageEditor/src/canvasView.ts": "538b5bfed8cb81730ff6a77ea8038d333507cf7c09bfd955bdaad319c81c9177",
+    "imageEditor/src/document.ts": "4c5fc1c91b216c4807c6a272e6ad009e307f06be2c1c6a992f914522f4a34c98",
+    "imageEditor/src/editingTools.ts": "ab30c9778b6fb15ee17ee825329727940cc5db27b41bb82180b430f9fd2ce23d",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "8759d0799a4356abbd583a17b0679a2677a63088e392470f9429f0dffb753bc1",
+    "imageEditor/src/pixelTools.ts": "6f902f3bbf13e609b888ee00b2380d201da750b25cea6b621505de3c6231de3d",
+    "imageEditor/src/projectFile.ts": "8bc748ff595c83ca1d84bac7edc8d5757565305d5bf75961e2c8a72c249625f9",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/test/browser-smoke.mjs": "0a2811ba1482be239b2d358ab141f2396f110503b5b8c0714671762b6bf736ad",
+    "imageEditor/tsconfig.json": "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7",
+    "imageEditor/tsconfig.web.json": "340b9fed123027f0a9a1c6e123c422582dd52c7753cd2c4254e9ea2b35a287f8",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "scripts/editor-e2e/browserDriver.mjs": "5e886d96b124fc4378ddd96dba6b47a9c121c232e0e74d82a2c36aa300a194fe",
+    "scripts/pwa-smoke.mjs": "e06320c14d16e2692496831c4393c2abcc1a8496a67d2073dc15c38a0224ef9e"
+  },
+  "buildHash": "6ba2a2d7eb0904cba3ea7b187d38d0507dcf036aec2f6457e50e3ea3298d22e2",
+  "fixtures": {
+    "schemaVersion": 1,
+    "provenance": "Procedurally generated P1 regression fixtures; no external assets",
+    "files": {
+      "import.jpg": {
+        "bytes": 635,
+        "sha256": "952c54df8f9a3e09aa8899d8aec87156f14a11b16db50d552c43f36f2f63b5f9"
+      },
+      "import.png": {
+        "bytes": 85,
+        "sha256": "0077c409ceccc27d8e93ae6f93151b54c9ed93350cc7df3e113bb09305671207"
+      },
+      "invalid.hyimage": {
+        "bytes": 38,
+        "sha256": "cbde2bbf4652401a61ae1d89c5e8827f647672e82503b06a4eedd5feedb90dea"
+      }
+    }
+  }
+}

@@ -10,10 +10,12 @@ import { EditorHistoryService, type EditorHistoryOptions } from './HistoryServic
 import { EditorPluginHost } from './PluginHost.js';
 import { EditorProjectSessionState, type EditorProjectSessionPersistence } from './ProjectSessionState.js';
 import { EditorSelectionService } from './SelectionService.js';
+import { EditorOperationService, type EditorOperationServiceOptions } from './OperationService.js';
 import { EditorTaskCoordinator } from './TaskCoordinator.js';
 
 export interface EditorPlatformOptions {
   readonly history?: EditorHistoryOptions;
+  readonly operations?: Pick<EditorOperationServiceOptions, 'maxPending'>;
   readonly sessionPersistence?: EditorProjectSessionPersistence;
   readonly diagnostic?: (diagnostic: EditorDiagnostic) => void;
 }
@@ -25,6 +27,7 @@ export class EditorPlatform implements EditorDisposable {
   readonly history: EditorHistoryService;
   readonly selection = new EditorSelectionService();
   readonly tasks = new EditorTaskCoordinator();
+  readonly operations: EditorOperationService;
   readonly session: EditorProjectSessionState;
   readonly plugins: EditorPluginHost;
   private readonly registrations: EditorDisposable[];
@@ -32,6 +35,7 @@ export class EditorPlatform implements EditorDisposable {
 
   constructor(options: EditorPlatformOptions = {}) {
     this.history = new EditorHistoryService(options.history);
+    this.operations = new EditorOperationService(this.documents, this.tasks, { ...options.operations, ...(options.diagnostic ? { diagnostic: options.diagnostic } : {}) });
     this.session = new EditorProjectSessionState(options.sessionPersistence);
     this.plugins = new EditorPluginHost({
       services: this.services,
@@ -39,6 +43,7 @@ export class EditorPlatform implements EditorDisposable {
       ...(options.diagnostic ? { diagnostic: options.diagnostic } : {}),
     });
     this.registrations = [
+      this.services.register(editorServiceTokens.operations, this.operations, { ownerId: 'editor-platform' }),
       this.services.register(editorServiceTokens.document, this.documents, { ownerId: 'editor-platform' }),
       this.services.register(editorServiceTokens.history, this.history, { ownerId: 'editor-platform' }),
       this.services.register(editorServiceTokens.selection, this.selection, { ownerId: 'editor-platform' }),
@@ -63,6 +68,7 @@ export class EditorPlatform implements EditorDisposable {
       selection: this.selection.snapshot(),
       session: this.session.snapshot(),
       activeTasks: this.tasks.activeCount,
+      operations: this.operations.list(),
     });
   }
 
@@ -72,6 +78,7 @@ export class EditorPlatform implements EditorDisposable {
     const errors: unknown[] = [];
     for (const resource of [
       this.plugins,
+      this.operations,
       this.tasks,
       this.documents,
       this.selection,

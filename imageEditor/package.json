@@ -1,0 +1,54 @@
+{
+  "name": "@haiyue/image-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Layered image editor workspace with local project recovery and PSD compatibility research.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json",
+    "build": "npm run build:types && node ../scripts/build-rollup-once.mjs --expect web",
+    "build:app": "npm run build && node ../scripts/run-editor-app-kit.mjs assemble",
+    "app:check": "npm run build:app && node ../scripts/run-editor-app-kit.mjs validate",
+    "preview": "npm run build:app && node ../scripts/run-editor-app-kit.mjs preview",
+    "test:browser": "npm run build:app && node test/browser-smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build:types && node --test test/*.test.mjs",
+    "p0": "npm run test && node scripts/run-p0.mjs",
+    "test:browser:p2": "npm run build:app && node test/p2-browser-smoke.mjs",
+    "test:browser:p3": "npm run build:app && node test/p3-browser-smoke.mjs",
+    "p3": "npm run test && node scripts/run-p3.mjs",
+    "test:browser:advanced": "npm run build:app && node test/advanced-browser-smoke.mjs",
+    "test:browser:selection": "npm run build:app && node test/selection-gesture-browser.mjs",
+    "electron:start": "npm run build:app && electron .",
+    "electron:pack": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-pack",
+    "electron:dist": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-dist",
+    "electron:smoke": "node ../scripts/run-editor-app-kit.mjs electron-smoke",
+    "test:browser:p4": "npm run build:app && node test/p4-browser-smoke.mjs",
+    "test:performance": "npm run build:types && node --expose-gc scripts/run-p4-performance.mjs",
+    "test:browser:p5": "npm run build:app && node test/p5-browser-smoke.mjs",
+    "p5": "npm run test && node scripts/run-p5.mjs",
+    "test:electron:p4": "node test/p4-electron-smoke.mjs"
+  },
+  "dependencies": {
+    "@haiyue/editor-platform": "0.1.0",
+    "@haiyue/editor-plugin-sdk": "0.1.0",
+    "@haiyue/editor-shell": "0.1.1",
+    "@haiyue/editor-app-kit": "0.1.0",
+    "ag-psd": "31.0.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.0",
+    "tslib": "^2.6.0",
+    "rollup": "^4.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "electron": "43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "main": "electron/main.mjs"
+}

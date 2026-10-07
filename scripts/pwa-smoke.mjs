@@ -8,7 +8,7 @@ import { defaultChromePath, defaultWebGpuAngleBackend } from './webgpu-gate/chro
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const workspaces = process.argv.slice(2);
-const selected = workspaces.length > 0 ? workspaces : ['editor', 'AnimationEditor', 'voxelEditor'];
+const selected = workspaces.length > 0 ? workspaces : ['editor', 'AnimationEditor', 'voxelEditor', 'imageEditor'];
 
 for (const workspace of selected) await smokeWorkspace(workspace);
 

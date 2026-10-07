@@ -1,0 +1,73 @@
+{
+  "decoderWarnings": [],
+  "schemaVersion": 1,
+  "status": "passed",
+  "decoder": "psd-tools@1.10.9",
+  "python": "3.9.6",
+  "cases": [
+    {
+      "id": "alpha-1x1",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 4,
+      "cachedPremultipliedMaxError": 0.5803921568627451,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 0.1450980392156893
+    },
+    {
+      "id": "alpha-1x32",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 4,
+      "cachedPremultipliedMaxError": 0.5803921568627451,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 0.1450980392156893
+    },
+    {
+      "id": "alpha-2x1",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 4,
+      "cachedPremultipliedMaxError": 0.5803921568627451,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 0.1450980392156893
+    },
+    {
+      "id": "alpha-17x9",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 4,
+      "cachedPremultipliedMaxError": 0.5803921568627451,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 0.1450980392156893
+    },
+    {
+      "id": "group-edit",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 1,
+      "recompositePremultipliedMaxError": 1.7254901960784252
+    },
+    {
+      "id": "layers-edited",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 1,
+      "recompositePremultipliedMaxError": 1.9803921568627345
+    },
+    {
+      "id": "layer-offsets-read-edited",
+      "layerPixels": "exact",
+      "cachedAlpha": "exact",
+      "cachedStraightMaxError": 0,
+      "cachedPremultipliedMaxError": 0.0,
+      "recompositeAlphaMaxError": 0,
+      "recompositePremultipliedMaxError": 0.0
+    }
+  ],
+  "photoshopEquivalent": false
+}

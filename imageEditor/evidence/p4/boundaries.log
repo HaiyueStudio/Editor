@@ -1,0 +1,9 @@
+
+> @haiyue/editor-repository@0.1.0 check:boundaries
+> node scripts/check-repository-boundaries.mjs && npm run check:boundaries -w ./editor
+
+[editor-repository-boundary] 8 workspaces satisfy package, source, and AI-neutral boundaries.
+
+> @haiyue/editor@0.1.0 check:boundaries
+> node scripts/check-boundaries.mjs
+

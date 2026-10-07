@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "web",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "src/main.ts",
+    "src/psdWorker.ts",
+    "src/filterWorker.ts"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "buildHash": "6519d41ac4e09aafc4464098aab9fb6bbf3f24a0d91e5949faa9d2d1594d709b",
+  "unitTests": 101,
+  "browserChecks": 11,
+  "brandSource": "../Native/bridge/branding/assets/haiyue-moon.png",
+  "brandSha256": "697577528fcc8585f9c452bb0579c077f8f0b8c3588e358864d5b21ead7b3f10",
+  "samplePsd": "imageEditor/artifacts/p1/海上生明月.psd",
+  "samplePsdSha256": "02c6c0df4abd0dcddaffff7815690eb2e7e442d52f45aff1bfd17447eb26b670"
+}

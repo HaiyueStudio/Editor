@@ -1,3 +1,4 @@
+import { packagedElectronPath } from './editor-electron-layout.mjs';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -40,13 +41,12 @@ function positiveInteger(raw, fallback) {
 }
 
 async function smokePackagedElectron({ descriptorPath, packageRoot, outputDirectory }) {
-  if (process.platform !== 'win32') throw new Error('Packaged Electron smoke currently requires the Windows release layout.');
   const descriptor = await loadEditorAppDescriptor(descriptorPath);
   if (!outputDirectory) {
     const pointer = JSON.parse(await readFile(resolve(packageRoot, '.electron-candidate.json'), 'utf8'));
     outputDirectory = pointer.outputDirectory;
   }
-  const executable = resolve(packageRoot, outputDirectory, 'win-unpacked', `${descriptor.productName}.exe`);
+  const executable = packagedElectronPath({ packageRoot, outputDirectory, productName: descriptor.productName, appName: descriptor.id });
   if (!existsSync(executable)) throw new Error(`Packaged Electron executable is missing: ${executable}`);
   const result = await new Promise((resolveExit, rejectExit) => {
     const child = spawn(executable, [], {
@@ -79,11 +79,11 @@ async function packageElectron({ descriptorPath, packageRoot, directoryOnly }) {
   if (directoryOnly) args.push('--dir');
   args.push('--config', 'electron-builder.generated.json', `--config.directories.output=${outputDirectory}`);
   const installedRuntime = resolve(packageRoot, '../node_modules/electron/dist');
-  if (process.platform === 'win32' && existsSync(installedRuntime)) {
+  if (existsSync(installedRuntime)) {
     args.push(`--config.electronDist=${installedRuntime}`);
   }
   const code = await new Promise((resolveExit, rejectExit) => {
-    const child = spawn(process.execPath, args, { cwd: packageRoot, stdio: 'inherit', windowsHide: true });
+    const child = spawn(process.execPath, args, { cwd: packageRoot, stdio: 'inherit', windowsHide: true, env: directoryOnly ? { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false' } : process.env });
     child.once('error', rejectExit);
     child.once('exit', (exitCode, signal) => {
       if (signal) rejectExit(new Error(`Electron Builder terminated by ${signal}.`));

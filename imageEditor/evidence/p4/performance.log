@@ -1,0 +1,1 @@
+{"status":"passed","cases":[{"canvas":[2048,2048],"p95":226.46764900000005,"historyBytes":17655072},{"canvas":[4096,4096],"p95":402.69765200000074,"historyBytes":41248032}],"residual":0}

@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "kind": "local P3 functional acceptance; not Photoshop or formal performance acceptance",
+  "generatedAt": "2026-10-06T23:48:30.774Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "buildHash": "166c0182ae8ca23e0f2637c1493c6ca95b7cadb586ba36f0db4fc66a1757c971",
+  "runner": {
+    "chrome": "/Users/qingque/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-x64/chrome-headless-shell",
+    "platform": "darwin",
+    "arch": "x64"
+  },
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "sourceFingerprints": {
+    "imageEditor/src/canvasView.ts": "538b5bfed8cb81730ff6a77ea8038d333507cf7c09bfd955bdaad319c81c9177",
+    "imageEditor/src/document.ts": "3ea54e5c24e60af32340ddc4df0394a46228257d51dcec2a64e47bc2c5518a3f",
+    "imageEditor/src/editingTools.ts": "ab30c9778b6fb15ee17ee825329727940cc5db27b41bb82180b430f9fd2ce23d",
+    "imageEditor/src/imageImport.ts": "daf76070d5ab1da569a85b410eecbf4b0c8830ffa7b5e136d09bf754fff6d5ee",
+    "imageEditor/src/main.ts": "8ce4a0b04c2b4f98afebf06f10042cf87a15690e23af0bdbe2eb77b1f87918cd",
+    "imageEditor/src/pixelTools.ts": "6f902f3bbf13e609b888ee00b2380d201da750b25cea6b621505de3c6231de3d",
+    "imageEditor/src/projectFile.ts": "d90d7fa884f68ba9de9161f670f451e623e9878c93d21fcaf70f095f2e2b8426",
+    "imageEditor/src/psdAdapter.ts": "ab02ed9d3cacd4f14832e6068999c589fafc16580001450ee929bd0be46f408d",
+    "imageEditor/src/psdJobs.ts": "7aeaf9ada352193587bbb892fea805030d13c4f09190b24204ca365df9b4ff24",
+    "imageEditor/src/psdPrototype.ts": "3c8b98609b68c87fa092516d833a0bde8290d47ce60bdc19dd4ce73461bd95d0",
+    "imageEditor/src/psdResources.ts": "48e3ecd4a68e535b199b95fc91106fbd226e13c76495d7e16ad039607202c10c",
+    "imageEditor/src/psdWorker.ts": "2bee5267ff23db5e7afbc5aa96d24a8d2f1249b803d3e94d95f77ccdf31915bb",
+    "imageEditor/src/recovery.ts": "535d7e23f56e12e9be39b762446b3e0dfeec318b7a18739b7422ab9187ba1a39",
+    "imageEditor/src/workspace.ts": "f9e5c292ddd6c97d95c519b4d60fa96b7ff2afcd8a4aaf3a43de92990eefa9e2",
+    "imageEditor/scripts/run-p3.mjs": "3cf73930dc94a0dab6e1bd1f02c46f829970e7875ab89300f14adaee71ba33c9",
+    "imageEditor/scripts/independent-p3.py": "f9f09fe1c381fd7c42dbe01c1dcbc90a551ab8bd73781583112a1d877b32d3d6",
+    "imageEditor/test/psdAdapter.test.mjs": "c8168ade2bc079773e1e20b9f73d8fe337220a679e13015b905bc9642fe56687",
+    "imageEditor/test/p3-cases.mjs": "5f32219b64f607aebfae020624feb9c053a1f6cdeeb5f5d50d5b3768f5919a09",
+    "imageEditor/app/descriptor.json": "56a74300813c80a334eae0636d6c9aa9037e378f0b596ea5a4c1301e23ccc442",
+    "imageEditor/rollup.config.js": "d3029210fdb8f2e702dfdaeb4ef984dd4b7ea55f728c24cd2b67724fb63712f4",
+    "package-lock.json": "5f38e5953a5ec68dc20fcd158ab7d8f6aa005d9d0da52acb26f568b924ebe6a0",
+    "imageEditor/index.html": "ed2f92678b080f380ff20e5716f19ac93bbc1cf42932ad61c83a531ffb16ffcd",
+    "imageEditor/styles.css": "a9c57debd913122153bacb623c85806939df24afc89c8d58300ff2124c9d2b10",
+    "imageEditor/test/p3-browser-smoke.mjs": "de280d32b01afeaa40a5cd0666583859abb4e8afdc3a74051d2fb1231c6a56b7",
+    "scripts/editor-e2e/browserDriver.mjs": "5e886d96b124fc4378ddd96dba6b47a9c121c232e0e74d82a2c36aa300a194fe",
+    "imageEditor/test/browser-smoke.mjs": "0a2811ba1482be239b2d358ab141f2396f110503b5b8c0714671762b6bf736ad",
+    "imageEditor/test/document.test.mjs": "08958816d13bad82cb20ddab7c979960c0a8ca6959299f3f0129234c778d367b",
+    "imageEditor/test/p2-browser-smoke.mjs": "bc843f0a0c360b63f387a348cf4cf0b285be9bf79652fd11a7356b260c2329b7",
+    "imageEditor/test/pixelTools.test.mjs": "be740c0b1d49c52418eed6e453fdeac909f1efc477c2c0eda9a75dd1c5da4bd9",
+    "imageEditor/test/psd.test.mjs": "f2f8b86ca4c56bb5ff7efb48634d30453d14139a0191fc6cc431f4979312c18d",
+    "imageEditor/test/psdJobs.test.mjs": "6b058d06d1f58d90c5ed134085cba36e0b4e129f4761196845bdfa24ef24297c",
+    "imageEditor/test/synthetic.mjs": "090b327e1bb09dbcb4a7d3606984658b489e7ebbf8fdac67fe7cf7f4f27a4da3",
+    "imageEditor/scripts/independent-check.py": "87647ab98cbafccf48d9a8c84da86d81281221a1c093e1f6ffda99423046916a",
+    "imageEditor/scripts/run-p0.mjs": "d47c7dadc6b4dff2f233edc1277276663320d4fbf2374c97db07a5f617b198de",
+    "imageEditor/docs/p0-findings.md": "d84b0635178b6644bc8a74cdd2ba6ed2cea1da22fd4244b07ea20004a5fdce5e",
+    "imageEditor/docs/p1-workspace.md": "a33b01bb976308d79284506d1f4df588b5dc5929d4c02bee505a3b0d5fff9b51",
+    "imageEditor/docs/p2-tools.md": "a64b1090d7d843e893d963dcb2a4079a6d80e672d9e90755991320bc0ff24408",
+    "imageEditor/docs/p3-psd.md": "b3bfdd22d00c73d6ef8b32f866b2e2030a2ccd72d585eb4e344655d04b36eb29",
+    "imageEditor/docs/photoshop-acceptance.md": "24c3f328ed26d4419cab130a9b6dd4015cae37601d2964627d6af8c5fddbca76",
+    "imageEditor/README.md": "eea43c20ac4729ec2df45d7ba0ff95dd5b7af254bde3f12f0ab854b9ea95b2d4",
+    "imageEditor/package.json": "da669f5842bb4d362bd68644e87139f0e87c1c11f15b4559bfa0fdbba276490b",
+    "imageEditor/tsconfig.json": "0a2e6f72c9b6f078b8a452b042914d09763574a1a63be31e786cde4dc0bc41b7",
+    "imageEditor/tsconfig.web.json": "088365d003bc0f6560e3ccc04017fce77aa1434bd0f016fa1a384ce23f097c62"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck -w ./imageEditor",
+      "result": "passed"
+    },
+    {
+      "command": "npm test -w ./imageEditor",
+      "result": "62 passed"
+    },
+    {
+      "command": "npm run app:check -w ./imageEditor",
+      "result": "passed; 566264 bytes raw / 144410 bytes gzip; Web/PWA and Electron renderer assembly"
+    },
+    {
+      "command": "PSD_P3_PYTHON=/private/tmp/haiyue-psd-p0-venv/bin/python node imageEditor/scripts/run-p3.mjs",
+      "result": "7 cases passed; independent psd-tools 1.10.9; no decoder warnings"
+    },
+    {
+      "command": "node imageEditor/test/p3-browser-smoke.mjs",
+      "result": "7 workflow groups passed, including offline worker export and downloaded PSD decoding"
+    },
+    {
+      "command": "node imageEditor/test/p2-browser-smoke.mjs",
+      "result": "10 workflow groups passed"
+    },
+    {
+      "command": "node imageEditor/test/browser-smoke.mjs",
+      "result": "10 workflow groups passed"
+    },
+    {
+      "command": "node --test scripts/editor-e2e/browserDriver.test.mjs",
+      "result": "2 passed"
+    },
+    {
+      "command": "npm run check:boundaries",
+      "result": "passed"
+    },
+    {
+      "command": "npm run api:check",
+      "result": "passed"
+    },
+    {
+      "command": "npm run release:artifact:check",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "limitations": [
+    "RGB 8-bit PSD v1 with supported raster layers and isolated groups; advanced contents require explicit merged fallback",
+    "ICC bytes preserved without color conversion; metadata semantics may be stale",
+    "Photoshop manual acceptance pending; no native installer or large-document performance claim"
+  ],
+  "artifacts": {
+    "alpha-17x9.expected.rgba": "faacfbc6b0ed7ad0dfeaa894336e006f88d4fbc2fab1b5761684177adcbf5877",
+    "alpha-17x9.psd": "5293941dfc64b44f834d49d3bbc307dd134129d896323bc5557c04cee5ef516c",
+    "alpha-1x1.expected.rgba": "e99cc6057faa309fd297bf72ea61a2a0dbe7d4e0db6d1dabc2ffa727b102f8a5",
+    "alpha-1x1.psd": "ad6fda1a12646d67c47d959f0b712623f17829f08396712d994c0d33cb258c3d",
+    "alpha-1x32.expected.rgba": "e293723919046beda4329c7f74e10d344d7129f40d443a85af4d9f86d1632b99",
+    "alpha-1x32.psd": "5b6acb8827515eb4c1a69dea2714f100b97d0e4e331d0b2a7cbf3e9432894044",
+    "alpha-2x1.expected.rgba": "93f2809a52ea28bd11653b309899eec493bf1edd4315e0c05532020728808417",
+    "alpha-2x1.psd": "aad3f26a5538a278534dc84471632faa7eded8c8ea256ab992022748cdb5d762",
+    "app-manifest.json": "18c6834d6659fbbb34386646d89166c915188c7ebeaf102cf901012809017ffd",
+    "browser.json": "eb95a68c51de7a0fde43a9468293856fcaaaa981321c4a545f3273a62b7538ec",
+    "cases.json": "0aeb613caa9db2e8a8fad6e87cda09bd4615b4c3d4fa1e6690638cf1d4f56d3a",
+    "codec.json": "cdcb6b3600036c9d00e2e20f0a42a1372a1cb71cce4cf397cd961275ef0f7aaf",
+    "compatibility.png": "503a10c0be4869d4569bfae57b406a41143626bb9b6aeb43b22790d5506d4a51",
+    "group-edit.expected.rgba": "b95b4c40f4f1a31466169a33a2badad3d776e678cf28c8d60645832174aa25bb",
+    "group-edit.psd": "70843a6e60f9dddb6a5b8753060e9c540ac8a25fb7027355eca454a7b6a08fcc",
+    "independent.json": "d5a6be131f17605b41a722078a79c3622c2409f45ade07f0fe3a707c876beb41",
+    "layer-offsets-read-edited.expected.rgba": "f31cdbac75dc392dca96ea6f2ec596447d8cf9fffdf706ac942837fffb390cd8",
+    "layer-offsets-read-edited.psd": "6da1fefd6227f5fe513681d90fb2b32869b5b4032567c68f8f170e2744ce7fa2",
+    "layers-edited.expected.rgba": "00e300503f35ec8dc497a211ff4acfd299ad6dae4dfd37fabc93d9bae2497984",
+    "layers-edited.psd": "ea8cd5db8dd3d9bef932e430e4f163884244143f6931c947f02b1bfb4ee95255",
+    "p1-regression.json": "163a919b7744edf7ee434708e1ed5f7d67c80362397edbcf9da1bf6882bf8572",
+    "p2-regression.json": "1de814bb9074b780f71008c0e1211cd6da8db71fdf087227ab3b528a0e8f2ef9",
+    "unsupported.png": "5fcccf0fd57bdda9673e139420e4c278f8456b1b5efd948f1195b17f1c88e8f1",
+    "workspace.png": "418ff36e53af237def17c96372eefed08e35a2427b283cd5c8565719d9e8cddb"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "classification": "isolated compiled renderer contract and local frame diagnostic; not a cross-device FPS gate",
+  "generatedAt": "2026-10-07T03:13:15.161Z",
+  "revision": "754bf1dde92bf65d2114c76ff92fbf6eeefa54c4",
+  "dirty": true,
+  "buildHash": "b7b67df2f65666423e31b19ee2e6b1e804ab8b4a8be9ce6125c9982234546c6d",
+  "runner": {
+    "chrome": "/Users/qingque/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-x64/chrome-headless-shell",
+    "platform": "darwin",
+    "arch": "x64"
+  },
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "cases": [
+    {
+      "canvas": [
+        2048,
+        2048
+      ],
+      "layers": 20,
+      "layout": "one full canvas plus 64x64 sprites",
+      "initialRenderMs": 59.480000004172325,
+      "selectionRefreshMs": 0.7250000089406967,
+      "zoom": {
+        "frames": 30,
+        "meanFrameMs": 24.99883333333333,
+        "maxFrameMs": 149.9949999999999
+      },
+      "pixel": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "cache": {
+        "entries": 20,
+        "bytes": 17088512,
+        "budget": 67108864
+      },
+      "residual": {
+        "entries": 0,
+        "bytes": 0,
+        "budget": 67108864
+      },
+      "disposedCanvas": [
+        1,
+        1
+      ]
+    },
+    {
+      "canvas": [
+        4096,
+        4096
+      ],
+      "layers": 50,
+      "layout": "one full canvas plus 64x64 sprites",
+      "initialRenderMs": 229.87000000476837,
+      "selectionRefreshMs": 0.23999999463558197,
+      "zoom": {
+        "frames": 30,
+        "meanFrameMs": 37.22083333333333,
+        "maxFrameMs": 616.645
+      },
+      "pixel": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "cache": {
+        "entries": 49,
+        "bytes": 802816,
+        "budget": 67108864
+      },
+      "residual": {
+        "entries": 0,
+        "bytes": 0,
+        "budget": 67108864
+      },
+      "disposedCanvas": [
+        1,
+        1
+      ]
+    }
+  ],
+  "eviction": {
+    "stats": {
+      "entries": 4,
+      "bytes": 67108864,
+      "budget": 67108864
+    },
+    "evictedCanvas": [
+      1,
+      1
+    ],
+    "residual": {
+      "entries": 0,
+      "bytes": 0,
+      "budget": 67108864
+    }
+  },
+  "sourceFingerprints": {
+    "imageEditor/src/canvasView.ts": "94ffe67e438d370b7660cd71451e9bd1d30af0410022e60744e805830b9ecc1c",
+    "imageEditor/dist/canvasView.js": "c6e8d2211818802372d3849725ead08b0b3b25670dd8292e6e7bb17d5b1b02b1",
+    "imageEditor/test/p4-canvas-browser.mjs": "b4f2020cc04aaf2277ac6bd63c3a071e363175e63f7a6e937b8bc9a9d43e81f7"
+  }
+}
