@@ -17,7 +17,7 @@
     "app:check": "npm run build:app && node ../scripts/run-editor-app-kit.mjs validate",
     "preview": "npm run build:app && node ../scripts/run-editor-app-kit.mjs preview",
     "test": "npm run build:types && node --test test/*.test.mjs",
-    "test:browser": "npm run build:app && node test/browser-smoke.mjs && node test/cubemap-browser.mjs && node test/media-browser.mjs",
+    "test:browser": "npm run build:app && node test/browser-smoke.mjs && node test/cubemap-browser.mjs && node test/media-browser.mjs && node test/tutorial-browser.mjs",
     "test:electron": "npm run build:app && node test/electron-smoke.mjs",
     "electron:start": "npm run build:app && electron .",
     "electron:pack": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-pack"

@@ -93,11 +93,11 @@ export class GlslEditor {
 
 export class WgslPreview {
   readonly view: EditorView;
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, label = '转换后的 WGSL 代码') {
     this.view = new EditorView({ parent, root: parent.getRootNode() as Document | ShadowRoot,
       state: EditorState.create({ extensions: [basicSetup, StreamLanguage.define(wgslParser), syntaxHighlighting(colors), editorTheme,
         EditorState.readOnly.of(true), EditorView.editable.of(false),
-        EditorView.contentAttributes.of({ 'aria-label': '转换后的 WGSL 代码', tabindex: '0' }),
+        EditorView.contentAttributes.of({ 'aria-label': label, tabindex: '0' }),
       ] }),
     });
   }

@@ -5,7 +5,7 @@
 <div id="app" aria-busy="true">
   <header class="topbar">
     <a class="brand" href="#gallery" aria-label="Shader Lab 首页"><img src="./assets/icon.svg" alt=""><span>haiyue<span class="brand-separator">/</span><strong>Shader Lab</strong></span></a>
-    <nav aria-label="主导航"><button id="nav-gallery" class="nav active">Gallery</button><button id="nav-editor" class="nav">编辑器</button></nav>
+    <nav aria-label="主导航"><button id="nav-gallery" class="nav active">Gallery</button><button id="nav-editor" class="nav">编辑器</button><button id="nav-tutorial" class="nav">教程</button></nav>
     <div class="topbar-right"><span class="engine-pill"><i></i> HAIYUE ENGINE</span><button id="help-button" class="quiet">使用指南 ↗</button></div>
   </header>
   <div id="notice" class="notice" role="status" hidden><span id="notice-text"></span><button id="dismiss-notice" aria-label="关闭提示">×</button></div>
@@ -17,6 +17,18 @@
     <section class="gallery-section"><div class="section-heading"><div><span class="eyebrow">START EXPLORING</span><h2>从灵感开始</h2></div><div class="example-preview-actions"><span class="muted">五个示例，五种可能。打开即可编辑。</span><button id="retry-example-previews" class="secondary compact" hidden>重试预览</button></div></div><div id="examples" class="card-grid"></div></section>
     <section class="gallery-section my-work"><div class="section-heading"><div><span class="eyebrow">YOUR WORKSPACE</span><h2>我的作品 <span id="project-count" class="count">0</span></h2></div><label class="search"><span>⌕</span><input id="gallery-search" type="search" placeholder="搜索作品" aria-label="搜索我的作品"></label></div><div id="saved-projects" class="card-grid"></div><div id="empty-gallery" class="empty-gallery"><span>◇</span><div><strong>下一个灵感，属于你。</strong><p>创建一个 Shader，或打开示例开始修改。点击「保存作品」后会显示在这里。</p></div><button id="empty-new" class="secondary">创建第一个作品 →</button></div></section>
     <footer><span>HAIYUE SHADER LAB</span><span>Code → light → something new.</span><span>本地创作 · 无需账号</span></footer>
+  </main>
+  <main id="tutorial" hidden>
+    <section class="tutorial-hero">
+      <div><span class="eyebrow">LEARN BY MAKING</span><h1>从一个圆，到一个世界。</h1><p>理解公式，画出形状，再让光线穿过你创造的空间。<br>循序渐进学习 WGSL、距离场与 Ray Marching（光线步进）。</p></div>
+      <div class="tutorial-facts"><span><strong>32</strong>章节</span><span><strong>8</strong>阶段</span><span><strong>8</strong>练习工程</span></div>
+    </section>
+    <nav id="tutorial-stages" aria-label="学习阶段"></nav>
+    <div class="tutorial-layout">
+      <aside class="tutorial-sidebar"><label for="tutorial-search">章节目录</label><input id="tutorial-search" type="search" placeholder="搜索主题、关键词或作者…" autocomplete="off"><p id="tutorial-results" class="muted" aria-live="polite"></p><nav id="tutorial-outline" aria-label="教程章节"></nav></aside>
+      <article id="tutorial-article" aria-labelledby="tutorial-title"></article>
+    </div>
+    <footer><span>SHADER LAB · 学习路线</span><span>原创讲解与 WGSL 练习 · 延伸阅读链接指向原作者</span><span>正文可离线阅读 · 外部文档需联网</span></footer>
   </main>
   <main id="workspace" hidden>
     <div class="project-bar"><div class="project-name"><button id="back-gallery" class="icon-button" aria-label="返回 Gallery">←</button><input id="project-name" maxlength="120" aria-label="作品名称"><span id="save-state" class="save-state">尚未保存</span></div><div class="project-actions"><button id="glsl-button" class="quiet">GLSL → WGSL</button><button id="export-project" class="secondary compact">导出工程 ↗</button><button id="save-project" class="primary compact">保存作品</button></div></div>

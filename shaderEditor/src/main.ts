@@ -9,6 +9,7 @@ import { GalleryStore, type GalleryItem } from './storage.js';
 import { examples } from './examples.js';
 import { createProject, passOf, parseProject, PASS_IDS, PASS_LABELS, LIMITS, CUBE_FACES, CUBE_FACE_LABELS, channelTypes, type PassId, type PreviewMode, type PreviewMesh, type ShaderProject } from './model.js';
 import { BUILTIN_TEXTURES, builtinTexture, type BuiltinTextureId } from './builtinTextures.js';
+import { TutorialPage } from './tutorialPage.js';
 import { createCubeUploader } from './cubeUpload.js';
 import { translateGlsl } from './glsl.js';
 
@@ -18,6 +19,7 @@ $<GESelect>('preview-scale').options = [{ value: '1', label: '100%' }, { value: 
 $<GESelect>('mesh-select').options = [{ value: 'sphere', label: '球体' }, { value: 'box', label: '立方体' }, { value: 'torus', label: '圆环' }];
 const workspace = new ShaderWorkspace(), store = new GalleryStore(), samples = examples();
 const uploadCube = createCubeUploader(workspace, compile);
+const tutorial = new TutorialPage(id => { setRoute('tutorial/' + id); $('tutorial-title').focus({ preventScroll: true }); $('tutorial-title').scrollIntoView({ block: 'start' }); }, project => { void run(() => open(project, true)); });
 const thumbnails = new Map<string, string>();
 const thumbnailFailures = new Set<string>();
 let exampleThumbnailJob: Promise<void> | undefined;
@@ -51,9 +53,14 @@ function download(bytes: BlobPart, name: string, type: string) {
 }
 function basename() { return workspace.document.state.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim() || 'shader'; }
 function setRoute(next: string) {
-  route = next; $('gallery').hidden = next !== 'gallery'; $('workspace').hidden = next !== 'editor';
-  $('nav-gallery').classList.toggle('active', next === 'gallery'); $('nav-editor').classList.toggle('active', next === 'editor');
-  workspace.runtime?.setVisible(next === 'editor'); history.replaceState(null, '', `#${next}`);
+  route = next.startsWith('tutorial') ? 'tutorial' : next;
+  $('gallery').hidden = route !== 'gallery'; $('workspace').hidden = route !== 'editor'; $('tutorial').hidden = route !== 'tutorial';
+  for (const page of ['gallery', 'editor', 'tutorial']) {
+    $('nav-' + page).classList.toggle('active', route === page);
+    if (route === page) $('nav-' + page).setAttribute('aria-current', 'page'); else $('nav-' + page).removeAttribute('aria-current');
+  }
+  if (route === 'tutorial') { tutorial.show(next.split('/')[1] ?? tutorial.currentId); next = 'tutorial/' + tutorial.currentId; }
+  workspace.runtime?.setVisible(route === 'editor'); history.replaceState(null, '', `#${next}`);
   window.scrollTo(0, 0);
   if (next === 'gallery') { renderGallery(); void generateExampleThumbnails(); }
 }
@@ -292,6 +299,13 @@ async function start() {
   bind('dismiss-notice', () => { $('notice').hidden = true; });
   bind('new-project', () => open(createProject())); bind('empty-new', () => open(createProject()));
   bind('hero-example', () => open(samples[0]!.project, true));
+  bind('nav-tutorial', () => setRoute('tutorial/' + tutorial.currentId));
+  window.addEventListener('hashchange', () => { void run(async () => {
+    const hash = location.hash.slice(1);
+    if (hash === 'tutorial' || hash.startsWith('tutorial/')) setRoute(hash);
+    else if (hash === 'editor') { if (!opened) await open(createProject()); else setRoute('editor'); }
+    else setRoute('gallery');
+  }); });
   bind('nav-gallery', () => setRoute('gallery')); bind('back-gallery', () => setRoute('gallery'));
   bind('retry-example-previews', generateExampleThumbnails);
   document.querySelector<HTMLAnchorElement>('.brand')!.onclick = event => { event.preventDefault(); setRoute('gallery'); };
@@ -336,11 +350,12 @@ async function start() {
   bind('gpu-retry', () => location.reload());
   window.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void run(save); } });
   window.addEventListener('beforeunload', event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; } });
-  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); wgslPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
+  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); tutorial.dispose(); wgslPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
   window.haiyueEditorHost?.onSaveAndClose(async () => { try { await save(); return !workspace.document.dirty; } catch { return false; } });
   try { saved = await store.list(); } catch (error) { notice(`无法读取 Gallery：${String(error)}。原有数据保留，可导入工程继续创作。`, true); }
-  const initialEditor = location.hash === '#editor'; renderGallery(); $('app').setAttribute('aria-busy', 'false');
-  if (initialEditor) await open(saved[0]?.project ?? createProject());
+  const initialRoute = location.hash.slice(1); renderGallery(); $('app').setAttribute('aria-busy', 'false');
+  if (initialRoute === 'editor') await open(saved[0]?.project ?? createProject());
+  else if (initialRoute === 'tutorial' || initialRoute.startsWith('tutorial/')) setRoute(initialRoute);
   else setRoute('gallery');
 }
 void run(start);
