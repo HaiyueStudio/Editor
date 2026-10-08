@@ -5,7 +5,7 @@ import { StreamLanguage, HighlightStyle, syntaxHighlighting, type StreamParser }
 import { tags } from '@lezer/highlight';
 import { setDiagnostics } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
-import type { PassId, ShaderDiagnostic } from './model.js';
+import type { CodeId, ShaderDiagnostic } from './model.js';
 import { glslParser } from './glslLanguage.js';
 
 export const BUILTINS = ['iResolution', 'iTime', 'iTimeDelta', 'iFrame', 'iFrameRate', 'iMouse', 'iDate', 'iSampleRate', 'iChannelResolution', 'iChannelTime', 'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3', 'iSampler', 'channel0', 'channel1', 'channel2', 'channel3'];
@@ -37,18 +37,18 @@ const colors = HighlightStyle.define([
 const editorTheme = EditorView.theme({ '&': { height: '100%', backgroundColor: '#13161d', color: '#d4dbe5', fontSize: '13px' }, '.cm-scroller': { fontFamily: '"Cascadia Code", "SFMono-Regular", Consolas, monospace', lineHeight: '1.85' }, '.cm-gutters': { backgroundColor: '#13161d', color: '#505d70', border: 'none' }, '.cm-activeLineGutter': { backgroundColor: '#202630', color: '#b5ef6b' }, '.cm-activeLine': { backgroundColor: '#1b202a80' }, '.cm-cursor': { borderLeftColor: '#b5ef6b' }, '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#354251' }, '.cm-content': { padding: '16px 0' }, '.cm-line': { padding: '0 20px' }, '.cm-tooltip': { backgroundColor: '#202630', color: '#d4dbe5', borderColor: '#3a4552' } }, { dark: true });
 export class CodeEditor {
   readonly view: EditorView;
-  private pass: PassId = 'image';
-  private states = new Map<PassId, EditorState>();
+  private pass: CodeId = 'image';
+  private states = new Map<CodeId, EditorState>();
   private replacing = false;
-  constructor(parent: HTMLElement, onChange: (pass: PassId, code: string) => void, compile: () => void) {
+  constructor(parent: HTMLElement, onChange: (pass: CodeId, code: string) => void, compile: () => void) {
     // Split panes use slots. Mount styles in the actual DOM root, not the split's
     // composed ShadowRoot, whose styles cannot reach slotted editor descendants.
     this.view = new EditorView({ parent, root: parent.getRootNode() as Document | ShadowRoot, state: this.createState('', onChange, compile) });
     this.onChange = onChange; this.compile = compile;
   }
-  private readonly onChange: (pass: PassId, code: string) => void;
+  private readonly onChange: (pass: CodeId, code: string) => void;
   private readonly compile: () => void;
-  private createState(code: string, onChange: (pass: PassId, code: string) => void, compile: () => void) {
+  private createState(code: string, onChange: (pass: CodeId, code: string) => void, compile: () => void) {
     return EditorState.create({ doc: code, extensions: [basicSetup, StreamLanguage.define(wgslParser), syntaxHighlighting(colors),
       autocompletion({ override: [context => { const word = context.matchBefore(/\w*/); return !word || word.from === word.to && !context.explicit ? null : { from: word.from, options: [...BUILTINS, 'vec2f', 'vec3f', 'vec4f', 'mainImage', 'sin', 'cos', 'tanh', 'mix', 'smoothstep', 'length', 'normalize', 'dot', 'textureSampleLevel'].map(label => ({ label, type: label.startsWith('i') ? 'variable' : 'function' })) }; }] }),
       Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => { compile(); return true; } }])),
@@ -56,7 +56,7 @@ export class CodeEditor {
       EditorView.updateListener.of(update => { if (update.docChanged && !this.replacing) onChange(this.pass, update.state.doc.toString()); }),
       editorTheme] });
   }
-  show(pass: PassId, code: string) {
+  show(pass: CodeId, code: string) {
     this.states.set(this.pass, this.view.state); this.pass = pass;
     let state = this.states.get(pass);
     if (!state || state.doc.toString() !== code) state = this.createState(code, this.onChange, this.compile);

@@ -1,4 +1,4 @@
-import type { ShaderPass } from './model.js';
+import type { ShaderPass, CodeId } from './model.js';
 import { resolveChannelBindings } from './channelBindings.js';
 
 // Product-owned runtime shader ABI. These are authoring wrappers, not generated Engine shaders.
@@ -39,9 +39,9 @@ fn channel1(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel1, iSampler,
 fn channel2(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel2, iSampler, vec2f(uv.x, 1.0 - uv.y), 0.0); }
 fn channel3(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel3, iSampler, vec2f(uv.x, 1.0 - uv.y), 0.0); }
 `;
-export function wrapShader(pass: ShaderPass) {
+export function wrapShader(pass: ShaderPass, common = '') {
   let header = HEADER;
-  resolveChannelBindings(pass).dimensions.forEach((dimension, index) => {
+  resolveChannelBindings(pass, common).dimensions.forEach((dimension, index) => {
     if (dimension !== 'cube') return;
     header = header.replace(`var iChannel${index}: texture_2d<f32>`, `var iChannel${index}: texture_cube<f32>`);
     header = header.replace(
@@ -65,7 +65,16 @@ export function wrapShader(pass: ShaderPass) {
   }
   return mainImage(vec2f(position.x, iResolution.y - position.y));
 }`;
-  return { code: prefix + pass.code + '\n' + suffix, lineOffset: prefix.split('\n').length - 1, lines: pass.code.split('\n').length };
+  const commonPrefix = common ? common + '\n' : '';
+  const commonOffset = prefix.split('\n').length - 1;
+  const commonLines = common ? common.split('\n').length : 0;
+  const lineOffset = commonOffset + commonLines, lines = pass.code.split('\n').length;
+  return { code: prefix + commonPrefix + pass.code + '\n' + suffix, lineOffset, lines,
+    sourceLocation(line: number): { pass: CodeId; line: number } {
+      if (common && line > commonOffset && line <= lineOffset) return { pass: 'common', line: line - commonOffset };
+      return { pass: pass.id, line: Math.max(1, Math.min(lines, line - lineOffset)) };
+    } };
+
 }
 export const PRESENT = VERTEX + `
 @group(0) @binding(0) var hy_image: texture_2d<f32>;

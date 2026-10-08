@@ -38,19 +38,26 @@ export function channelRequirements(code: string) {
 export function cubemapRequirements(types: readonly ChannelDimension[]) {
   return types.flatMap((type, index) => type === 'cube' ? [`// @haiyue-channel iChannel${index} cube\n`] : []).join('');
 }
-export function resolveChannelBindings(pass: ShaderPass) {
-  const required = channelRequirements(pass.code);
+export function resolveChannelBindings(pass: ShaderPass, common = '') {
+  const local = channelRequirements(pass.code), shared = channelRequirements(common);
+  const required = { types: local.types.map((type, i) => type ?? shared.types[i]), locations: local.locations.map((line, i) => local.types[i] ? line : shared.locations[i]!), errors: local.errors };
+  const owner = (i: number) => local.types[i] ? pass.id : 'common' as const;
   const dimensions: ChannelDimension[] = pass.channels.map(c => c.kind === 'cubemap' ? 'cube' : '2d');
   const diagnostics: ShaderDiagnostic[] = required.errors.map(error => ({ ...error, pass: pass.id, severity: 'error' }));
+  diagnostics.push(...shared.errors.map(error => ({ ...error, pass: 'common' as const, severity: 'error' as const })));
   required.types.forEach((type, index) => {
+    if (local.types[index] && shared.types[index] && local.types[index] !== shared.types[index]) {
+      diagnostics.push({ pass: pass.id, severity: 'error', line: local.locations[index]!, column: 1, message: `${PASS_LABELS[pass.id]} 的 iChannel${index} 类型与 Common 中声明的类型冲突。` });
+      return;
+    }
     if (!type) return;
     const channel = pass.channels[index]!;
     if (channel.kind !== 'none' && dimensions[index] !== type) {
-      diagnostics.push({ pass: pass.id, severity: 'error', line: required.locations[index]!, column: 1,
+      diagnostics.push({ pass: owner(index), severity: 'error', line: required.locations[index]!, column: 1,
         message: `${PASS_LABELS[pass.id]} 的 iChannel${index} 需要${type === 'cube' ? '立方体贴图（Cubemap）' : '二维纹理'}，当前绑定的是${channel.kind === 'buffer' ? PASS_LABELS[channel.pass] + '（二维 Buffer）' : channel.kind === 'cubemap' ? '立方体贴图' : channel.kind === 'keyboard' ? '键盘纹理' : channel.kind === 'video' ? '视频纹理' : '普通二维图片'}。${type === 'cube' ? '请在该通道选择或上传六面立方体贴图。' : '请选择普通图片或 Buffer。'}` });
     } else {
       dimensions[index] = type;
-      if (channel.kind === 'none' && type === 'cube') diagnostics.push({ pass: pass.id, severity: 'warning', line: required.locations[index]!, column: 1,
+      if (channel.kind === 'none' && type === 'cube') diagnostics.push({ pass: owner(index), severity: 'warning', line: required.locations[index]!, column: 1,
         message: `${PASS_LABELS[pass.id]} 的 iChannel${index} 尚未绑定立方体贴图（Cubemap），暂用黑色占位。请在该通道选择或上传六面图片后查看环境反射效果。` });
     }
   });

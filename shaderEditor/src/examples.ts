@@ -43,12 +43,13 @@ export function examples(): Example[] {
   let color = vec3f(0.55, 0.18, 1.0) * ring + vec3f(0.05, 0.7, 0.85) * spoke;
   return vec4f(color * smoothstep(0.02, 0.5, r), 1.0);
 }`);
-  const feedback = make('feedback', 'Afterglow', 'Buffer A 读取自身上一帧，留下缓慢消散的轨迹。拖动鼠标可以绘制光点。', `fn mainImage(fragCoord: vec2f) -> vec4f {
-  return vec4f(channel0(fragCoord / iResolution.xy).rgb, 1.0);
+  const feedback = make('feedback', 'Afterglow', 'Buffer A 与 Image 共用 Common 中的坐标函数；反馈留下缓慢消散的轨迹。拖动鼠标可以绘制光点。', `fn mainImage(fragCoord: vec2f) -> vec4f {
+  return vec4f(channel0(sharedUV(fragCoord)).rgb, 1.0);
 }`);
+  feedback.common = `// Buffer A 和 Image 都可直接调用这个函数。\nfn sharedUV(coord: vec2f) -> vec2f {\n  return coord / iResolution.xy;\n}`;
   const buffer = passOf(feedback, 'buffer-a'); buffer.enabled = true; buffer.channels[0] = { kind: 'buffer', pass: 'buffer-a' };
   buffer.code = `fn mainImage(fragCoord: vec2f) -> vec4f {
-  let uv = fragCoord / iResolution.xy;
+  let uv = sharedUV(fragCoord);
   let old = channel0((uv - vec2f(0.5)) * 1.004 + vec2f(0.5)).rgb * 0.982;
   var center = vec2f(0.5) + 0.25 * vec2f(sin(iTime * 1.3), cos(iTime * 1.7));
   if (iMouse.z > 0.0) { center = iMouse.xy / iResolution.xy; }

@@ -7,9 +7,10 @@ import type { BufferPreview } from './bufferPreviews.js';
 import { CodeEditor, GlslEditor, WgslPreview } from './codeEditor.js';
 import { GalleryStore, type GalleryItem } from './storage.js';
 import { examples } from './examples.js';
-import { createProject, passOf, parseProject, PASS_IDS, PASS_LABELS, LIMITS, CUBE_FACES, CUBE_FACE_LABELS, channelTypes, type PassId, type PreviewMode, type PreviewMesh, type ShaderProject } from './model.js';
+import { createProject, codeOf, passOf, parseProject, PASS_IDS, PASS_LABELS, LIMITS, CUBE_FACES, CUBE_FACE_LABELS, channelTypes, type CodeId, type PassId, type PreviewMode, type PreviewMesh, type ShaderProject } from './model.js';
 import { BUILTIN_TEXTURES, builtinTexture, type BuiltinTextureId } from './builtinTextures.js';
 import { TutorialPage } from './tutorialPage.js';
+import { findTutorial } from './tutorialContent.js';
 import { createCubeUploader } from './cubeUpload.js';
 import { translateGlsl } from './glsl.js';
 
@@ -23,11 +24,12 @@ const tutorial = new TutorialPage(id => { setRoute('tutorial/' + id); $('tutoria
 const thumbnails = new Map<string, string>();
 const thumbnailFailures = new Set<string>();
 let exampleThumbnailJob: Promise<void> | undefined;
-let saved: GalleryItem[] = [], currentPass: PassId = 'image', opened = false, route = 'gallery', disposed = false;
+let saved: GalleryItem[] = [], currentPass: CodeId = 'image', opened = false, route = 'gallery', disposed = false;
 let revision = 0, openedRevision = 0, openSequence = 0, autoTimer: ReturnType<typeof setTimeout> | undefined;
 let runtimePromise: Promise<ShaderRuntime> | undefined, openPromise: Promise<void> = Promise.resolve();
 let saveQueue: Promise<unknown> = Promise.resolve(), uploadIndex = 0, translation: string | null = null;
 let controlSignature = '', compileSequence = 0;
+let editorReturnRoute = 'gallery';
 let bufferPreviews: BufferPreview[] = [];
 const editor = new CodeEditor($('code-editor'), (pass, code) => { void run(() => workspace.document.setCode(pass, code)); }, () => { void run(compile); });
 const wgslPreview = new WgslPreview($('glsl-result'));
@@ -38,6 +40,7 @@ const glslEditor = new GlslEditor($('glsl-source'), () => {
 }, translateSource);
 
 function translateSource() {
+  if (currentPass === 'common') return;
   const result = translateGlsl(glslEditor.value, { channelTypes: channelTypes(passOf(workspace.document.state as ShaderProject, currentPass).channels) }); translation = result.code; $<HTMLButtonElement>('apply-glsl').disabled = !translation;
   wgslPreview.show(result.code ?? '');
   $('glsl-messages').textContent = result.code ? result.warnings.join('\n') : result.diagnostics.map(d => `${d.line}:${d.column} ${d.message}`).join('\n');
@@ -53,6 +56,11 @@ function download(bytes: BlobPart, name: string, type: string) {
 }
 function basename() { return workspace.document.state.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim() || 'shader'; }
 function setRoute(next: string) {
+  if (next === 'editor' && route !== 'editor') {
+    editorReturnRoute = route === 'tutorial' ? 'tutorial/' + tutorial.currentId : 'gallery';
+  }
+  const backLabel = editorReturnRoute.startsWith('tutorial/') ? '返回教程 · ' + findTutorial(editorReturnRoute.slice(9)).title : '返回 Gallery';
+  $('back-gallery').setAttribute('aria-label', backLabel); $('back-gallery').title = backLabel;
   route = next.startsWith('tutorial') ? 'tutorial' : next;
   $('gallery').hidden = route !== 'gallery'; $('workspace').hidden = route !== 'editor'; $('tutorial').hidden = route !== 'tutorial';
   for (const page of ['gallery', 'editor', 'tutorial']) {
@@ -98,11 +106,11 @@ function renderDiagnostics() {
   editor.diagnostics(diagnostics);
   $('compile-state').textContent = diagnostics.some(d => d.severity === 'error') ? '编译失败 · 保留上次预览' : workspace.compiledRevision === workspace.document.revision ? '● 已编译' : '● 代码已修改';
 }
-function selectPass(pass: PassId) { currentPass = pass; editor.show(pass, passOf(workspace.document.state as ShaderProject, pass).code); controlSignature = ''; sync(); renderDiagnostics(); }
+function selectPass(pass: CodeId) { currentPass = pass; editor.show(pass, codeOf(workspace.document.state, pass)); controlSignature = ''; sync(); renderDiagnostics(); }
 function sync() {
-  const p = workspace.document.state, pass = passOf(p as ShaderProject, currentPass);
+  const p = workspace.document.state, source = codeOf(p, currentPass);
   if (document.activeElement !== $('project-name')) $<HTMLInputElement>('project-name').value = p.name;
-  if (editor.view.state.doc.toString() !== pass.code) editor.show(currentPass, pass.code);
+  if (editor.view.state.doc.toString() !== source) editor.show(currentPass, source);
   $<GESelect>('preview-scale').value = String(p.preview.scale);
   $<GESelect>('mesh-select').value = p.preview.mesh;
   $('mode-canvas').setAttribute('aria-pressed', String(p.preview.mode === 'canvas'));
@@ -111,22 +119,32 @@ function sync() {
   const signature = JSON.stringify([currentPass, p.passes.map(item => [item.id, item.enabled, item.channels]), p.assets.map(a => [a.id, a.name])]);
   if (signature !== controlSignature) {
     controlSignature = signature; const tabs = $('pass-tabs'); tabs.replaceChildren();
-    for (const id of ['image', ...PASS_IDS.filter(p => p !== 'image')] as PassId[]) {
-      const b = button(PASS_LABELS[id], () => selectPass(id), passOf(p as ShaderProject, id).enabled ? 'enabled' : '');
+    for (const id of ['common', 'image', ...PASS_IDS.filter(p => p !== 'image')] as CodeId[]) {
+      const b = button(PASS_LABELS[id], () => selectPass(id), id === 'common' || passOf(p as ShaderProject, id).enabled ? 'enabled' : '');
       b.dataset.pass = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(id === currentPass)); tabs.append(b);
     }
-    $('pass-enable-label').hidden = currentPass === 'image'; $<GECheckbox>('pass-enabled').checked = pass.enabled;
+    $('pass-enable-label').hidden = currentPass === 'image' || currentPass === 'common';
+    $<GECheckbox>('pass-enabled').checked = currentPass === 'common' || passOf(p as ShaderProject, currentPass).enabled;
+    $('common-help').hidden = currentPass !== 'common';
+    $('code-entry-label').textContent = currentPass === 'common' ? '共享函数 · 常量 · 结构体' : 'mainImage → vec4f';
+    $<HTMLButtonElement>('glsl-button').disabled = currentPass === 'common';
+    $('glsl-button').title = currentPass === 'common' ? 'Common 使用 WGSL 公共代码' : 'GLSL → WGSL';
     $('channel-pass-label').textContent = PASS_LABELS[currentPass].toUpperCase(); renderChannels();
   }
   if (workspace.compiledRevision !== workspace.document.revision) $('compile-state').textContent = '● 代码已修改 · Ctrl / ⌘ + Enter 运行';
 }
 function renderChannels() {
-  const p = workspace.document.state, pass = passOf(p as ShaderProject, currentPass), container = $('channels'); container.replaceChildren();
+  const p = workspace.document.state, container = $('channels'); container.replaceChildren();
   bufferPreviews = [];
+  if (currentPass === 'common') {
+    const hint = document.createElement('p'); hint.className = 'muted common-channel-help'; hint.textContent = 'Common 没有独立纹理通道。公共函数中的 channel0–3 使用调用它的 Buffer / Image 的绑定。'; container.append(hint);
+    workspace.runtime?.setBufferPreviews(p.id, bufferPreviews); return;
+  }
+  const targetPass = currentPass, pass = passOf(p as ShaderProject, targetPass);
   pass.channels.forEach((channel, index) => {
     const card = document.createElement('div'); card.className = 'channel-card'; card.dataset.channel = String(index);
     const top = document.createElement('div'); top.className = 'channel-top'; const label = document.createElement('span'); label.textContent = `iChannel${index}`;
-    const clear = button('×', async () => { workspace.setChannel(currentPass, index, { kind: 'none' }); await compile(); }); clear.setAttribute('aria-label', `清空 iChannel${index}`); top.append(label, clear);
+    const clear = button('×', async () => { workspace.setChannel(targetPass, index, { kind: 'none' }); await compile(); }); clear.setAttribute('aria-label', `清空 iChannel${index}`); top.append(label, clear);
     const body = document.createElement('div'); body.className = 'channel-body';
     if (channel.kind === 'image' || channel.kind === 'cubemap') {
       const asset = p.assets.find(a => a.id === channel.assetId)!;
@@ -161,10 +179,10 @@ function renderChannels() {
       ...p.assets.map(asset => ({ value: `${asset.kind ?? 'image'}:${asset.id}`, label: `${asset.kind === 'cubemap' ? 'Cubemap · ' : asset.kind === 'video' ? '视频 · ' : ''}${asset.name}` }))];
     select.value = channel.kind === 'buffer' ? channel.pass : (channel.kind === 'image' || channel.kind === 'cubemap' || channel.kind === 'video') ? `${channel.kind}:${channel.assetId}` : channel.kind === 'builtin' ? 'builtin:' + channel.texture : channel.kind;
     select.addEventListener('value-change', () => { void run(async () => {
-      const value = select.value; workspace.setChannel(currentPass, index, value === 'none' ? { kind: 'none' } : value === 'keyboard' ? { kind: 'keyboard' } : value.startsWith('builtin:') ? { kind: 'builtin', texture: value.slice(8) as BuiltinTextureId } : value.startsWith('video:') ? { kind: 'video', assetId: value.slice(6) } : value.startsWith('image:') ? { kind: 'image', assetId: value.slice(6) } : value.startsWith('cubemap:') ? { kind: 'cubemap', assetId: value.slice(8) } : { kind: 'buffer', pass: value as Exclude<PassId, 'image'> }); await compile();
+      const value = select.value; workspace.setChannel(targetPass, index, value === 'none' ? { kind: 'none' } : value === 'keyboard' ? { kind: 'keyboard' } : value.startsWith('builtin:') ? { kind: 'builtin', texture: value.slice(8) as BuiltinTextureId } : value.startsWith('video:') ? { kind: 'video', assetId: value.slice(6) } : value.startsWith('image:') ? { kind: 'image', assetId: value.slice(6) } : value.startsWith('cubemap:') ? { kind: 'cubemap', assetId: value.slice(8) } : { kind: 'buffer', pass: value as Exclude<PassId, 'image'> }); await compile();
     }); });
     const upload = button('↑ 上传图片', () => { uploadIndex = index; $<HTMLInputElement>('texture-input').click(); }, 'upload-channel');
-    const cube = button('↑ 上传立方体贴图', () => uploadCube(currentPass, index), 'upload-cubemap');
+    const cube = button('↑ 上传立方体贴图', () => uploadCube(targetPass, index), 'upload-cubemap');
     const video = button('↑ 上传视频', () => { uploadIndex = index; $<HTMLInputElement>('video-input').click(); }, 'upload-video');
     card.append(top, body, select, upload, video, cube); container.append(card);
   });
@@ -284,6 +302,7 @@ async function start() {
   workspace.platform.rpc.connect(window.haiyueEditorIPC);
   workspace.onCompiled = renderDiagnostics;
   workspace.onOpen = () => {
+    editorReturnRoute = route === 'tutorial' ? 'tutorial/' + tutorial.currentId : 'gallery';
     opened = true; openedRevision = workspace.document.revision; ++openSequence;
     const stored = saved.find(item => item.project.id === workspace.document.state.id);
     if (stored && JSON.stringify(stored.project) === JSON.stringify(workspace.document.state)) workspace.document.markSaved();
@@ -306,7 +325,13 @@ async function start() {
     else if (hash === 'editor') { if (!opened) await open(createProject()); else setRoute('editor'); }
     else setRoute('gallery');
   }); });
-  bind('nav-gallery', () => setRoute('gallery')); bind('back-gallery', () => setRoute('gallery'));
+  bind('nav-gallery', () => setRoute('gallery')); bind('back-gallery', () => {
+    setRoute(editorReturnRoute);
+    if (route === 'tutorial') {
+      $('tutorial-title').focus({ preventScroll: true });
+      $('tutorial-title').scrollIntoView({ block: 'start' });
+    }
+  });
   bind('retry-example-previews', generateExampleThumbnails);
   document.querySelector<HTMLAnchorElement>('.brand')!.onclick = event => { event.preventDefault(); setRoute('gallery'); };
   bind('nav-editor', async () => { if (!opened) await open(createProject()); else { setRoute('editor'); await ensureRuntime(); } });
@@ -326,7 +351,7 @@ async function start() {
   bind('mode-canvas', () => mode('canvas')); bind('mode-scene', () => mode('scene'));
   $('mesh-select').addEventListener('value-change', () => { void run(() => mode('scene')); });
   $('preview-scale').addEventListener('value-change', () => { void run(async () => { workspace.document.change(p => { p.preview.scale = Number($<GESelect>('preview-scale').value); }); await compile(); }); });
-  $('pass-enabled').addEventListener('checked-change', () => { void run(async () => { workspace.setEnabled(currentPass, $<GECheckbox>('pass-enabled').checked); await compile(); }); });
+  $('pass-enabled').addEventListener('checked-change', () => { void run(async () => { if (currentPass === 'common') return; workspace.setEnabled(currentPass, $<GECheckbox>('pass-enabled').checked); await compile(); }); });
   bind('play-pause', () => workspace.runtime?.setPlaying(!workspace.runtime.status().playing)); bind('reset-time', () => workspace.runtime?.reset()); bind('step-frame', () => workspace.runtime?.step());
   bind('reset-camera', () => workspace.runtime?.resetCamera());
   bind('fullscreen', () => document.fullscreenElement ? document.exitFullscreen() : $('viewport').requestFullscreen());
@@ -335,6 +360,7 @@ async function start() {
     const input = $<HTMLInputElement>(kind === 'video' ? 'video-input' : 'texture-input'), file = input.files?.[0]; input.value = ''; if (!file) return;
     if (kind === 'image' && (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > LIMITS.imageBytes)) throw new Error('请选择不超过 8 MB 的 PNG、JPEG 或 WebP 图片。');
     if (kind === 'video' && (!['video/mp4', 'video/webm'].includes(file.type) || file.size > LIMITS.videoBytes)) throw new Error('请选择不超过 24 MB 的 MP4 或 WebM 视频。');
+    if (currentPass === 'common') return;
     const pass = currentPass, index = uploadIndex;
     const resource = workspace.api.putResource(new Uint8Array(await file.arrayBuffer()));
     try {

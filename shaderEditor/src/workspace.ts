@@ -1,6 +1,6 @@
 import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import type { EditorDocumentAdapter, EditorJsonValue, EditorOperationSchema } from '@haiyue/editor-plugin-sdk';
-import { createProject, passOf, parseProject, validateProject, LIMITS, PASS_IDS, CUBE_FACES, channelTypes, type CubeFace, type PassId, type Channel, type PreviewMode, type PreviewMesh, type ShaderProject, type ShaderDiagnostic } from './model.js';
+import { createProject, codeOf, passOf, parseProject, validateProject, LIMITS, PASS_IDS, CUBE_FACES, channelTypes, type CubeFace, type CodeId, type PassId, type Channel, type PreviewMode, type PreviewMesh, type ShaderProject, type ShaderDiagnostic } from './model.js';
 import { BUILTIN_TEXTURES } from './builtinTextures.js';
 import { uploadVideo, uploadImage, uploadCubemap, type FaceUpload } from './textureUpload.js';
 import { translateGlsl } from './glsl.js';
@@ -18,9 +18,13 @@ export class ShaderDocument implements EditorDocumentAdapter<ShaderProject> {
   serialize() { return structuredClone(this.project); }
   replace(project: ShaderProject) { this.project = validateProject(project); this.revision++; this.emit(); }
   change(change: (project: ShaderProject) => void) { const next = this.serialize(); change(next); next.updatedAt = new Date().toISOString(); this.replace(next); }
-  setCode(pass: PassId, code: string) {
+  setCode(pass: CodeId, code: string) {
     if (typeof code !== 'string' || code.length > LIMITS.code) throw new Error('单个 Pass 代码不能超过 100 KB。');
-    if (passOf(this.project, pass).code === code) return;
+    if (codeOf(this.project, pass) === code) return;
+    if (pass === 'common') {
+      this.project = { ...this.project, common: code, updatedAt: new Date().toISOString() };
+      this.revision++; this.emit(); return;
+    }
     this.project = { ...this.project, updatedAt: new Date().toISOString(), passes: this.project.passes.map(p => p.id === pass ? { ...p, code } : p) };
     this.revision++; this.emit();
   }
@@ -88,8 +92,8 @@ export class ShaderWorkspace {
       this.platform.operations.register({ ownerId: 'shader.core', descriptor: { id: `shader.${id}`, version: 1, title: id, target: 'document', documentKinds: ['haiyue.shader'], access, input, output: { type: 'json' } }, prepare, commit, rollback: value => rollback?.(value) });
     };
     register('query', empty, 'read', () => null, () => json({ project: { id: this.document.state.id, name: this.document.state.name }, revision: this.document.revision, compiledRevision: this.compiledRevision,
-      passes: this.document.state.passes, assets: this.document.state.assets.map(asset => ({ id: asset.id, name: asset.name, kind: asset.kind ?? 'image' })), preview: this.document.state.preview, diagnostics: this.diagnostics, runtime: this.runtime?.status() ?? null }));
-    register('code.set', { type: 'object', properties: { pass, code }, required: ['pass', 'code'] }, 'write', p => p, p => { this.document.setCode(p.pass as PassId, p.code as string); return { revision: this.document.revision }; });
+      common: this.document.state.common, passes: this.document.state.passes, assets: this.document.state.assets.map(asset => ({ id: asset.id, name: asset.name, kind: asset.kind ?? 'image' })), preview: this.document.state.preview, diagnostics: this.diagnostics, runtime: this.runtime?.status() ?? null }));
+    register('code.set', { type: 'object', properties: { pass: { type: 'string', enum: ['common', ...PASS_IDS] }, code }, required: ['pass', 'code'] }, 'write', p => p, p => { this.document.setCode(p.pass as CodeId, p.code as string); return { revision: this.document.revision }; });
     register('pass.enable', { type: 'object', properties: { pass, enabled: { type: 'boolean' } }, required: ['pass', 'enabled'] }, 'write', p => p, p => { this.setEnabled(p.pass as PassId, p.enabled as boolean); return { revision: this.document.revision }; });
     register('channel.set', { type: 'object', properties: { pass, index: { type: 'integer', minimum: 0, maximum: 3 }, channel: { type: 'json' } }, required: ['pass', 'index', 'channel'] }, 'write', p => p,
       p => { this.setChannel(p.pass as PassId, p.index as number, p.channel as Channel); return { revision: this.document.revision }; });

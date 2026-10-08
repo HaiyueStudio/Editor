@@ -111,7 +111,7 @@ export class ShaderRuntime {
           pass: pass.id, severity: 'warning', line: 1, column: 1,
           message: '当前 GPU 不支持 32 位浮点纹理过滤，Buffer 已使用 16 位兼容模式。依赖精确相机或位置数据的历史帧效果可能出现拖影。',
         });
-        const binding = resolveChannelBindings(pass);
+        const binding = resolveChannelBindings(pass, snapshot.common);
         result.diagnostics.push(...binding.diagnostics);
         if (binding.diagnostics.some(d => d.severity === 'error')) continue;
         const channelLayout = device.createBindGroupLayout({ entries: [
@@ -120,15 +120,15 @@ export class ShaderRuntime {
             texture: { sampleType: 'float' as const, viewDimension: dimension } })),
         ] });
         const layout = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.emptyLayout, channelLayout] });
-        const wrapped = wrapShader(pass);
+        const wrapped = wrapShader(pass, snapshot.common);
         device.pushErrorScope('validation');
         const module = device.createShaderModule({ label: `ShaderEditor.${pass.id}`, code: wrapped.code });
         // Pop synchronously so overlapping authoring requests cannot interleave error scopes.
         const scopedError = device.popErrorScope();
         const info = await module.getCompilationInfo();
         const validation = await scopedError;
-        result.diagnostics.push(...info.messages.map(m => ({ pass: pass.id, severity: m.type,
-          message: channelDiagnostic(m.message, pass), line: Math.max(1, Math.min(wrapped.lines, m.lineNum - wrapped.lineOffset)), column: m.linePos || 1 })));
+        result.diagnostics.push(...info.messages.map(m => ({ ...wrapped.sourceLocation(m.lineNum), severity: m.type,
+          message: channelDiagnostic(m.message, pass), column: m.linePos || 1 })));
         if (validation && !info.messages.some(m => m.type === 'error')) result.diagnostics.push({ pass: pass.id, severity: 'error', message: validation.message, line: 1, column: 1 });
         if (validation || info.messages.some(m => m.type === 'error')) continue;
         try {
@@ -140,6 +140,13 @@ export class ShaderRuntime {
           result.diagnostics.push({ pass: pass.id, severity: 'error', message: String(error), line: 1, column: 1 });
         }
       }
+      // A syntax error in Common is seen by every enabled pipeline; show it once.
+      const seenCommon = new Set<string>();
+      result.diagnostics = result.diagnostics.filter(d => {
+        if (d.pass !== 'common') return true;
+        const key = JSON.stringify([d.severity, d.line, d.column, d.message]);
+        if (seenCommon.has(key)) return false; seenCommon.add(key); return true;
+      });
       if (result.diagnostics.some(d => d.severity === 'error')) throw new CompileError(result.diagnostics);
       const used = new Set(snapshot.passes.filter(p => p.enabled).flatMap(p => p.channels.flatMap(c => c.kind === 'image' || c.kind === 'cubemap' || c.kind === 'video' ? [c.assetId] : [])));
       let pixels = 0;
@@ -319,6 +326,7 @@ export class ShaderRuntime {
       const r = this.canvas.getBoundingClientRect();
       this.mouse[0] = Math.max(0, Math.min(this.width, (event.clientX - r.left) / r.width * this.width));
       this.mouse[1] = Math.max(0, Math.min(this.height, (r.bottom - event.clientY) / r.height * this.height));
+      if (this.mode === 'canvas') this.dirty = true;
     };
     this.canvas.addEventListener('pointerdown', event => {
       if (event.button !== 0) return;
@@ -327,7 +335,7 @@ export class ShaderRuntime {
       this.mouse[2] = Math.max(0.0001, this.mouse[0]!); this.mouse[3] = Math.max(0.0001, this.mouse[1]!);
     }, options);
     this.canvas.addEventListener('pointermove', move, options);
-    const up = (event: PointerEvent) => { if (event.pointerId !== this.pointer) return; this.pressed = false; this.mouse[2] = -Math.abs(this.mouse[2]!); this.mouse[3] = -Math.abs(this.mouse[3]!); };
+    const up = (event: PointerEvent) => { if (event.pointerId !== this.pointer) return; this.pressed = false; this.mouse[2] = -Math.abs(this.mouse[2]!); this.mouse[3] = -Math.abs(this.mouse[3]!); if (this.mode === 'canvas') this.dirty = true; };
     this.canvas.addEventListener('pointerup', up, options); this.canvas.addEventListener('pointercancel', up, options); this.canvas.addEventListener('lostpointercapture', up, options);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseKeys(); this.syncVideos(); if (document.hidden) this.engine.stop(); else if (this.visible && !this.failed) this.engine.run(); }, options);
   }
