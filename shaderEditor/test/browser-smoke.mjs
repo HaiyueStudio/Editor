@@ -100,7 +100,7 @@ const report = await runEditorBrowserScenario({root, route:'shaderEditor/app-dis
     await waitFor(()=>evaluate('shaderEditor.getProject().passes[4].code.includes("// edited inside split pane")'),'slotted CodeMirror editing');
     assert.equal(await evaluate('getComputedStyle(document.querySelector(".cm-scroller")).display'),'flex');
     const storedRatio = await splitRatio('workspace-split');
-    assert.equal(await evaluate('document.querySelectorAll("ge-select").length'),6);
+    assert.equal(await evaluate('document.querySelectorAll("ge-select").length'),8);
     const optionColors = await evaluate(`(()=>{const s=${el('preview-scale')}.shadowRoot.querySelector('select'); return Array.from(s.options).map(o=>{const c=getComputedStyle(o);return {foreground:c.color,background:c.backgroundColor,scheme:getComputedStyle(s).colorScheme};});})()`);
     assert.ok(optionColors.every(c=>c.scheme==='dark' && ((c.background==='rgb(28, 34, 44)' && c.foreground==='rgb(233, 237, 243)') || (c.background==='rgb(53, 71, 41)' && c.foreground==='rgb(216, 247, 183)'))),JSON.stringify(optionColors));
     const selectScale = async key => {
@@ -120,6 +120,7 @@ const report = await runEditorBrowserScenario({root, route:'shaderEditor/app-dis
     await waitFor(()=>evaluate(`${el('auto-run')}.checked && !${el('compile')}.disabled`),'shared auto-run checkbox');
     await click(`${el('auto-run')}.shadowRoot.querySelector('label')`);
     assert.equal(await evaluate(`${el('auto-run')}.checked`),false);
+    await call('shader.pass.enable',{pass:'buffer-a',enabled:false});
     await click('document.querySelector("#pass-tabs [data-pass=buffer-a]")');
     await click(`${el('pass-enabled')}.shadowRoot.querySelector('label')`);
     await waitFor(()=>evaluate('shaderEditor.getProject().passes[0].enabled && !document.getElementById("compile").disabled'),'shared Pass checkbox enables buffer');

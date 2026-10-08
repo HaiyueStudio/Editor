@@ -83,7 +83,7 @@ test('invalid increment targets and malformed declarators fail at the original s
     ['float f=0.0; ++(f+1.0);', /可写变量/],
     ['bool b=true; b++;', /整数或浮点/],
     ['float a=0.0,a=1.0;', /变量.*重复/],
-    ['float a=0.0,b[2];', /数组/],
+    ['float a=0.0,b[];', /数组/],
     ['const float a=0.0,b;', /初始值/],
     ['float a=0.0,;', /标识符/],
   ]) {

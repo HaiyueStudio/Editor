@@ -109,7 +109,7 @@ Image 使用所提供 msdf.png 的 Alpha 有符号距离绘制字形（小于 0.
 | `iFrameRate` | `f32`，本次模拟步长的倒数，暂停时为 0 |
 | `iMouse` | `vec4f`，xy 为左键拖动位置；zw 为按下位置，松开后为负；左下角像素坐标 |
 | `iDate` | `vec4f`，本地年、月（1–12）、日、当日秒数 |
-| `iSampleRate` | `f32(44100)`，保留值；当前不支持音频输入 |
+| `iSampleRate` | `f32(44100)`，Sound 合成采样率；当前不支持音频输入 |
 | `iChannelResolution` | `array<vec3f, 4>`，空通道为零 |
 | `iChannelTime` | `array<f32, 4>`，Buffer 对应帧时间；视频为当前播放时间；静态图片和键盘为 0 |
 | `iChannel0`–`iChannel3` | 根据通道绑定为 `texture_2d<f32>` 或 `texture_cube<f32>` |
@@ -224,8 +224,9 @@ Cubemap 类型还会写入生成 WGSL 顶部的 `// @haiyue-channel iChannel0 cu
 [GLSL ES 三元运算规则](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html#expressions)：
 条件必须是 `bool` 标量，两分支类型一致；支持标量、向量、矩阵和 `void` 函数调用结果，
 不能直接选择 `sampler2D` / `samplerCube`。结果不可作为赋值或 `out/inout` 目标。
-运行时生成包含 `if/else` 的辅助函数，只计算一次条件且仅执行选中分支；
-分支中的增减、纹理采样、`out/inout` 回写和 `discard` 都保留原执行位置。
+转换器仅对能证明可安全提前求值的标量/向量分支生成紧凑 `select`：条件也必须安全，支持字面量、变量读取、构造、swizzle、白名单算术/比较，以及除以已知不小于 1 的有限常量。未知函数、动态下标、采样、可能不安全的算术仍保守处理。
+其他运行时三元表达式生成包含 `if/else` 的辅助函数，只计算一次条件且仅执行选中分支；
+分支中的增减、纹理采样、`out/inout` 回写和 `discard` 都保留原执行位置。不能无条件用 `select` 替换所有三元表达式，因为它会提前求值两个分支。
 全局 `const` 保持 WGSL 常量表达式；矩阵按列选择，字面量布尔条件直接保留选中分支。
 
 支持 GLSL `isnan` / `isinf`：`float` 返回 `bool`，`vec2/vec3/vec4` 返回对应的
@@ -303,7 +304,7 @@ GLSL 未写 `default` 时补空分支。共享的分支变量使用独立名称�
 声明时构造、整体复制、嵌套成员读写、swizzle/索引、自增/复合赋值、函数参数/返回值、
 重载及 `out/inout`。结构体可在全局或块内定义，局部类型使用独立 WGSL 名称并保持作用域；
 支持同类型的 `==/!=` 比较及三元选择。未初始化值沿用 WGSL 零值，勿依赖 GLSL 未定义值。
-结构体构造按声明顺序为每个成员传入一个匹配类型的值，不支持数组成员、采样器成员、
+结构体构造按声明顺序为每个成员传入一个匹配类型的值，数组成员已支持，不支持采样器成员、
 匿名结构体或在成员列表里直接定义另一结构体（请先定义内部类型，再作为成员使用）。
 
 GLSL 标识符若与 [WGSL 关键字或保留字](https://www.w3.org/TR/WGSL/#reserved-words)冲突，
@@ -311,11 +312,32 @@ GLSL 标识符若与 [WGSL 关键字或保留字](https://www.w3.org/TR/WGSL/#re
 结构体及辅助函数采用独立生成名称。原始 GLSL、宏、注释和 `reference` 等不同标识符不会被文本替换。
 
 **不是完整 GLSL 编译器**：`#include`、`#version`、`#extension`、`#line` 等其他预处理指令、
-可变参数宏、`#` 字符串化、`##` 标记拼接、数组声明、
-音频、视频、动态 Cubemap 渲染 Pass、全景图自动转换及 Shadertoy 链接自动抓取尚未支持。
+可变参数宏、`#` 字符串化、`##` 标记拼接、运行时长度数组及采样器数组、
+音频输入、动态 Cubemap 渲染 Pass、全景图自动转换及 Shadertoy 链接自动抓取尚未支持。Sound 音频输出与上传视频输入已支持。
 辅助函数须先定义或声明原型再调用；暂不支持重载内置函数。遇到不支持的语法返回原始 GLSL 行列和说明，不应用部分输出。
 转换后的代码仍必须通过 GPU 的 WGSL 编译；浮点计算、纹理颜色空间或算法的差异需要作者检查。
 多 Pass 源码需分别导入，纹理需在通道面板重新配置。
+
+## GLSL 数组
+
+支持全局/局部定长数组、const 数组、结构体数组及数组成员、数组参数（含 out/inout）和返回值。
+声明可写为 `float a[3]` 或 `float[3] a`；逗号分隔变量分别保留自己的维度。
+
+```glsl
+const int N = 3;
+const float weights[N] = float[](0.2, 0.3, 0.5);
+vec2 offsets[] = vec2[](vec2(-1.0, 0.0), vec2(1.0, 0.0));
+float grid[2][3];
+```
+
+分别生成 `array<f32, 3>`、`array<vec2f, 2>` 和 `array<array<f32, 3>, 2>`。
+支持 `T[N](...)` / `T[](...)` 构造、数组花括号初始化、整体赋值、同类型比较及三元选择。
+`a.length()` 返回该维度的定长大小；动态索引、自增、swizzle、矩阵元素及 out/inout 写回保留索引的求值次数。
+长度必须是可计算的正整数常量（支持宏、const、算术），省略长度时必须由初始化表达式推断。
+数组参数和返回值需明确长度，重载按元素类型及各维长度精确匹配。
+最多 8 维、65536 个元素；不支持运行时长度、未初始化且省略长度的声明、sampler 数组。
+未初始化数组沿用 WGSL 零值；GLSL 中未初始化值和越界访问不可依赖。
+验证：`test/glsl-arrays.test.mjs` 与 `test/arrays-browser.mjs`。
 
 ## API / IPC
 
@@ -353,7 +375,9 @@ api.releaseResource(output.resourceId);
 | 操作 | 参数 / 返回 |
 | --- | --- |
 | `shader.query` | `{}`；`common` 公共源码、Pass、代码、通道、资源摘要、编译诊断和运行状态 |
-| `shader.code.set` | `{pass, code}` |
+| `shader.glsl.apply` | `{pass, code}`；导入 Common / Image / Buffer / Sound GLSL，保存源码并更新关联 Pass |
+| `shader.code.set` | `{pass, code}`；pass 可为 Common、Image、Buffer 或 `sound`（ID 使用小写） |
+| `shader.pass.add` | `{pass}`；添加 Buffer A–D、Sound 或 Common 页签，渲染 Pass 自动启用；API 调用不解锁音频 |
 | `shader.pass.enable` | `{pass, enabled}` |
 | `shader.channel.set` | `{pass, index:0..3, channel:{kind:'none'\|'image'\|'cubemap'\|'buffer'\|'builtin'\|'video'\|'keyboard', assetId?, pass?, texture?}}` |
 | `shader.texture.upload` | `{resourceId, name, mimeType}`；返回 `assetId`，随后用 channel.set 绑定 |
@@ -366,7 +390,10 @@ api.releaseResource(output.resourceId);
 | `shader.playback.reset`, `shader.playback.step`, `shader.camera.reset` | `{}` |
 | `shader.project.open` | `{resourceId}`；导入完整工程到当前文档；UI 会显示编辑页并尝试编译 |
 | `shader.project.export` | `{}`；返回完整工程的 `{resourceId, byteLength}` |
-| `shader.glsl.translate` | `{code, pass?}`；只翻译，不修改代码；传入 pass 时使用该 Pass 的通道类型，否则根据源码推断 |
+| `shader.glsl.translate` | `{code, pass?}`；`pass:'sound'` 转换 mainSound；只翻译，不修改代码；传入 pass 时使用该 Pass 的通道类型，否则根据源码推断 |
+| `shader.sound.configure` | `{duration?:1..120, volume?:0..1}`；时长修改后重新 compile，音量立即应用 |
+| `shader.sound.export` | `{}`；上次成功合成的 PCM16 双声道 WAV 资源句柄与 mimeType |
+| `shader.sound.audible` | `{enabled:false}` 关闭试听；首次开启需用户点击界面的“开启声音”，随后可用 playback.set 控制 |
 | `shader.image.read` | `{}`；返回 RGBA8 原始像素资源句柄、宽高及 `origin:'top-left'` |
 
 Pass ID 为 `image`、`buffer-a`、`buffer-b`、`buffer-c`、`buffer-d`。
@@ -442,4 +469,42 @@ IQ 文章为原作者延伸阅读链接，未转载原文；本地正文和代�
 两个体素练习使用同一个有限世界与 DDA 遍历器：先以 2D 高度函数堆叠方块，再以 3D 密度阈值挖洞，展示同一列的实体—空洞—实体。
 体素示例默认 50% 预览分辨率；这是一种教学用程序化地形，不包含游戏区块存储、物理或建造系统。
 
-Common 支持相同的 API / IPC 写入：`shader.code.set` 的 `pass` 可为 `common`；`shader.query` 返回 `common`。`shader.pass.enable` 与 `shader.channel.set` 仅接受渲染 Pass，不能对 Common 配置通道或执行开关。Common 编辑器使用 WGSL；GLSL 转换器仍按单个完整 Pass 转换。
+Common 支持相同的 API / IPC 写入：`shader.code.set` 的 `pass` 可为 `common`；`shader.query` 返回 `common` 和当前 `tabs`。`shader.pass.enable` 与 `shader.channel.set` 仅接受渲染 Pass，不能对 Common 配置通道或执行开关。Common 可通过 GLSL → WGSL 导入公共定义，无需入口函数。先导入 Common，再导入各个 Pass；转换时合并 Common 的宏、常量、结构体、数组和辅助函数，支持 Image、Buffer 与 Sound。通过转换窗口修改 Common 后，已导入的 Pass 会从保存的 GLSL 重新转换。工程保留 `commonGlsl` 和各 Pass 的 `glsl` 原文；直接编辑某个模块的 WGSL 会解除该模块与 GLSL 原文的关联。原生 WGSL Pass 可以调用转换结果中显示的 Common 函数名。`shader.glsl.translate({pass:"common",code})` 仅预览，`shader.glsl.apply({pass,code})` 应用并保存关联源码。
+
+### Sound 音频输出
+
+新作品只显示 Image 页签。点击页签旁的“＋”，可以按需添加 Buffer A–D、Sound 或 Common；已有代码、通道引用和启用的 Pass 会自动显示。添加记录随工程保存，空 Common 与暂时禁用的 Pass 也会保留页签，旧工程会自动识别已有内容。
+
+Sound 是独立的音频 Pass，带有短琶音示例。通过“＋”选择 Sound 会自动启用，并在该次用户点击中解锁音频；编译完成后自动播放，无需再点击“开启声音”。仍可静音、暂停或禁用 Sound。仅打开添加菜单、添加 Buffer/Common、导入或重新打开作品不会自动解除静音。
+编译或打开作品不会自动开启声音。以 Haiyue 的 GPU 设备在 1024×64 的浮点目标上分块生成采样，再交给 Web Audio 播放。
+音频以 44100 Hz 双声道持续分块合成，播放不限制总时长；WAV 导出范围为从 0 秒开始的 1–120 秒，默认 60 秒；GLSL 转换继续遵循现有 100 KB 源码限制。
+
+WGSL 入口：
+
+~~~wgsl
+fn mainSound(sampleIndex: i32, time: f32) -> vec2f {
+  let tone = 0.2 * sin(6.2831853 * 440.0 * time);
+  return vec2f(tone, tone);
+}
+~~~
+
+Sound 标签页的 GLSL 转换接受 `vec2 mainSound(int samp, float time)`，也接受早期的 `vec2 mainSound(float time)`。
+直接调用转换器时传 `{entryPoint:'sound'}`；API 使用 `shader.glsl.translate({pass:'sound',code})`。
+返回值 x/y 分别为左右声道振幅，范围 −1 到 1。NaN/Infinity 被置零，超限振幅裁剪。
+`sampleIndex` 是从零开始的全曲采样序号，分块边界不会重置；`time`、`iTime` 均为序号 / 44100，`iSampleRate` 为 44100。
+Sound 可复用 WGSL Common、常量、结构体和辅助函数；可绑定四张静态图片、内置纹理或 Cubemap，提供 `channel0–3` 和 `iChannelResolution`。
+Sound 在播放前预备少量采样，之后按音频时钟持续合成后续分块，已播放分块会释放。不接受实时 Buffer、视频或键盘输入；它也不是可供 Image 读取的音频频谱纹理。
+Sound 的 `iResolution` 为合成块大小 1024×64；鼠标、日期和 iFrame 保持零值。
+
+试听使用音频时钟推进图像时间轴。全局播放/暂停、重置与音频联动；离开编辑页或页面隐藏时停止声音并保留位置，
+返回后仅恢复用户已经开启的试听。切换作品会关闭试听。播放不受导出时长影响，也不会循环前一段；Shader 的时间持续递增，只有代码自身返回零才自然静音。合成暂时跟不上时暂停音频时间轴，保留下一采样，避免跳过音乐。
+编辑代码时保留上次成功合成，全部 Pass 编译和合成成功后才替换；失败或过期结果不覆盖现有音频。
+“导出时长”只影响 WAV，修改它不需要重新运行，也不会中断试听；音量是试听增益，不改变导出波形。导出 WAV 为 16 位 PCM 双声道原始合成信号。
+
+兼容字段 `duration` 现在只表示 WAV 导出秒数，旧工程的 16 秒设置不会截断播放。运行状态提供 `continuous`、`bufferedUntil` 与 `exportDuration`。
+工程字段 `sound:{id:'sound',enabled,code,channels,duration,volume}` 随 Gallery 保存和 .hyshader 导入导出保留。
+旧工程缺省为禁用 Sound。WAV 可用界面导出或 `shader.sound.export` 获取资源；API/IPC 支持代码写入、启用、通道配置、音量/时长及全局播放控制。
+`test/sound-browser.mjs` 验证真实 GPU 双声道采样、440 Hz 频率、块边界连续性、两种 GLSL 入口、
+静态纹理/Common、试听手势与时间轴、失败保留、WAV 下载以及工程保存恢复。
+
+GLSL 导入支持右结合的连续赋值（如 `a = b = value`、`q.x = q.x = 26-q.x`）以及赋值表达式。内层赋值返回实际写入的值，右侧调用与动态索引仅求值一次；可用于声明初值、函数参数、返回值、条件与循环。三元分支和短路逻辑中的赋值保持惰性求值。

@@ -23,6 +23,17 @@ void mainImage(out vec4 c,in vec2 p){
   int conditionCalls=0;
   float selected=conditionCalls++==0 ? float(conditionCalls) : float(conditionCalls++);
   ok=ok && conditionCalls==1 && selected==1.0;
+  // A side-effecting condition must run before even pure branch reads.
+  int changed=0;
+  float observed=changed++==0 ? float(changed) : float(changed)+2.0;
+  ok=ok && changed==1 && observed==1.0;
+  float denominator=left ? 2.0 : 0.0;
+  float quotient=denominator>0.0 ? 4.0/denominator : 3.0;
+  ok=ok && quotient==(left?2.0:3.0);
+  int safeIndex=left ? 0 : 9;
+  vec2 indexedValues=vec2(4.0,5.0);
+  float safeValue=safeIndex<2 ? indexedValues[safeIndex] : 6.0;
+  ok=ok && safeValue==(left?4.0:6.0);
   float value=5.0,result=left ? choose(true,value) : choose(false,value);
   ok=ok && (left ? result==5.0 && value==6.0 : result==4.0 && value==4.0);
   (left ? (set(value,2.0)) : (set(value,3.0)));

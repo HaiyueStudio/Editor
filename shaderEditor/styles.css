@@ -186,3 +186,18 @@ ge-select, ge-checkbox { color-scheme:dark; }
 .common-help { margin: 0; padding: 10px 16px; color: var(--muted); font-size: 12px; line-height: 1.6; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 
 .common-channel-help { grid-column: 1 / -1; line-height: 1.7; }
+
+.sound-settings { padding: 10px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; color: var(--muted); font-size: 12px; }
+.sound-settings p { margin: 0 0 10px; line-height: 1.6; }
+.sound-settings > div, .sound-settings label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sound-settings ge-select { width: 92px; }
+
+/* Keep the add control visible while long tab lists scroll independently. */
+.pass-bar { overflow:visible; }
+.pass-tabs-group { display:flex; align-items:center; flex:1; min-width:0; height:100%; gap:4px; }
+#pass-tabs { min-width:0; height:100%; overflow-x:auto; scrollbar-width:thin; }
+#pass-tabs button { flex-shrink:0; }
+#add-pass-menu { flex-shrink:0; --ge-menu-bg-color:#1c222c; --ge-menu-item-hover-bg-color:#354729; }
+#add-pass { width:30px; height:30px; padding:0; border:1px solid var(--line); border-radius:5px; color:var(--lime); font-size:22px; }
+#add-pass:hover { background:#283321; }
+#pass-enable-label { flex-shrink:0; }

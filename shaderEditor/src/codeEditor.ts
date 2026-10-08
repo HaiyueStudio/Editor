@@ -50,7 +50,7 @@ export class CodeEditor {
   private readonly compile: () => void;
   private createState(code: string, onChange: (pass: CodeId, code: string) => void, compile: () => void) {
     return EditorState.create({ doc: code, extensions: [basicSetup, StreamLanguage.define(wgslParser), syntaxHighlighting(colors),
-      autocompletion({ override: [context => { const word = context.matchBefore(/\w*/); return !word || word.from === word.to && !context.explicit ? null : { from: word.from, options: [...BUILTINS, 'vec2f', 'vec3f', 'vec4f', 'mainImage', 'sin', 'cos', 'tanh', 'mix', 'smoothstep', 'length', 'normalize', 'dot', 'textureSampleLevel'].map(label => ({ label, type: label.startsWith('i') ? 'variable' : 'function' })) }; }] }),
+      autocompletion({ override: [context => { const word = context.matchBefore(/\w*/); return !word || word.from === word.to && !context.explicit ? null : { from: word.from, options: [...BUILTINS, 'vec2f', 'vec3f', 'vec4f', 'mainImage', 'mainSound', 'sin', 'cos', 'tanh', 'mix', 'smoothstep', 'length', 'normalize', 'dot', 'textureSampleLevel'].map(label => ({ label, type: label.startsWith('i') ? 'variable' : 'function' })) }; }] }),
       Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => { compile(); return true; } }])),
       EditorView.contentAttributes.of({ 'aria-label': 'WGSL 代码编辑器', spellcheck: 'false' }),
       EditorView.updateListener.of(update => { if (update.docChanged && !this.replacing) onChange(this.pass, update.state.doc.toString()); }),
@@ -87,6 +87,7 @@ export class GlslEditor {
     });
   }
   get value() { return this.view.state.doc.toString(); }
+  set value(code: string) { this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: code } }); }
   focus() { this.view.requestMeasure(); this.view.focus(); }
   destroy() { this.view.destroy(); }
 }

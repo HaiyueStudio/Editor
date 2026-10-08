@@ -1,5 +1,5 @@
-import type { ShaderPass, CodeId } from './model.js';
-import { resolveChannelBindings } from './channelBindings.js';
+import type { RenderPass, CodeId } from './model.js';
+import { resolveChannelBindings, passCommon } from './channelBindings.js';
 
 // Product-owned runtime shader ABI. These are authoring wrappers, not generated Engine shaders.
 export const VERTEX = `
@@ -39,7 +39,9 @@ fn channel1(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel1, iSampler,
 fn channel2(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel2, iSampler, vec2f(uv.x, 1.0 - uv.y), 0.0); }
 fn channel3(uv: vec2f) -> vec4f { return textureSampleLevel(iChannel3, iSampler, vec2f(uv.x, 1.0 - uv.y), 0.0); }
 `;
-export function wrapShader(pass: ShaderPass, common = '') {
+export function wrapShader(pass: RenderPass, common = '') {
+  common = passCommon(pass, common);
+  const commonInit = /^\s*(?:\/\/[^\n]*\n)*\/\/ @haiyue-common-library(?:\n|$)/.test(common) ? 'hy_common_library_init' : '';
   let header = HEADER;
   resolveChannelBindings(pass, common).dimensions.forEach((dimension, index) => {
     if (dimension !== 'cube') return;
@@ -49,7 +51,19 @@ export function wrapShader(pass: ShaderPass, common = '') {
       `fn channel${index}(direction: vec3f) -> vec4f { return textureSampleLevel(iChannel${index}, iSampler, direction, 0.0); }`);
   });
   const prefix = header + VERTEX + '\n';
-  const suffix = `
+  const suffix = pass.id === 'sound' ? `
+@fragment fn hy_fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let base = bitcast<u32>(hy_uniforms.timing.x);
+  let index = base + u32(position.y) * 1024u + u32(position.x);
+  iSampleRate = 44100.0;
+  iTime = hy_uniforms.timing.y + select(0.0, 4294967296.0 / iSampleRate, index < base) + f32(index) / iSampleRate;
+  iTimeDelta = 1.0 / iSampleRate;
+  iResolution = vec3f(1024.0, 64.0, 1.0);
+  iFrameRate = iSampleRate;
+  for (var i = 0u; i < 4u; i++) { iChannelResolution[i] = hy_uniforms.channelResolution[i].xyz; }
+  ${commonInit ? commonInit + '(vec2f(0.0));' : ''}
+  return vec4f(mainSound(i32(index), iTime), 0.0, 1.0);
+}` : `
 @fragment fn hy_fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
   iResolution = hy_uniforms.resolutionTime.xyz;
   iTime = hy_uniforms.resolutionTime.w;
@@ -63,6 +77,7 @@ export function wrapShader(pass: ShaderPass, common = '') {
     iChannelResolution[i] = hy_uniforms.channelResolution[i].xyz;
     iChannelTime[i] = hy_uniforms.channelTime[i];
   }
+  ${commonInit ? commonInit + '(vec2f(position.x, iResolution.y - position.y));' : ''}
   return mainImage(vec2f(position.x, iResolution.y - position.y));
 }`;
   const commonPrefix = common ? common + '\n' : '';

@@ -3,6 +3,7 @@ import { discardExpression, type Expression } from './glslUpdates.js';
 import type { ScalarConstant } from './glslConstants.js';
 import { matrix, matrixSize } from './glslMatrices.js';
 import type { Structures } from './glslStructs.js';
+import { arrayInfo } from './glslArrays.js';
 import { isSampler, wgslType } from './glslTextures.js';
 
 export type LocalBinding = { type: string; writable: boolean; code?: string; constant?: ScalarConstant | undefined };
@@ -22,19 +23,27 @@ export class Conditionals {
     if (condition.type !== 'bool') throw new TranslationError(token, '三元表达式的条件必须是 bool 标量。');
     const normalize = (type: string) => type === 'number' ? 'i32' : type;
     const type = normalize(yes.type);
-    if (isSampler(type) || isSampler(no.type) || type.startsWith('array:') || no.type.startsWith('array:')) {
-      throw new TranslationError(token, '三元表达式不能直接选择 sampler2D / samplerCube 或内置数组；请选择采样结果或数组元素。');
+    if (isSampler(type) || isSampler(no.type)) {
+      throw new TranslationError(token, '三元表达式不能直接选择 sampler2D / samplerCube；请选择采样结果。');
     }
     if (type !== normalize(no.type)) throw new TranslationError(token, `三元表达式两分支的类型必须一致（${type} / ${normalize(no.type)}），请使用显式类型转换。`);
     if (constant) {
+      if (arrayInfo(type) && typeof condition.constant === 'boolean') return { code: condition.constant ? yes.code : no.code, type };
       // No runtime state or user calls can appear in a global const initializer.
       // Keep it a WGSL constant expression; matrices select their columns.
       const literal = condition.code.replace(/[()\s]/g, '');
       if (literal === 'true' || literal === 'false') return { code: literal === 'true' ? yes.code : no.code, type };
-      if (this.structures.has(type)) return { code: this.structures.select(type, yes.code, no.code, condition.code), type };
+      if (this.structures.has(type) || arrayInfo(type)) return { code: this.structures.select(type, yes.code, no.code, condition.code), type };
       const select = (a: string, b: string) => `select(${b}, ${a}, ${condition.code})`;
       const code = matrix(type) ? `${type}(${Array.from({ length: matrixSize(type).columns }, (_, i) => select(`(${yes.code})[${i}]`, `(${no.code})[${i}]`)).join(', ')})` : select(yes.code, no.code);
       return { code, type };
+    }
+    // select eagerly evaluates both values. Require a proof for the condition too:
+    // a condition such as i++ can change values read by a branch. Unknown calls,
+    // dynamic indexing, sampling and potentially unsafe arithmetic stay lazy.
+    if (condition.eagerSafe && yes.eagerSafe && no.eagerSafe &&
+      /^(?:bool|[fiu]32|vec[234][fiu]|vec[234]<bool>)$/.test(type)) {
+      return { code: `select(${no.code}, ${yes.code}, ${condition.code})`, type, eagerSafe: true };
     }
     const name = `hy_ternary_${this.serial++}`;
     const bindings = new Map([...locals].map(([id, local]) => [local.code ?? id, local]));

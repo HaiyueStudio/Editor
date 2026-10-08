@@ -1,4 +1,4 @@
-import { PASS_LABELS, type ShaderDiagnostic, type ShaderPass } from './model.js';
+import { PASS_LABELS, type ShaderDiagnostic, type RenderPass } from './model.js';
 import type { ChannelDimension } from './glslChannels.js';
 
 /** Code-owned ABI hints survive copy/paste, shader.code.set and project export.
@@ -38,7 +38,11 @@ export function channelRequirements(code: string) {
 export function cubemapRequirements(types: readonly ChannelDimension[]) {
   return types.flatMap((type, index) => type === 'cube' ? [`// @haiyue-channel iChannel${index} cube\n`] : []).join('');
 }
-export function resolveChannelBindings(pass: ShaderPass, common = '') {
+export function passCommon(pass: RenderPass, common: string) {
+  return /^\s*(?:\/\/[^\n]*\n)*\/\/ @haiyue-common-included(?:\n|$)/.test(pass.code) ? '' : common;
+}
+export function resolveChannelBindings(pass: RenderPass, common = '') {
+  common = passCommon(pass, common);
   const local = channelRequirements(pass.code), shared = channelRequirements(common);
   const required = { types: local.types.map((type, i) => type ?? shared.types[i]), locations: local.locations.map((line, i) => local.types[i] ? line : shared.locations[i]!), errors: local.errors };
   const owner = (i: number) => local.types[i] ? pass.id : 'common' as const;
@@ -65,7 +69,7 @@ export function resolveChannelBindings(pass: ShaderPass, common = '') {
 }
 /** Old generated WGSL has no ABI hints. Keep its source location but explain
  * the binding problem rather than asking users to truncate reflection vectors. */
-export function channelDiagnostic(message: string, pass: ShaderPass) {
+export function channelDiagnostic(message: string, pass: RenderPass) {
   const match = /call to 'channel([0-3])', expected 'vec2<f32>', got 'vec3<f32>'/.exec(message);
   if (!match) return message;
   const index = Number(match[1]), channel = pass.channels[index]!;

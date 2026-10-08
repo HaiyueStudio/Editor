@@ -1,8 +1,11 @@
-import { defineSelectComponents, defineSplitComponents, defineCheckboxComponents, type GESplit } from '@haiyue/ui';
+import { defineSelectComponents, defineSplitComponents, defineCheckboxComponents, defineDropdownComponents, type GESplit } from '@haiyue/ui';
 
 /** Use the installed UI package's public components and theme tokens. */
 export function initializeUI(): () => void {
-  defineSelectComponents(); defineSplitComponents(); defineCheckboxComponents();
+  defineSelectComponents(); defineSplitComponents(); defineCheckboxComponents(); defineDropdownComponents();
+  const menu = document.getElementById('add-pass-menu')!, trigger = document.getElementById('add-pass')!;
+  const syncExpanded = () => trigger.setAttribute('aria-expanded', String(menu.hasAttribute('open')));
+  const menuObserver = new MutationObserver(syncExpanded); menuObserver.observe(menu, { attributes: true, attributeFilter: ['open'] }); syncExpanded();
   const key = 'haiyue.shader-editor.layout.v1';
   const ratios: Record<string, number> = {};
   try {
@@ -35,6 +38,7 @@ export function initializeUI(): () => void {
     split.addEventListener('ratio-change', remember);
   }
   return () => {
+    menuObserver.disconnect();
     mobile.removeEventListener('change', updateDirection);
     for (const split of splits) split.removeEventListener('ratio-change', remember);
   };

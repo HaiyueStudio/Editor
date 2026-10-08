@@ -1,4 +1,4 @@
-import { CUBE_FACES, CUBE_FACE_LABELS, LIMITS, type CubeFace, type PassId } from './model.js';
+import { CUBE_FACES, CUBE_FACE_LABELS, LIMITS, type CubeFace, type RenderPassId } from './model.js';
 import type { ShaderWorkspace } from './workspace.js';
 import type { FaceUpload } from './textureUpload.js';
 
@@ -17,7 +17,7 @@ export function createCubeUploader(workspace: ShaderWorkspace, onBound: () => Pr
   const error = dialog.querySelector<HTMLElement>('#cubemap-error')!, submit = dialog.querySelector<HTMLButtonElement>('#cubemap-submit')!;
   const cancel = dialog.querySelector<HTMLButtonElement>('#cubemap-cancel')!, name = dialog.querySelector<HTMLInputElement>('#cubemap-name')!;
   const inputs = new Map<CubeFace, HTMLInputElement>(), urls = new Map<CubeFace, string>();
-  let target: { pass: PassId; index: number } | undefined, busy = false;
+  let target: { pass: RenderPassId; index: number } | undefined, busy = false;
   const clear = () => { for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear(); grid.querySelectorAll('img').forEach(img => img.removeAttribute('src')); };
   for (const face of CUBE_FACES) {
     const label = document.createElement('label'); label.className = 'cubemap-face';
@@ -64,7 +64,7 @@ export function createCubeUploader(workspace: ShaderWorkspace, onBound: () => Pr
       }
     })();
   };
-  return (pass: PassId, index: number) => {
+  return (pass: RenderPassId, index: number) => {
     if (busy) return;
     target = { pass, index }; clear(); form.reset(); error.textContent = '';
     dialog.showModal(); name.focus();

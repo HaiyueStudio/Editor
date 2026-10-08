@@ -1,6 +1,7 @@
 import { TranslationError, type Token } from './glslSource.js';
 import type { Expression } from './glslUpdates.js';
 import { matrix, matrixSize } from './glslMatrices.js';
+import { arrayInfo } from './glslArrays.js';
 import { wgslIdentifier } from './glslNames.js';
 
 export type StructField = { name: string; type: string };
@@ -22,6 +23,7 @@ export class Structures {
     return undefined;
   }
   has(type: string) { return this.types.has(type); }
+  globalTypes() { return [...this.scopes[0]!.values()]; }
   declare(token: Token, fields: StructField[]): string {
     if (this.scopes.at(-1)!.has(token.value)) throw new TranslationError(token, `结构体 “${token.value}” 在当前作用域重复声明。`);
     if (!fields.length) throw new TranslationError(token, '结构体至少需要一个成员。');
@@ -35,6 +37,7 @@ export class Structures {
     if (!field) throw new TranslationError(token, `结构体 “${info.name}” 没有成员 “${token.value}”。`);
     const name = wgslIdentifier(field.name), ref = value.reference;
     return { code: `${value.code}.${name}`, type: field.type,
+      lengthEvaluations: value.lengthEvaluations ?? (ref || value.eagerSafe ? [] : [value]),
       reference: ref ? { ...ref, members: [...(ref.members ?? []), name] } : undefined };
   }
   construct(token: Token, type: string, args: Expression[]): Expression {
@@ -50,22 +53,30 @@ export class Structures {
   }
   /** Global constant selection cannot call helpers or use select on a struct. */
   select(type: string, yes: string, no: string, condition: string): string {
-    const info = this.types.get(type);
+    const info = this.types.get(type), array = arrayInfo(type);
+    if (array) return `${type}(${Array.from({ length: array.size }, (_, i) => this.select(array.element, `(${yes})[${i}]`, `(${no})[${i}]`, condition)).join(', ')})`;
     if (info) return `${type}(${info.fields.map(f => this.select(f.type, `(${yes}).${wgslIdentifier(f.name)}`, `(${no}).${wgslIdentifier(f.name)}`, condition)).join(', ')})`;
     if (matrix(type)) return `${type}(${Array.from({ length: matrixSize(type).columns }, (_, i) => `select((${no})[${i}], (${yes})[${i}], ${condition})`).join(', ')})`;
     return `select(${no}, ${yes}, ${condition})`;
   }
   compare(token: Token, left: Expression, right: Expression, constant: boolean): Expression {
-    if (left.type !== right.type || !this.has(left.type) || !['==', '!='].includes(token.value)) {
-      throw new TranslationError(token, '结构体仅支持相同类型之间的 == / != 比较，不能参与算术或逻辑运算。');
+    if (left.type !== right.type || (!this.has(left.type) && !arrayInfo(left.type)) || !['==', '!='].includes(token.value)) {
+      throw new TranslationError(token, '结构体或数组仅支持相同类型之间的 == / != 比较，不能参与算术或逻辑运算。');
     }
     const equal = (type: string, a: string, b: string): string => {
-      const info = this.types.get(type);
+      const info = this.types.get(type), array = arrayInfo(type);
+      if (array) {
+        if (constant) return '(' + Array.from({ length: array.size }, (_, i) => equal(array.element, `${a}[${i}]`, `${b}[${i}]`)).join(' && ') + ')';
+        const helper = 'hy_array_equal_' + type.replace(/[^A-Za-z0-9_]/g, '_');
+        const element = equal(array.element, 'a[hy_i]', 'b[hy_i]');
+        this.helpers.set(helper, `fn ${helper}(a: ${type}, b: ${type}) -> bool {\n  for (var hy_i = 0u; hy_i < ${array.size}u; hy_i++) {\n    if (!(${element})) { return false; }\n  }\n  return true;\n}`);
+        return `${helper}(${a}, ${b})`;
+      }
       if (info) return '(' + info.fields.map(f => equal(f.type, a + '.' + wgslIdentifier(f.name), b + '.' + wgslIdentifier(f.name))).join(' && ') + ')';
       if (matrix(type)) return '(' + Array.from({ length: matrixSize(type).columns }, (_, i) => `all(${a}[${i}] == ${b}[${i}])`).join(' && ') + ')';
       return type.startsWith('vec') ? `all(${a} == ${b})` : `(${a} == ${b})`;
     };
-    const name = 'hy_equal_' + left.type;
+    const name = 'hy_equal_' + left.type.replace(/[^A-Za-z0-9_]/g, '_');
     // Function arguments evaluate each operand once, even for nested structs.
     if (!constant) this.helpers.set(name, `fn ${name}(a: ${left.type}, b: ${left.type}) -> bool { return ${equal(left.type, 'a', 'b')}; }`);
     const code = constant ? equal(left.type, '(' + left.code + ')', '(' + right.code + ')') : `${name}(${left.code}, ${right.code})`;

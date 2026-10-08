@@ -76,7 +76,6 @@ test('invalid struct definitions, fields, assignments and writes fail atomically
     ['struct M{float a;};struct M{float b;};', /作用域重复/],
     ['struct M{void a;};', /值类型/],
     ['struct M{sampler2D a;};', /sampler2D.*成员/],
-    ['struct M{float a[2];};', /数组成员/],
     ['struct M{float a=1.0;};', /不能.*初始化/],
     ['struct M{M self;};', /暂不支持类型/],
     ['struct {float a;} m;', /结构体需要名称/],

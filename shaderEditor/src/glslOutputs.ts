@@ -1,6 +1,6 @@
 import { TranslationError, type Token } from './glslPreprocessor.js';
 import type { FunctionParameter, FunctionSignature } from './glslFunctions.js';
-import { referenceAccess, writeReference, type Expression } from './glslUpdates.js';
+import { referenceAccess, referenceIndices, writeReference, type Expression } from './glslUpdates.js';
 import { wgslType } from './glslTextures.js';
 
 export const outputParameter = (p: FunctionParameter) => p.qualifier === 'out' || p.qualifier === 'inout';
@@ -52,25 +52,25 @@ export class OutputCalls {
         }
         root = `(*${pointer})`;
       }
-      const kinds = (['column', 'index'] as const).filter(kind => ref[kind]);
-      const indices = { column: `${param}_column`, index: `${param}_index` };
+      const indexed = Object.fromEntries(referenceIndices(ref)), kinds = Object.keys(indexed);
+      const indices = Object.fromEntries(kinds.map(kind => [kind, `${param}_${kind}`]));
       if (p.qualifier === 'inout' && kinds.length) {
         // Capture the old value AND dynamic indices at this argument's original
         // position, before later arguments can change either the root or indices.
         const capture = `${name}_capture_${i}`, type = `${capture}_value`;
-        const fields = kinds.map(kind => `  ${kind}: ${ref[kind]!.type === 'u32' ? 'u32' : 'i32'},`);
+        const fields = kinds.map(kind => `  ${kind}: ${indexed[kind]!.type === 'u32' ? 'u32' : 'i32'},`);
         this.helpers.set(type, `struct ${type} {\n  value: ${p.type},\n${fields.join('\n')}\n}`);
-        const indexParams = kinds.map(kind => `${kind}: ${ref[kind]!.type === 'u32' ? 'u32' : 'i32'}`);
+        const indexParams = kinds.map(kind => `${kind}: ${indexed[kind]!.type === 'u32' ? 'u32' : 'i32'}`);
         const captureParams = ref.space === 'function' ? [`hy_value: ptr<function, ${ref.type}>`, ...indexParams] : indexParams;
         const captureArgs = ref.space === 'function' ? [`&${ref.root}`] : [];
-        captureArgs.push(...kinds.map(kind => ref[kind]!.code));
-        const access = referenceAccess(ref, ref.space === 'function' ? '(*hy_value)' : ref.root, { column: 'column', index: 'index' });
+        captureArgs.push(...kinds.map(kind => indexed[kind]!.code));
+        const access = referenceAccess(ref, ref.space === 'function' ? '(*hy_value)' : ref.root, Object.fromEntries(kinds.map(kind => [kind, kind])));
         this.helpers.set(capture, `fn ${capture}(${captureParams.join(', ')}) -> ${type} {\n  return ${type}(${[access.target, ...kinds].join(', ')});\n}`);
         params.push(`${param}: ${type}`); values.push(`${capture}(${captureArgs.join(', ')})`); inputs.push(`${param}.value`);
         for (const kind of kinds) indices[kind] = `${param}.${kind}`;
       } else {
         for (const kind of kinds) {
-          params.push(`${indices[kind]}: ${ref[kind]!.type === 'u32' ? 'u32' : 'i32'}`); values.push(ref[kind]!.code);
+          params.push(`${indices[kind]}: ${indexed[kind]!.type === 'u32' ? 'u32' : 'i32'}`); values.push(indexed[kind]!.code);
         }
         if (p.qualifier === 'inout') { params.push(`${param}: ${p.type}`); values.push(arg.code); inputs.push(param); }
       }

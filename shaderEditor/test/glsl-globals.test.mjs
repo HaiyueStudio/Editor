@@ -69,7 +69,7 @@ test('invalid globals and nonconstant const initializers report their GLSL sourc
     ['float value; float value;', /重复声明/],
     ['float iTime;', /内置变量/],
     ['void value;', /void/],
-    ['float values[2];', /数组/],
+    ['float values[];', /数组/],
     ['const float value;', /必须提供/],
     ['float value=0.0; const float other=value;', /不能依赖运行时变量/],
     ['const float value=iTime;', /不能依赖运行时变量/],

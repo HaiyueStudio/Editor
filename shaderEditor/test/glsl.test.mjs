@@ -21,7 +21,7 @@ test('function parameters become mutable copies; loops, early returns and swizzl
 });
 test('unsupported syntax is rejected with line and column; no misleading partial translation', () => {
   for (const body of ['#if 1', 'struct Light { sampler2D image; };', 
-    'void mainImage(out vec4 c,in vec2 p){float a[2];}', 'void mainImage(out vec4 c,in vec2 p){c=textureCube(iChannel0, vec4(p,1.0,1.0));}']) {
+    'void mainImage(out vec4 c,in vec2 p){float a[];}', 'void mainImage(out vec4 c,in vec2 p){c=textureCube(iChannel0, vec4(p,1.0,1.0));}']) {
     const result = translateGlsl('\n' + body); assert.equal(result.code, null); assert.ok(result.diagnostics[0].line >= 2); assert.ok(result.diagnostics[0].column >= 1);
   }
 });

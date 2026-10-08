@@ -7,10 +7,10 @@ const translated=source=>{const result=translateGlsl(source);assert.deepEqual(re
 
 test('ternaries bind below logical/comparison/arithmetic operators and associate to the right',()=>{
   const code=translated(main('float x=1+2*3==7 && iTime>0.0 ? 1.0 : iFrame>2 ? 2.0 : 3.0;c=vec4(x);'));
-  assert.match(code,/hy_ternary_1\(\(\(\(1 \+ \(2 \* 3\)\) == 7\) && \(iTime > 0.0\)\)\)/);
-  assert.match(code,/return hy_ternary_0\(\(iFrame > 2\)\);/);
+  assert.ok(code.includes('select(select(3.0, 2.0, (iFrame > 2)), 1.0, (((1 + (2 * 3)) == 7) && (iTime > 0.0)))'));
+  assert.doesNotMatch(code,/hy_ternary_/);
   const grouped=translated(main('c=vec4((iFrame>2 ? 1.0 : 2.0)*3.0);'));
-  assert.match(grouped,/\(hy_ternary_0\(\(iFrame > 2\)\)\) \* 3.0/);
+  assert.ok(grouped.includes('(select(2.0, 1.0, (iFrame > 2))) * 3.0'));
 });
 
 test('only the selected branch runs and condition changes precede branch reads',()=>{
@@ -22,7 +22,7 @@ test('only the selected branch runs and condition changes precede branch reads',
 });
 
 test('captures distinguish swizzle fields, constructor names, scientific literals and comparisons from variables',()=>{
-  const code=translated(main('vec2 v=vec2(1.0);float x=2.0,f32=3.0,e=4.0;bool r=iFrame>0 ? v.x+x<float(4) : f32+1.e-2>0.0;c=vec4(1.0);'));
+  const code=translated(main('vec2 v=vec2(1.0);float x=2.0,f32=3.0,e=4.0;int guard=0;bool r=guard++==0 ? v.x+x<float(4) : f32+1.e-2>0.0;c=vec4(1.0);'));
   assert.match(code,/hy_capture_0: ptr<function, vec2f>/);
   assert.match(code,/\(\*hy_capture_0\).x/);
   assert.match(code,/\(\*hy_capture_1\)\) < f32\(4\)/);
@@ -51,11 +51,11 @@ test('out/inout, nested branches and void-returning calls preserve writes and he
 
 test('short circuits, returns, loop conditions/updates and dynamic indices keep their evaluation sites',()=>{
   const code=translated('int choose(bool x){return x?0:1;}'+main('float x=0.0;bool skipped=false && (iTime>0.0 ? x++>0.0 : ++x>0.0);while(iFrame>1?x++<2.0:x++<3.0){}for(int i=0;iTime>0.0?i<2:i<3;iTime>0.0?i++:++i){}vec2 v=vec2(1.0);c=vec4(v[iTime>0.0?0:1]);'));
-  assert.match(code,/return hy_ternary_0\(x\)/);
+  assert.match(code,/return select\(1, 0, x\)/);
   assert.match(code,/false && \(hy_ternary_/);
   assert.match(code,/while \(hy_ternary_/);
-  assert.match(code,/for \(var i: i32 = 0; hy_ternary_\d+\([^]*?; _ = hy_ternary_\d+\(/);
-  assert.match(code,/v\[hy_ternary_\d+\(/);
+  assert.match(code,/for \(var i: i32 = 0; select\(\(i < 3\), \(i < 2\), \(iTime > 0.0\)\); _ = hy_ternary_\d+\(/);
+  assert.match(code,/v\[select\(1, 0, \(iTime > 0.0\)\)\]/);
 });
 
 test('global constant scalar/vector/matrix ternaries remain constant expressions',()=>{
@@ -94,4 +94,36 @@ test('invalid conditions, branch types, opaque values, l-values and syntax repor
 test('complete ternary GPU fixture translates spatial branches, side effects, discard, captures and all value types',()=>{
   const code=translated(readFileSync(new URL('./fixtures/conditionals.glsl',import.meta.url),'utf8'));
   assert.match(code,/fn hy_ternary_/);assert.match(code,/hy_fn_kill_0/);assert.match(code,/hy_global_initial = hy_ternary_/);
+});
+
+test('sprite-style nested numeric and RGB selections stay compact at scale',()=>{
+  const sprite = '#define RGB(r,g,b) vec3(float(r)/255.0,float(g)/255.0,float(b)/255.0)\n' +
+    main('float idx=0.0;' + Array.from({length:320},(_,i)=>'idx=p.y=='+i+'.0 ? (p.x<8.0 ? 1.0 : p.x<16.0 ? 2.0 : 3.0) : idx;').join('\n') +
+      'vec3 color=RGB(0,0,0);color=idx==1.0?RGB(255,128,64):color;c=vec4(color,1.0);');
+  const code=translated(sprite);
+  assert.doesNotMatch(code,/fn hy_ternary_/);
+  assert.equal([...code.matchAll(/\bselect\(/g)].length,961);
+  assert.ok(code.split('\n').length<400);
+  assert.ok(code.length<100000,'fits the existing authoring limit without raising it');
+});
+test('unknown calls, unsafe arithmetic/indexing, mutation and compound types retain lazy branches',()=>{
+  const cases=[
+    'int i=0;float a=i++==0 ? float(i) : 2.0;',
+    'float a=iTime>0.0 ? f(iTime) : 1.0;',
+    'float a=iTime>0.0 ? 1.0/iTime : 0.0;',
+    'int a=iFrame>0 ? 3%iFrame : 0;',
+    'vec2 v=vec2(1.0);float a=iFrame<2 ? v[iFrame] : 0.0;',
+    'float a=iTime>0.0 ? sqrt(iTime) : 0.0;',
+    'vec4 a=iTime>0.0 ? texture(iChannel0,p) : vec4(0.0);',
+    'float a=iTime>0.0 ? dFdx(p.x) : 0.0;',
+    'mat2 a=iTime>0.0 ? mat2(1.0) : mat2(2.0);',
+    'float a=0.0;float b=iTime>0.0 ? vec2(a++).x : 0.0;',
+    'float a=iTime>0.0 ? (iFrame>0?f(iTime):0.0) : 1.0;',
+    'float a=f(iTime)>0.0 ? iTime : 0.0;',
+  ];
+  for(const body of cases){
+    const code=translated('float f(float x){return x;}'+main(body+'c=vec4(1.0);'));
+    assert.match(code,/fn hy_ternary_/,body);
+    assert.doesNotMatch(code,/\bselect\(/,body);
+  }
 });

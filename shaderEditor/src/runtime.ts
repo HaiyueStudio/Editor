@@ -3,21 +3,45 @@ import { HaiyueEngine, Entity, Camera3D, CartesianTransform3D, SphericalTransfor
 import { createTorus3D } from '@haiyue/engine/geometry';
 import { type PassId, type ShaderProject, type ShaderPass, type ShaderDiagnostic, type PreviewMode, type PreviewMesh, LIMITS, CUBE_FACES, usesCurrentFrame, validateProject } from './model.js';
 import { resolveChannelBindings, channelDiagnostic } from './channelBindings.js';
+import { refreshProjectGlsl } from './glslProject.js';
 import { builtinTexture } from './builtinTextures.js';
 import { KeyboardState, keyboardCode } from './keyboardTexture.js';
 import { VideoSource } from './videoTexture.js';
 import { PRESENT, wrapShader } from './shaders.js';
 import { shaderGpuProvider, feedbackFormat } from './gpuPrecision.js';
+import { createSoundRenderer, SOUND_BLOCK, SOUND_RATE, SoundCompileError, encodeWave, type StereoSound, type SoundRenderer } from './sound.js';
+import { SoundPlayer } from './soundPlayer.js';
 import { BufferPreviews, type BufferPreview } from './bufferPreviews.js';
 
 type Texture = { texture: GPUTexture; view: GPUTextureView; width: number; height: number };
 type CompiledPass = { channelDimensions: ('2d' | 'cube')[]; channelLayout: GPUBindGroupLayout; pass: ShaderPass; pipeline: GPURenderPipeline; uniform: GPUBuffer; group: GPUBindGroup };
-export type PreparedShader = { project: ShaderProject; passes: CompiledPass[]; images: Map<string, Texture>; videos: Map<string, VideoSource>; diagnostics: ShaderDiagnostic[]; generation: number };
+export type PreparedShader = { audio?: StereoSound; soundRenderer?: SoundRenderer; project: ShaderProject; passes: CompiledPass[]; images: Map<string, Texture>; videos: Map<string, VideoSource>; diagnostics: ShaderDiagnostic[]; generation: number };
 export class CompileError extends Error { constructor(readonly diagnostics: ShaderDiagnostic[]) { super(diagnostics.map(d => `${d.pass}:${d.line} ${d.message}`).join('\n')); } }
 
 /** All GPU work shares Haiyue's device, surface, lifecycle and scene renderer. */
 export class ShaderRuntime {
   readonly engine: HaiyueEngine;
+  private sound = new SoundPlayer();
+  private soundExportDuration = 60;
+  onSoundProgress: ((fraction: number) => void) | undefined;
+  onSoundError: ((message: string) => void) | undefined;
+  async setSoundAudible(enabled: boolean) {
+    if (!enabled) { this.time = this.sound.position ?? this.time; this.sound.mute(); return; }
+    await this.sound.unlock(); this.syncSound();
+  }
+  setSoundVolume(value: number) { this.sound.setVolume(value); }
+  setSoundExportDuration(value: number) { this.soundExportDuration = value; }
+  async exportSound(duration = this.soundExportDuration) {
+    const active = this.active;
+    if (!active?.soundRenderer || duration === undefined) throw new Error('请先启用 Sound 并运行合成。');
+    if (!Number.isFinite(duration) || duration < 1 || duration > 120) throw new Error('WAV 导出时长需为 1–120 秒。');
+    const audio = await active.soundRenderer.render(0, Math.ceil(duration * SOUND_RATE), () => !this.dead && this.active === active);
+    return encodeWave(audio);
+  }
+  private syncSound() {
+    if (this.playing && this.visible && !document.hidden && !this.failed && !this.dead) this.sound.play(this.time);
+    else { this.time = this.sound.position ?? this.time; this.sound.pause(); }
+  }
   private scene!: Scene;
   private gpu: GPUDevice | undefined;
   private orbit: OrbitControl | undefined;
@@ -98,11 +122,12 @@ export class ShaderRuntime {
     });
     this.engine.run();
   }
-  private fail(message: string) { if (this.dead) return; this.failed = true; this.syncVideos(); this.engine.stop(); this.onError?.(message); }
+  private fail(message: string) { if (this.dead) return; this.failed = true; this.sound.mute(); this.syncVideos(); this.engine.stop(); this.onError?.(message); }
 
   async prepare(project: ShaderProject): Promise<PreparedShader> {
     if (this.dead || this.failed) throw new Error('GPU 预览不可用，请重新加载。');
     const snapshot = validateProject(project), generation = ++this.generation;
+    const linked = refreshProjectGlsl(snapshot); if (linked.length) throw new CompileError(linked);
     const result: PreparedShader = { project: snapshot, passes: [], images: new Map(), videos: new Map(), diagnostics: [], generation };
     const device = this.engine.device;
     try {
@@ -148,9 +173,10 @@ export class ShaderRuntime {
         if (seenCommon.has(key)) return false; seenCommon.add(key); return true;
       });
       if (result.diagnostics.some(d => d.severity === 'error')) throw new CompileError(result.diagnostics);
-      const used = new Set(snapshot.passes.filter(p => p.enabled).flatMap(p => p.channels.flatMap(c => c.kind === 'image' || c.kind === 'cubemap' || c.kind === 'video' ? [c.assetId] : [])));
+      const enabled = [...snapshot.passes, snapshot.sound].filter(p => p.enabled);
+      const used = new Set(enabled.flatMap(p => p.channels.flatMap(c => c.kind === 'image' || c.kind === 'cubemap' || c.kind === 'video' ? [c.assetId] : [])));
       let pixels = 0;
-      const builtins = new Set(snapshot.passes.filter(p => p.enabled).flatMap(p => p.channels.flatMap(c => c.kind === 'builtin' ? [c.texture] : [])));
+      const builtins = new Set(enabled.flatMap(p => p.channels.flatMap(c => c.kind === 'builtin' ? [c.texture] : [])));
       const sources = [...snapshot.assets.filter(a => used.has(a.id)), ...[...builtins].map(id => ({ id: 'builtin:' + id, kind: 'image' as const, dataUrl: builtinTexture(id).url }))];
       for (const asset of sources) {
         if (asset.kind === 'video') {
@@ -183,6 +209,16 @@ export class ShaderRuntime {
           } finally { bitmap.close(); }
         }
       }
+      if (snapshot.sound.enabled) {
+        const dimensions = resolveChannelBindings(snapshot.sound, snapshot.common).dimensions;
+        const inputs = snapshot.sound.channels.map((c, i) => c.kind === 'builtin' ? result.images.get('builtin:' + c.texture)! : c.kind === 'image' || c.kind === 'cubemap' ? result.images.get(c.assetId)! : dimensions[i] === 'cube' ? this.fallbackCube : this.fallback);
+        try {
+          const sound = await createSoundRenderer(device, snapshot, inputs, this.sampler);
+          result.soundRenderer = sound;
+          result.audio = await sound.render(0, SOUND_BLOCK * 2, () => !this.dead && generation === this.generation, fraction => { if (generation === this.generation) this.onSoundProgress?.(fraction); });
+          result.diagnostics.push(...sound.diagnostics);
+        } catch (error) { if (error instanceof SoundCompileError) throw new CompileError(error.diagnostics); throw error; }
+      }
       if (this.dead || generation !== this.generation) throw new Error('编译已被较新的操作替代。');
       return result;
     } catch (error) { this.releasePrepared(result); throw error; }
@@ -190,7 +226,9 @@ export class ShaderRuntime {
   commit(prepared: PreparedShader) {
     if (this.dead || this.failed || prepared.generation !== this.generation) throw new Error('编译结果已过期。');
     const previous = this.active;
-    this.active = prepared;
+    this.active = prepared; this.soundExportDuration = prepared.project.sound.duration;
+    this.sound.onError = message => this.onSoundError?.(message);
+    this.sound.load(prepared.audio, prepared.soundRenderer ? (start, count, current) => prepared.soundRenderer!.render(start, count, () => current() && !this.dead && this.active === prepared) : undefined); this.sound.setVolume(prepared.project.sound.volume);
     if (previous) this.releasePrepared(previous);
     this.releaseTargets();
     this.reset();
@@ -198,6 +236,7 @@ export class ShaderRuntime {
     this.setMesh(prepared.project.preview.mesh);
   }
   releasePrepared(prepared: PreparedShader) {
+    prepared.soundRenderer?.dispose();
     prepared.videos.forEach(source => source.dispose());
     this.retire([...prepared.passes.map(p => p.uniform), ...[...prepared.images.values()].map(t => t.texture)]);
   }
@@ -210,13 +249,13 @@ export class ShaderRuntime {
   setMesh(mesh: PreviewMesh) { this.mesh.geometry = this.geometries[mesh]; }
   resetCamera() { this.camera.set(3.6, 0.45, 1.25).setTarget(0, 0, 0); }
   private syncVideos() { this.active?.videos.forEach(source => source.play(this.playing && this.visible && !document.hidden && !this.failed)); }
-  setPlaying(value: boolean) { this.playing = value; this.syncVideos(); }
-  setVisible(value: boolean) { this.visible = value; if (!value) { this.keyboard.release(); this.dirty = true; } this.syncVideos(); if (value && !this.failed) this.engine.run(); else this.engine.stop(); }
+  setPlaying(value: boolean) { this.playing = value; this.syncSound(); this.syncVideos(); }
+  setVisible(value: boolean) { this.visible = value; this.syncSound(); if (!value) { this.keyboard.release(); this.dirty = true; } this.syncVideos(); if (value && !this.failed) this.engine.run(); else this.engine.stop(); }
   setBufferPreviews(projectId: string, previews: readonly BufferPreview[]) { this.bufferPreviewProject = projectId; this.bufferPreviews?.set(previews); }
-  reset() { this.keyboard.reset(); this.active?.videos.forEach(source => source.reset()); this.syncVideos(); this.bufferPreviews?.invalidate(); this.time = 0; this.frame = 0; this.delta = 0; this.clearTargets(); this.dirty = true; }
+  reset() { this.keyboard.reset(); this.active?.videos.forEach(source => source.reset()); this.syncVideos(); this.bufferPreviews?.invalidate(); this.time = 0; this.sound.pause(); this.syncSound(); this.frame = 0; this.delta = 0; this.clearTargets(); this.dirty = true; }
   // Offscreen passes can advance immediately; the surface is presented only inside Haiyue's frame loop.
   step() { this.setPlaying(false); this.active?.videos.forEach(source => source.step(1 / 60)); this.render(1 / 60, true); }
-  status() { return { ready: Boolean(this.active) && !this.failed, frame: this.frame, time: this.time, playing: this.playing, width: this.width, height: this.height, mode: this.mode, bufferFormat: this.bufferFormat, camera: { theta: this.camera.theta, phi: this.camera.phi, radius: this.camera.radius } }; }
+  status() { return { ready: Boolean(this.active) && !this.failed, frame: this.frame, time: this.time, playing: this.playing, width: this.width, height: this.height, mode: this.mode, sound: { ready: !!this.active?.audio, audible: this.sound.armed, playing: this.sound.playing, continuous: true, bufferedUntil: this.sound.bufferedUntil, exportDuration: this.soundExportDuration, sampleRate: SOUND_RATE }, bufferFormat: this.bufferFormat, camera: { theta: this.camera.theta, phi: this.camera.phi, radius: this.camera.radius } }; }
   private texture(width: number, height: number, format: GPUTextureFormat, label: string, cube = false): Texture {
     const texture = this.engine.device.createTexture({ label: `ShaderEditor.${label}`, size: [width, height, cube ? 6 : 1], format,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC });
@@ -242,7 +281,7 @@ export class ShaderRuntime {
     const advance = this.playing || step;
     if (advance || this.dirty) {
       this.delta = advance ? Math.min(Math.max(seconds, 0), 0.1) : 0;
-      if (this.frame > 0) this.time += this.delta;
+      if (this.frame > 0) this.time = this.sound.position ?? (this.time + this.delta);
       const device = this.engine.device, encoder = device.createCommandEncoder({ label: 'ShaderEditor.frame' });
       device.queue.writeTexture({ texture: this.keyboardTexture.texture }, this.keyboard.pixels(), { bytesPerRow: 256 * 4 }, [256, 3]);
       for (const [id, source] of this.active.videos) {
@@ -337,10 +376,10 @@ export class ShaderRuntime {
     this.canvas.addEventListener('pointermove', move, options);
     const up = (event: PointerEvent) => { if (event.pointerId !== this.pointer) return; this.pressed = false; this.mouse[2] = -Math.abs(this.mouse[2]!); this.mouse[3] = -Math.abs(this.mouse[3]!); if (this.mode === 'canvas') this.dirty = true; };
     this.canvas.addEventListener('pointerup', up, options); this.canvas.addEventListener('pointercancel', up, options); this.canvas.addEventListener('lostpointercapture', up, options);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseKeys(); this.syncVideos(); if (document.hidden) this.engine.stop(); else if (this.visible && !this.failed) this.engine.run(); }, options);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseKeys(); this.syncSound(); this.syncVideos(); if (document.hidden) this.engine.stop(); else if (this.visible && !this.failed) this.engine.run(); }, options);
   }
   async dispose() {
-    if (this.dead) return; this.dead = true; this.invalidate(); this.engine.stop(); this.lifecycle.abort(); this.orbit?.dispose();
+    if (this.dead) return; this.dead = true; await this.sound.dispose(); this.invalidate(); this.engine.stop(); this.lifecycle.abort(); this.orbit?.dispose();
     if (this.errorListener) this.gpu?.removeEventListener('uncapturederror', this.errorListener);
     this.bufferPreviews?.dispose(); this.scene?.destroy(); this.releaseTargets(); if (this.active) this.releasePrepared(this.active);
     await this.gpu?.queue.onSubmittedWorkDone().catch(() => {});

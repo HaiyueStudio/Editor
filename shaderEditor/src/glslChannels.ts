@@ -2,7 +2,7 @@ import { TranslationError, type Token } from './glslPreprocessor.js';
 import type { Expression } from './glslUpdates.js';
 
 export type ChannelDimension = '2d' | 'cube';
-export interface TranslationOptions { channelTypes?: readonly (ChannelDimension | null)[] }
+export interface TranslationOptions { entryPoint?: 'image' | 'sound' | 'common'; common?: string; channelTypes?: readonly (ChannelDimension | null)[] }
 export class ChannelRetry extends Error {}
 export const builtinChannel = (expr: Expression) => expr.reference?.space === 'private' && /^iChannel[0-3]$/.test(expr.reference.root) ? Number(expr.reference.root.at(-1)) : undefined;
 
