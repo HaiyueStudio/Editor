@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "aiNeutral": true,
   "packages": {
+    "@haiyue/shader-editor": { "allow": ["@haiyue/engine", "@haiyue/editor-platform", "@haiyue/editor-plugin-sdk", "@haiyue/editor-app-kit", "@haiyue/ui"] },
     "@haiyue/image-editor": { "allow": ["@haiyue/editor-plugin-sdk", "@haiyue/editor-platform", "@haiyue/editor-shell", "@haiyue/editor-app-kit"] },
     "@haiyue/editor-plugin-sdk": { "allow": [] },
     "@haiyue/editor-platform": { "allow": ["@haiyue/editor-plugin-sdk"] },
