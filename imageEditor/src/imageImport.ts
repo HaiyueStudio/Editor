@@ -23,7 +23,7 @@ export function inspectImageSize(bytes: Uint8Array) {
       offset += length;
     }
   }
-  throw new Error('图片文件损坏或格式不支持。请选择 PNG、JPEG 或 .hyimage 工程，PSD 编辑导入尚未开放。');
+  throw new Error('图片文件损坏或格式不支持。请选择 PNG、JPEG 或 .hyimage 工程，PSD 请通过 PSD 导入流程打开。');
 }
 export async function decodeImage(file: File): Promise<Bitmap> {
   if (file.size > 32 * 1024 * 1024) throw new Error('PNG/JPEG 文件不能超过 32 MiB。');
@@ -43,7 +43,7 @@ export function imageDocument(name: string, bitmap: Bitmap) {
   const doc = ImageDocument.create(name, bitmap.width, bitmap.height);
   // Build the initial imported state once, without an empty layer in its undo history.
   const layer = makeLayer(name, bitmap);
-  const result = new ImageDocument({ ...doc.state, layers: [layer], selectedId: layer.id }); doc.dispose(); return result;
+  const result = new ImageDocument({ ...doc.state, layers: [layer], selectedId: layer.id, selectedIds: [layer.id] }); doc.dispose(); return result;
 }
 /** Deterministic, independently editable layers for the bundled moonrise example. */
 export function createDemo(): ImageDocument {
@@ -114,5 +114,5 @@ export function createDemo(): ImageDocument {
     ctx.fillStyle = '#799da9'; ctx.font = '11px sans-serif'; ctx.fillText('01 — A QUIET STUDY OF LIGHT & WATER', 78, 765);
   });
   const doc = ImageDocument.create('海上生明月 · 示例', width, height);
-  const result = new ImageDocument({ ...doc.state, layers: [background, moon, sea, title], selectedId: title.id }); doc.dispose(); return result;
+  const result = new ImageDocument({ ...doc.state, layers: [background, moon, sea, title], selectedId: title.id, selectedIds: [title.id] }); doc.dispose(); return result;
 }

@@ -1,0 +1,39 @@
+import { readSmartSource, prepareSmartSource, applySmartSource } from './smartSource.js';
+import { deserializeProject } from './projectFile.js';
+import { ImageDocument, layerLocked } from './document.js';
+import { CanvasView } from './canvasView.js';
+import { replacePixel } from './pixelTools.js';
+import { convertSmart, replaceSmart } from './smartObject.js';
+import { decodeImage } from './imageImport.js';
+import { validateStyles, type LayerStyles } from './layerFeatures.js';
+const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+export class NonDestructivePanel {
+ private target:{doc:ImageDocument;revision:number;id:string}|undefined;
+ private frame:number|undefined;
+ private abort=new AbortController();
+ constructor(private active:()=>ImageDocument|undefined,private view:CanvasView,private notify:(message:string,error?:boolean)=>void){
+  document.querySelector('.advanced-actions')!.insertAdjacentHTML('beforeend','<button data-action="clipping" data-needs-layer>创建／释放剪贴</button><button data-action="layer-styles" data-needs-layer>图层样式</button><button data-action="smart-convert" data-needs-layer>转为智能对象</button><button data-action="smart-replace" data-smart-required>替换智能源图</button><span id="non-destructive-status"></span>');
+  document.body.insertAdjacentHTML('beforeend',`<input id="smart-file" type="file" accept=".psd,.hyimage,.png,.jpg,.jpeg,image/png,image/jpeg" hidden><dialog id="style-dialog"><form id="style-form"><h2>图层样式</h2><p class="muted">独立于源像素。投影模糊和描边角部采用近似算法，可能与 Photoshop 不同。</p><label><input id="style-enabled" type="checkbox" checked>启用全部样式</label><fieldset><legend><label><input id="style-overlay" type="checkbox">颜色叠加</label></legend><label>颜色<input id="style-overlay-color" type="color" value="#f47f4b"></label><label>不透明度<input id="style-overlay-opacity" type="number" min="0" max="100" value="100">%</label></fieldset><fieldset><legend><label><input id="style-stroke" type="checkbox">外描边</label></legend><label>颜色<input id="style-stroke-color" type="color" value="#ffffff"></label><label>宽度<input id="style-stroke-size" type="number" min="1" max="64" value="3">px</label><label>不透明度<input id="style-stroke-opacity" type="number" min="0" max="100" value="100">%</label></fieldset><fieldset><legend><label><input id="style-shadow" type="checkbox">投影</label></legend><label>颜色<input id="style-shadow-color" type="color" value="#000000"></label><label>不透明度<input id="style-shadow-opacity" type="number" min="0" max="100" value="50">%</label><label>水平偏移<input id="style-shadow-dx" type="number" min="-256" max="256" value="8"></label><label>垂直偏移<input id="style-shadow-dy" type="number" min="-256" max="256" value="8"></label><label>模糊<input id="style-shadow-blur" type="number" min="0" max="64" value="6">px</label></fieldset><p id="style-error" class="dialog-error" role="alert"></p><div class="dialog-actions"><button type="button" id="style-remove">移除样式</button><button type="button" data-close-dialog>取消</button><button type="submit" class="primary">应用样式</button></div></form></dialog>`);
+  const signal=this.abort.signal;
+  $('style-form').addEventListener('input',()=>{if(this.frame===undefined)this.frame=requestAnimationFrame(()=>{this.frame=undefined;try{const t=this.current(),styles=this.read();const layer=t.doc.selected!;this.view.preview({...t.doc.state,layers:replacePixel(t.doc.state.layers,layer.id,{...layer,styles})});$('style-error').textContent='';}catch(e){$('style-error').textContent=String(e);}});},{signal});
+  $('style-form').addEventListener('submit',e=>{e.preventDefault();try{const t=this.current(),styles=this.read();this.cancel();t.doc.setStyles(t.id,styles);}catch(e){$('style-error').textContent=String(e);}},{signal});
+  $('style-remove').addEventListener('click',()=>{try{const t=this.current();this.cancel();t.doc.setStyles(t.id,undefined);}catch(e){$('style-error').textContent=String(e);}},{signal});
+  $('style-dialog').addEventListener('close',()=>this.cancel(),{signal});
+  $('smart-file').addEventListener('change',()=>{void this.replace().catch(e=>notify(String(e),true));},{signal});
+ }
+ private current(){const t=this.target;if(!t||this.active()!==t.doc||t.doc.revision!==t.revision||t.doc.selected?.id!==t.id)throw new Error('文档或选中图层已变化，请重新操作。');return t;}
+ private read():LayerStyles {const checked=(id:string)=>$<HTMLInputElement>('style-'+id).checked,value=(id:string)=>$<HTMLInputElement>('style-'+id).value,n=(id:string)=>Number(value(id));const styles:LayerStyles={enabled:checked('enabled')};
+  if(checked('overlay'))styles.overlay={color:value('overlay-color'),opacity:n('overlay-opacity')/100};if(checked('stroke'))styles.stroke={color:value('stroke-color'),opacity:n('stroke-opacity')/100,size:n('stroke-size')};if(checked('shadow'))styles.shadow={color:value('shadow-color'),opacity:n('shadow-opacity')/100,dx:n('shadow-dx'),dy:n('shadow-dy'),blur:n('shadow-blur')};validateStyles(styles);return styles;
+ }
+ openStyles(){this.cancel();const doc=this.active(),layer=doc?.selected;if(!doc||!layer||layer.kind==='adjustment'||layerLocked(doc.state.layers,layer.id))throw new Error('请选择未锁定的像素图层或组。');this.target={doc,revision:doc.revision,id:layer.id};const s=layer.styles;$<HTMLInputElement>('style-enabled').checked=s?.enabled??true;
+  for(const kind of ['overlay','stroke','shadow'] as const){const effect=s?.[kind];$<HTMLInputElement>('style-'+kind).checked=Boolean(effect);if(effect)for(const [key,value] of Object.entries(effect))$<HTMLInputElement>(`style-${kind}-${key}`).value=String(key==='opacity'?Math.round(Number(value)*100):value);}
+  $('style-error').textContent='';$<HTMLDialogElement>('style-dialog').showModal();
+ }
+ clipping(){const doc=this.active();if(doc?.selected)doc.setClipping(doc.selected.id,!doc.selected.clipping);}
+ convert(){const doc=this.active();if(doc?.selected)convertSmart(doc,doc.selected.id);}
+ chooseSource(){const doc=this.active(),layer=doc?.selected;if(!doc||layer?.content?.type!=='smart')throw new Error('请选择智能对象。');this.target={doc,revision:doc.revision,id:layer.id};$<HTMLInputElement>('smart-file').click();}
+ private async replace(){const input=$<HTMLInputElement>('smart-file'),file=input.files?.[0];input.value='';if(!file)return;const t=this.current();if(/\.(psd|hyimage)$/i.test(file.name)){if(file.size>128*1024*1024)throw new Error('智能源文件超过预算。');const bytes=new Uint8Array(await file.arrayBuffer()),state=/\.psd$/i.test(file.name)?readSmartSource(bytes,file.name).state:deserializeProject(new TextDecoder().decode(bytes));this.current();applySmartSource(t.doc,t.id,prepareSmartSource(t.doc.selected!.content as import('./layerFeatures.js').SmartContent,state));}else{const source=await decodeImage(file);this.current();replaceSmart(t.doc,t.id,source,file.name.slice(0,160));}this.target=undefined;this.notify('智能源图已替换，现有变换保留，可撤销。');}
+ sync(){if(this.target&&(this.active()!==this.target.doc||this.target.doc.revision!==this.target.revision||this.target.doc.selected?.id!==this.target.id))this.cancel();const layer=this.active()?.selected;$('non-destructive-status').textContent=[layer?.clipping?'剪贴到下方基底':'',layer?.styles?.enabled?'样式已启用':'',layer?.content?.type==='smart'?`智能源图 ${layer.content.source.width} × ${layer.content.source.height}`:''].filter(Boolean).join(' · ');document.querySelector<HTMLButtonElement>('[data-smart-required]')!.disabled=layer?.content?.type!=='smart'||Boolean(layer&&layerLocked(this.active()!.state.layers,layer.id));}
+ cancel(){if(this.frame!==undefined)cancelAnimationFrame(this.frame);this.frame=undefined;this.target=undefined;this.view.preview();const dialog=$<HTMLDialogElement>('style-dialog');if(dialog?.open)dialog.close();}
+ dispose(){this.cancel();this.abort.abort();}
+}

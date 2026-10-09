@@ -1,7 +1,17 @@
+import { resizeBitmap, rotateBitmap, validateResampling, type Resampling } from './resampling.js';
 import { selectionWeight, type Selection } from './selection.js';
 import { IMAGE_LIMITS, pixelBytes, checkSize, findLayer, layerLocked, type Bitmap, type ImageLayer, type ImageState } from './document.js';
 
 export interface Point { x: number; y: number }
+export interface BrushPoint extends Point { pressure?:number }
+export interface BrushDynamics { hardness?:number; pressure?:'none'|'size'|'opacity'|'both'; sample?:(x:number,y:number)=>readonly [number,number,number,number]|undefined }
+/** Sparse 128px tiles: a small mark on a large canvas needs only touched coverage tiles. */
+class StrokeCoverage {
+ private tiles=new Map<number,Uint8Array>();
+ constructor(private width:number){}
+ get bytes(){return this.tiles.size*16384;}
+ increase(x:number,y:number,value:number){const columns=Math.ceil(this.width/128),key=Math.floor(y/128)*columns+Math.floor(x/128),i=(y%128)*128+x%128;let tile=this.tiles.get(key);if(!tile){if(!value)return false;tile=new Uint8Array(16384);this.tiles.set(key,tile);}if(value<=tile[i]!)return false;tile[i]=value;return true;}
+}
 export interface Rect extends Point { width: number; height: number }
 export type Color = readonly [number, number, number];
 export function selectionRect(a: Point, b: Point, width: number, height: number): Rect | null {
@@ -34,17 +44,19 @@ export function hexColor(hex: string): Color {
 export class PixelStroke {
   readonly layer: ImageLayer;
   private readonly original: Uint8ClampedArray;
-  private readonly coverage: Uint8Array;
+  private readonly coverage: StrokeCoverage;
+  get coverageBytes(){return this.coverage.bytes;}
   private readonly bounds: Rect;
   private readonly selection: Selection | null | undefined;
   private readonly origin: Point;
-  private previous: Point | undefined;
+  private previous: BrushPoint | undefined;
   changed = false;
   private dirty: Rect | undefined;
   changedBounds: Rect | undefined;
   takeDirty() { const rect = this.dirty; this.dirty = undefined; return rect; }
-  constructor(state: ImageState, id: string, private size: number, private opacity: number, private color: Color, private erase = false) {
+  constructor(state: ImageState, id: string, private size: number, private opacity: number, private color: Color, private erase = false, private dynamics:BrushDynamics = {}) {
     if (!Number.isFinite(size) || size < 1 || size > 512 || !Number.isFinite(opacity) || opacity <= 0 || opacity > 1) throw new Error('画笔大小或不透明度无效。');
+    if(!Number.isFinite(dynamics.hardness??1)||(dynamics.hardness??1)<0||(dynamics.hardness??1)>1||!['none','size','opacity','both'].includes(dynamics.pressure??'none'))throw new Error('画笔硬度或笔压模式无效。');
     const layer = editablePixel(state, id), parent = parentOffset(state.layers, id)!;
     this.selection = state.selection;
     this.bounds = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height };
@@ -60,11 +72,16 @@ export class PixelStroke {
       data.set(layer.bitmap.data.subarray(y * layer.bitmap.width * 4, (y + 1) * layer.bitmap.width * 4), offset);
     }
     this.layer = { ...layer, x: left, y: top, bitmap: { width, height, data } };
-    this.original = layer.bitmap && layer.bitmap.width === width && layer.bitmap.height === height && layer.x === left && layer.y === top ? layer.bitmap.data : data.slice(); this.coverage = new Uint8Array(width * height); this.origin = { x: left + parent.x, y: top + parent.y };
+    this.original = layer.bitmap && layer.bitmap.width === width && layer.bitmap.height === height && layer.x === left && layer.y === top ? layer.bitmap.data : data.slice(); this.coverage = new StrokeCoverage(width); this.origin = { x: left + parent.x, y: top + parent.y };
   }
-  point(point: Point) {
-    if (![point.x, point.y].every(Number.isFinite)) throw new Error('画笔坐标无效。');
-    const a = this.previous ?? point, b = point; this.previous = point;
+  point(point: BrushPoint) {
+    if (![point.x, point.y].every(Number.isFinite)||!Number.isFinite(point.pressure??1)||(point.pressure??1)<0||(point.pressure??1)>1) throw new Error('画笔坐标或笔压无效。');
+    const a=this.previous??point,b={...point};this.previous=b;
+    // Short segments avoid scanning the empty bounding rectangle of long diagonal strokes.
+    const pieces=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/Math.max(8,this.size/2)));
+    for(let k=0;k<pieces;k++){const at=(t:number):BrushPoint=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});this.segment(at(k/pieces),at((k+1)/pieces));}
+  }
+  private segment(a:BrushPoint,b:BrushPoint) {
     const r = this.size / 2, bounds = this.bounds;
     const x0 = Math.max(bounds.x, Math.floor(Math.min(a.x, b.x) - r - 1)), x1 = Math.min(bounds.x + bounds.width, Math.ceil(Math.max(a.x, b.x) + r + 1));
     const y0 = Math.max(bounds.y, Math.floor(Math.min(a.y, b.y) - r - 1)), y1 = Math.min(bounds.y + bounds.height, Math.ceil(Math.max(a.y, b.y) + r + 1));
@@ -80,14 +97,19 @@ export class PixelStroke {
     const dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy, bitmap = this.layer.bitmap!;
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
       const t = length2 ? Math.max(0, Math.min(1, ((x + 0.5 - a.x) * dx + (y + 0.5 - a.y) * dy) / length2)) : 0;
-      const coverage = Math.round(selectionWeight(this.selection, x, y) * Math.max(0, Math.min(1, r + 0.5 - Math.hypot(x + 0.5 - a.x - t * dx, y + 0.5 - a.y - t * dy))) * 255);
-      const p = (y - this.origin.y) * bitmap.width + x - this.origin.x;
-      if (coverage <= this.coverage[p]!) continue; this.coverage[p] = coverage;
-      const i = p * 4, sourceAlpha = coverage / 255 * this.opacity, oldAlpha = this.original[i + 3]! / 255;
+      const pressure=(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t,mode=this.dynamics.pressure??'none',radius=r*(mode==='size'||mode==='both'?pressure:1),distance=Math.hypot(x+.5-a.x-t*dx,y+.5-a.y-t*dy),hardness=this.dynamics.hardness??1;
+      if((mode==='size'||mode==='both')&&pressure===0)continue;
+      const edge=Math.max(0,Math.min(1,radius+.5-distance)),soft=hardness===1?1:Math.max(0,Math.min(1,(radius-Math.max(0,distance-.5))/Math.max(.5,radius*(1-hardness))));
+      const coverage=Math.round(selectionWeight(this.selection,x,y)*edge*soft*(mode==='opacity'||mode==='both'?pressure:1)*255);
+      if(!coverage)continue;
+      const localX=x-this.origin.x,localY=y-this.origin.y,p=localY*bitmap.width+localX,sample=this.dynamics.sample?.(x,y);
+      if(this.dynamics.sample&&!sample||!this.coverage.increase(localX,localY,coverage))continue;
+      const i=p*4,sourceAlpha=coverage/255*this.opacity*(sample?sample[3]/255:1),oldAlpha=this.original[i+3]!/255,tone=sample??this.color;
+      if(!sourceAlpha)continue;
       if (this.erase) bitmap.data[i + 3] = Math.round(oldAlpha * (1 - sourceAlpha) * 255);
       else {
         const alpha = sourceAlpha + oldAlpha * (1 - sourceAlpha);
-        for (let c = 0; c < 3; c++) bitmap.data[i + c] = (this.color[c]! * sourceAlpha + this.original[i + c]! * oldAlpha * (1 - sourceAlpha)) / alpha;
+        for (let c = 0; c < 3; c++) bitmap.data[i + c] = (tone[c]! * sourceAlpha + this.original[i + c]! * oldAlpha * (1 - sourceAlpha)) / alpha;
         bitmap.data[i + 3] = alpha * 255;
       }
       for (let c = 0; c < 4; c++) if (bitmap.data[i + c] !== this.original[i + c]) this.changed = true;
@@ -110,10 +132,12 @@ export function fillPixels(state: ImageState, id: string, color: Color | null, o
   }
   return layer;
 }
-/** Deterministic nearest-neighbor resampling, including exact quarter-turns and flips. */
-export function transformBitmap(source: Bitmap, width: number, height: number, angle: number, flipX = false, flipY = false): Bitmap {
+/** Explicit resampling; nearest remains available for pixel art. */
+export function transformBitmap(source: Bitmap, width: number, height: number, angle: number, flipX = false, flipY = false, resampling:Resampling = 'bicubic'): Bitmap {
   checkSize(width, height);
   if (!Number.isFinite(angle) || Math.abs(angle) > 360) throw new Error('旋转角度应在 -360°–360° 内。');
+  validateResampling(resampling);
+  if(resampling!=='nearest'){const scaled=resizeBitmap(source,width,height,resampling);return angle===0&&!flipX&&!flipY?scaled:rotateBitmap(scaled,angle,flipX,flipY,resampling);}
   const radians = angle * Math.PI / 180, cos = Math.cos(radians), sin = Math.sin(radians);
   const w = Math.ceil(Math.abs(width * cos) + Math.abs(height * sin) - 1e-8), h = Math.ceil(Math.abs(width * sin) + Math.abs(height * cos) - 1e-8); checkSize(w, h);
   const data = new Uint8ClampedArray(w * h * 4);

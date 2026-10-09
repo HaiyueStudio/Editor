@@ -1,4 +1,13 @@
-import { psdExportWarnings } from './psdExportPolicy.js';
+import { SmartSourcePanel } from './smartSourcePanel.js';
+import { ProductivityPanel } from './productivityPanel.js';
+import { LiveEffectsPanel } from './liveEffectsPanel.js';
+import { HistogramPanel } from './histogramPanel.js';
+import type { Resampling } from './resampling.js';
+import { ProfessionalPanel } from './professionalPanel.js';
+import { PathEditor } from './pathEditor.js';
+import { NonDestructivePanel } from './nonDestructivePanel.js';
+import { alignLayers, mergeLayers, type Alignment } from './dailyEditing.js';
+import { psdExportWarnings, psdMetadataWarnings } from './psdExportPolicy.js';
 import { AdvancedPanel } from './advancedPanel.js';
 import { FilterPanel } from './filterPanel.js';
 import { PsdJobs } from './psdJobs.js';
@@ -32,7 +41,11 @@ const psdJobs = new PsdJobs((busy, label) => { $('psd-progress').hidden = !busy;
 let choosePsd: ((state: import('./document.js').ImageState | null) => void) | undefined;
 let pendingPsd: PsdImportResult | undefined;
 const editing = new EditingTools(() => workspace.active, view, notice);
+const paths=new PathEditor(()=>workspace.active,view,editing,notice);
+const professional=new ProfessionalPanel(workspace,notice);
 const advanced = new AdvancedPanel(() => workspace.active, editing);
+const nonDestructive = new NonDestructivePanel(() => workspace.active, view, notice);
+const smartSourcePanel = new SmartSourcePanel(workspace,notice);
 
 function notice(message: string, error = false) { $('notice-text').textContent = message; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
 async function run(action: () => unknown | Promise<unknown>) { try { await action(); } catch (error) { notice(error instanceof Error ? error.message : String(error), true); } }
@@ -52,7 +65,7 @@ async function flushRecovery() {
 function changed() {
   if (disposed) return;
   if (!renderPending) { renderPending = true; queueMicrotask(() => { renderPending = false; if (!disposed) void run(render); }); }
-  const signature = JSON.stringify([workspace.active?.identity.id, ...workspace.documents.map(doc => [doc.identity.id, doc.revision, doc.savedRevision, doc.state.selectedId])]);
+  const signature = JSON.stringify([workspace.active?.identity.id, ...workspace.documents.map(doc => [doc.identity.id, doc.revision, doc.savedRevision, doc.state.selectedId, doc.selectedIds])]);
   if (signature === sessionSignature) return; sessionSignature = signature;
   if (ready && recoveryEnabled) {
     recoveryStatus('正在保存恢复副本…');
@@ -88,10 +101,17 @@ function render() {
   const list = $('layer-list'); list.replaceChildren();
   const drawRows = (layers: readonly ImageLayer[], depth: number) => {
     for (const layer of [...layers].reverse()) {
-      const row = document.createElement('div'); row.className = 'layer-row' + (layer.id === doc?.state.selectedId ? ' selected' : '') + (!layer.visible ? ' invisible' : '');
-      row.dataset.layerId = layer.id; row.style.paddingLeft = `${depth * 12}px`; row.setAttribute('role', 'treeitem'); row.setAttribute('aria-level', String(depth + 1)); row.setAttribute('aria-selected', String(layer.id === doc?.state.selectedId));
+      const row = document.createElement('div'); row.className = 'layer-row' + (doc?.selectedIds.includes(layer.id) ? ' selected' : '') + (!layer.visible ? ' invisible' : '');
+      row.dataset.layerId = layer.id; row.style.paddingLeft = `${depth * 12}px`; row.setAttribute('role', 'treeitem'); row.setAttribute('aria-level', String(depth + 1)); row.setAttribute('aria-selected', String(doc?.selectedIds.includes(layer.id) ?? false));
       row.tabIndex = layer.id === doc?.state.selectedId ? 0 : -1;
-      row.onclick = () => doc?.select(layer.id);
+      row.onclick = event => {
+        if (!doc) return;
+        if (event.shiftKey && doc.state.selectedId) {
+          const ids = [...list.querySelectorAll<HTMLElement>('[data-layer-id]')].map(row => row.dataset.layerId!);
+          const a = ids.indexOf(doc.state.selectedId), b = ids.indexOf(layer.id); doc.selectMany(ids.slice(Math.min(a, b), Math.max(a, b) + 1));
+        } else if (event.metaKey || event.ctrlKey) doc.selectMany(doc.selectedIds.includes(layer.id) ? doc.selectedIds.filter(id => id !== layer.id) : [...doc.selectedIds, layer.id]);
+        else doc.select(layer.id);
+      };
       row.onkeydown = event => {
         if (event.target !== row) return;
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); doc?.select(layer.id); }
@@ -107,7 +127,7 @@ function render() {
         const canvas = document.createElement('canvas'); canvas.width = 62; canvas.height = 62; const ratio = Math.min(62 / layer.bitmap.width, 62 / layer.bitmap.height);
         canvas.getContext('2d')!.drawImage(bitmapCanvas(layer.bitmap), (62 - layer.bitmap.width * ratio) / 2, (62 - layer.bitmap.height * ratio) / 2, layer.bitmap.width * ratio, layer.bitmap.height * ratio); thumb.append(canvas);
       }
-      const title = document.createElement('span'); title.className = 'layer-title'; title.textContent = layer.name; title.title = layer.name;
+      const title = document.createElement('span'); title.className = 'layer-title'; title.textContent = (layer.clipping?'↳ ':'') + layer.name + (layer.content?.type==='smart'?' ◈':'') + (layer.styles?.enabled?' · fx':''); title.title = layer.name;
       const lock = button(`${layer.locked ? '解锁' : '锁定'} ${layer.name}`, 'lock', () => { void run(() => doc?.updateLayer(layer.id, { locked: !layer.locked })); }); lock.className = 'layer-lock' + (layer.locked ? ' locked' : ''); lock.setAttribute('aria-pressed', String(layer.locked));
       row.append(eye, thumb, title, lock); list.append(row); drawRows(layer.children, depth + 1);
     }
@@ -118,12 +138,12 @@ function render() {
   property('layer-name', selected?.name ?? '', locked); property('opacity', String(Math.round((selected?.opacity ?? 1) * 100)), locked);
   property('blend-mode', selected?.blend ?? 'normal', locked);
   property('layer-x', String(selected?.x ?? 0), locked || selected?.kind === 'group'); property('layer-y', String(selected?.y ?? 0), locked || selected?.kind === 'group');
-  $('layer-kind').textContent = selected ? selected.kind === 'group' ? '图层组' : selected.content?.type==='text'?'可编辑文字':selected.content?.type==='shape'?'可编辑形状':selected.kind==='adjustment'?'调整图层':'像素图层' : '—';
+  $('layer-kind').textContent = selected ? selected.kind === 'group' ? '图层组' : selected.content?.type==='smart'?'智能对象':selected.content?.type==='text'?'可编辑文字':selected.content?.type==='shape'?'可编辑形状':selected.kind==='adjustment'?'调整图层':'像素图层' : '—';
   $('layer-size').textContent = selected?.bitmap ? `${selected.bitmap.width} × ${selected.bitmap.height} px` : selected?.kind === 'group' ? `${selected.children.length} 个子图层` : '透明图层';
-  $('layer-count').textContent = `${doc ? allLayers(doc.state.layers).length : 0} 个图层`;
+  $('layer-count').textContent = `${doc ? allLayers(doc.state.layers).length : 0} 个图层 · 已选 ${doc?.selectedIds.length ?? 0}`;
   $('document-info').textContent = doc ? `${doc.state.width} × ${doc.state.height} px   /   RGB · 8 位${doc.dirty ? '   /   工程副本未保存' : ''}` : '准备就绪';
   $('navigator-size').textContent = doc ? `${doc.state.width} × ${doc.state.height}` : '—'; $('navigator-empty').hidden = Boolean(doc);
-  view.setDocument(doc?.state); editing.sync(); advanced.sync();
+  view.setDocument(doc?.state); productivity.sync(); editing.sync(); advanced.sync(); nonDestructive.sync(); paths.sync();
   const navigator = $<HTMLCanvasElement>('navigator-canvas'), ctx = navigator.getContext('2d')!; ctx.clearRect(0, 0, 240, 130);
   if (doc) { const ratio = Math.min(220 / doc.state.width, 112 / doc.state.height); ctx.drawImage(view.canvas, (240 - doc.state.width * ratio) / 2, (130 - doc.state.height * ratio) / 2, doc.state.width * ratio, doc.state.height * ratio); }
 }
@@ -201,19 +221,31 @@ async function openFiles(files: readonly File[], asLayer: boolean) {
 }
 function newDialog() { $('new-error').textContent = ''; $<HTMLDialogElement>('new-dialog').showModal(); $<HTMLInputElement>('new-name').select(); }
 function selectedChange(patch: Parameters<ImageDocument['updateLayer']>[1]) { const doc = workspace.active; if (doc?.selected) doc.updateLayer(doc.selected.id, patch); }
+const productivity=new ProductivityPanel(workspace);
+const histogram=new HistogramPanel(()=>workspace.active);
+const liveEffects=new LiveEffectsPanel(()=>workspace.active,editing);
 const filters = new FilterPanel(() => workspace.active, notice);
 const actions: Record<string, () => unknown | Promise<unknown>> = {
+  productivity:()=>{editing.cancel();productivity.open();},
+  'refine-selection':()=>professional.open('refine'), 'color-management':()=>professional.open('color'), batch:()=>professional.open('batch'), 'path-new':()=>paths.start(), 'path-apply':()=>paths.apply(), 'path-cancel':()=>paths.cancel(), 'path-closed':()=>paths.toggleClosed(),
+  clipping: () => nonDestructive.clipping(), 'layer-styles': () => nonDestructive.openStyles(), 'smart-convert': () => nonDestructive.convert(), 'smart-replace': () => nonDestructive.chooseSource(),
+  'copy-pixels': () => editing.copy(), 'paste-pixels': () => editing.paste(), 'free-transform': () => editing.startTransform(),
+  'merge-layers': () => { const doc = workspace.active; if (doc) mergeLayers(doc, doc.selectedIds); },
+  'align-layers': () => { const doc = workspace.active; if (doc) alignLayers(doc, doc.selectedIds, $<HTMLSelectElement>('align-kind').value as Alignment, $<HTMLSelectElement>('align-target').value as 'selection' | 'canvas'); },
   'retry-recovery': flushRecovery,
+  'smart-filters':()=>liveEffects.open('filters'),'mask-properties':()=>liveEffects.open('mask'),'blend-if':()=>liveEffects.open('blend'),
+  histogram:()=>histogram.open(),
   filters: () => filters.open(), 'invert-selection':()=>editing.invert(), 'select-color':()=>editing.selectColor(), feather:()=>editing.modify('feather'), 'expand-selection':()=>editing.modify('expand'), 'contract-selection':()=>editing.modify('contract'),
-  'export-psd': () => { editing.cancel(); const warnings=workspace.active?psdExportWarnings(workspace.active.state):[]; $('psd-export-losses').textContent=warnings.join('\n');$('psd-export-consent-row').hidden=!warnings.length;$<HTMLInputElement>('psd-export-consent').checked=false;$<HTMLButtonElement>('psd-export-confirm').disabled=Boolean(warnings.length);$<HTMLDialogElement>('psd-export-dialog').showModal(); },
+  'export-psd': () => { editing.cancel(); const warnings=workspace.active?[...psdExportWarnings(workspace.active.state),...psdMetadataWarnings(workspace.active.state)]:[]; $('psd-export-losses').textContent=warnings.join('\n');$('psd-export-consent-row').hidden=!warnings.length;$<HTMLInputElement>('psd-export-consent').checked=false;$<HTMLButtonElement>('psd-export-confirm').disabled=Boolean(warnings.length);$<HTMLDialogElement>('psd-export-dialog').showModal(); },
   'select-all': () => editing.selectAll(), deselect: () => editing.deselect(), fill: () => editing.fill(), clear: () => editing.fill(true), crop: () => editing.crop(),
   transform: () => {
     editing.cancel(); const layer = workspace.active?.selected; if (!layer?.bitmap) throw new Error('请选择含像素的图层。');
     $<HTMLInputElement>('transform-width').value = String(layer.bitmap.width); $<HTMLInputElement>('transform-height').value = String(layer.bitmap.height);
     $<HTMLInputElement>('transform-angle').value = '0'; $<HTMLInputElement>('flip-x').checked = $<HTMLInputElement>('flip-y').checked = false;
+    $<HTMLSelectElement>('transform-resampling').value=$<HTMLSelectElement>('resampling-method').value;
     $('transform-error').textContent = ''; $<HTMLDialogElement>('transform-dialog').showModal();
   },
-  text: () => advanced.openText(), shape: () => advanced.openShape(), adjustment: () => advanced.openAdjustment(), 'edit-content': () => advanced.editContent(), rasterize: () => workspace.active?.rasterizeSelected(),
+  text: () => advanced.openText(), shape: () => advanced.openShape(), adjustment: () => advanced.openAdjustment(), 'edit-content': () => workspace.active?.selected?.content?.type==='path'?paths.start(true):advanced.editContent(), rasterize: () => workspace.active?.rasterizeSelected(),
   'mask-add': () => advanced.mask('add'), 'mask-invert': () => advanced.mask('invert'), 'mask-toggle': () => advanced.mask('toggle'), 'mask-apply': () => advanced.mask('apply'), 'mask-remove': () => advanced.mask('remove'), 'mask-paint': () => advanced.mask('paint'), 'mask-pixels': () => advanced.mask('pixels'),
   export: () => { editing.cancel(); $('export-error').textContent = ''; $<HTMLDialogElement>('export-dialog').showModal(); },
   new: newDialog, open: () => $<HTMLInputElement>('open-input').click(), import: () => $<HTMLInputElement>('import-input').click(),
@@ -229,7 +261,7 @@ document.addEventListener('click', event => {
   if ((event.target as Element).closest('[data-close-dialog]')) (event.target as Element).closest('dialog')?.close();
 }, options);
 for (const [id, submit] of [
-  ['transform', () => editing.transform(Number($<HTMLInputElement>('transform-width').value), Number($<HTMLInputElement>('transform-height').value), Number($<HTMLInputElement>('transform-angle').value), $<HTMLInputElement>('flip-x').checked, $<HTMLInputElement>('flip-y').checked)],
+  ['transform', () => editing.transform(Number($<HTMLInputElement>('transform-width').value), Number($<HTMLInputElement>('transform-height').value), Number($<HTMLInputElement>('transform-angle').value), $<HTMLInputElement>('flip-x').checked, $<HTMLInputElement>('flip-y').checked,$<HTMLSelectElement>('transform-resampling').value as Resampling)],
   ['text', () => advanced.submit('text')], ['shape', () => advanced.submit('shape')], ['adjustment', () => advanced.submit('adjustment')],
   ['export', async () => {
     const doc = workspace.active; if (!doc) return;
@@ -308,7 +340,7 @@ async function start() {
   await workspace.start(); await acquireRecoveryLease();
   try { const count = workspace.restore(await store.load()); if (recoveryEnabled) recoveryStatus(count ? `已恢复 ${count} 个文档` : '本地恢复已就绪'); }
   catch (error) { recoveryEnabled = false; recoveryStatus('自动恢复不可用，请保存工程副本', true); notice('未覆盖原恢复数据：' + (error instanceof Error ? error.message : String(error)), true); }
-  const canShortcut = () => !editing.busy && !document.querySelector('dialog[open]') && !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement) && !(document.activeElement instanceof HTMLSelectElement);
+  const canShortcut = () => !editing.busy && !paths.busy && !document.querySelector('dialog[open]') && !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement) && !(document.activeElement instanceof HTMLSelectElement);
   for (const [chord, action] of [['Mod+Shift+I', 'invert-selection'], ['Mod+A', 'select-all'], ['Mod+D', 'deselect'], ['Mod+N', 'new'], ['Mod+O', 'open'], ['Mod+S', 'save'], ['Mod+Z', 'undo'], ['Mod+Shift+Z', 'redo'], ['Mod+Y', 'redo'], ['Mod+0', 'fit'], ['Mod+1', 'actual'], ['Delete', 'delete-selection'], ['Backspace', 'delete-selection']] as const)
     workspace.shell.shortcuts.register({ id: `image.${chord}`, ownerId: 'image.core', chord, when: canShortcut, handler: () => run(actions[action]!) });
   workspace.shell.shortcuts.attach(window);
@@ -317,6 +349,6 @@ async function start() {
     catch (error) { notice(String(error), true); return false; }
   });
   workspace.subscribe(changed); ready = true; $('app').setAttribute('aria-busy', 'false'); changed();
-  window.addEventListener('pagehide', event => { if (!event.persisted) { disposed = true; ready = false; for (const url of downloadUrls) URL.revokeObjectURL(url); downloadUrls.clear(); clearTimeout(recoveryTimer); psdJobs.cancel(); finishPsdImport(null); lifecycle.abort(); filters.dispose(); editing.dispose(); view.dispose(); releaseClose?.(); void recovery.dispose().finally(() => releaseLease?.()); void workspace.dispose(); } }, { once: true });
+  window.addEventListener('pagehide', event => { if (!event.persisted) { disposed = true; ready = false; for (const url of downloadUrls) URL.revokeObjectURL(url); downloadUrls.clear(); clearTimeout(recoveryTimer); psdJobs.cancel(); finishPsdImport(null); lifecycle.abort(); filters.dispose(); productivity.dispose(); liveEffects.dispose(); histogram.dispose(); advanced.dispose(); nonDestructive.dispose(); smartSourcePanel.dispose(); paths.dispose(); professional.dispose(); editing.dispose(); view.dispose(); releaseClose?.(); void recovery.dispose().finally(() => releaseLease?.()); void workspace.dispose(); } }, { once: true });
 }
 void start().catch(error => { $('app').setAttribute('aria-busy', 'false'); notice('启动失败：' + String(error), true); });

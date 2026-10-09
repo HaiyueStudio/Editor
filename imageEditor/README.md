@@ -6,12 +6,19 @@ P2 新增画笔、橡皮擦、矩形选区、填充/清除、移动、裁剪、�
 P3 已接入受限 PSD 分层导入、兼容性报告、显式合并图回退与 PSD 兼容副本导出。
 P4 已实现二进制分块恢复、像素差量历史、缓存释放和本机 Electron 候选打包，见 [P4 验收与限制](docs/p4-stability.md)。
 P5 已加入可编辑文字／形状、灰度图层蒙版、6 类调整图层和 9 种混合模式，见 [P5 功能与 PSD 兼容矩阵](docs/p5-content-and-masks.md)。
+新增非破坏性剪贴蒙版、常用图层样式、RGB 曲线／色阶、嵌入式像素智能对象，以及基础文字／形状／调整层的 PSD 原生往返，见 [当前支持矩阵](docs/non-destructive-and-native-psd.md)。
 ICC 资源保留但当前不作颜色转换；Photoshop 全兼容和实机验收仍未完成。
 
 最新扩展提供 13 种滤镜，以及反选、颜色范围、魔术棒、椭圆、自由/多边形套索、选区组合、羽化与扩展/收缩。
 支持后台效果预览、原图对比、取消和撤销；操作与格式兼容说明见 [高级选区与滤镜](docs/advanced-editing.md)。
 
 默认示例为 1200 × 800 的“海上生明月”，包含夜空、明月、海面与月光、题字四个独立像素图层，可直接导出分层 PSD。页眉、浏览器和 PWA 使用 Haiyue 原生引擎共享的冰蓝琉璃月牙，素材来源见 [品牌说明](assets/branding/README.md)。
+
+日常编辑新增像素复制／粘贴（编辑器内跨文档）、吸管（I）、线性／径向渐变（G）、
+图层多选／对齐／合并和交互式自由变换（Cmd/Ctrl+T，Enter 确认，Esc 取消）。
+合并限连续、可见、正常混合的同组图层；自由变换支持单个像素层或智能对象；文字／形状及蒙版需先栅格化／应用。
+新增功能与原有绘画、选区、内容、蒙版、PNG/JPEG 编解码均可通过统一 API、IPC 和本地 RPC 调用，
+完整参数和边界见 [命令调用契约](../docs/for-ai/editor-platform/operations.md#image-daily-editing-commands)。
 
 ## 运行
 
@@ -36,6 +43,8 @@ npm run test:browser:p3 -w ./imageEditor
 npm run test:browser:advanced -w ./imageEditor
 npm run test:browser:p4 -w ./imageEditor
 npm run test:browser:p5 -w ./imageEditor
+npm run test:browser:daily -w ./imageEditor
+npm run test:browser:native -w ./imageEditor
 npm run test:performance -w ./imageEditor
 npm run app:check -w ./imageEditor
 npm run test:image:p0
@@ -109,7 +118,7 @@ Python 检查使用 psd-tools，直接比较两份 PSD 的图层结构、解码�
 P4 提供恢复分块、差量历史与有界缓存；完整分块工作位图、完整元数据语义及更大文档性能仍未完成。
 
 参考合成器仅实现普通、正片叠底、滤色、隔离组及 100% 不透明度的穿透组；
-使用编码 RGB 数值合成，尚未完成 ICC 转换及 Photoshop 色彩设置对齐。
+P0 参考实现使用编码 RGB 数值合成。当前产品已支持受限 RGB ICC 转换，范围见专业修图说明；Photoshop 完整色彩设置仍未对齐。
 复杂内容在原型导出时明确阻止。实验脚本中的 `*.codec-roundtrip.psd` 刻意绕过保护以研究
 编解码损失，**这些文件不是可交付的无损导出结果**。
 
@@ -117,3 +126,19 @@ P1 通过共享 Platform、Shell 和 App Kit 接入仓库构建、类型检查�
 产品描述符检查。Web/PWA 和 Electron renderer 来自相同内容树；P4 已验证浏览器断网重启和 macOS 本机候选包，
 Windows/Linux 实机、公开发行签名及公证尚未验收。P3 Worker 复用 P0 格式诊断和 CPU 参考合成器，
 浏览器使用新的适配层控制准入与导出。
+
+## 专业修图与生产能力
+
+已接入软笔刷／笔压、仿制／修复、引导式边缘细化、贝塞尔路径、富文本、RGB ICC 转换与可取消批处理。UI 与统一 API / IPC / 本地 RPC 共用操作契约；工程 v5、恢复 v6 保留新增语义。该阶段使用方式、命令的新增部分、PSD 降级规则及大图边界见 [专业修图与生产说明](docs/professional-production.md)。
+
+### 处理质量（第一批）
+
+高质量重采样、RGB 分通道曲线／色阶、直方图、高斯模糊与 USM 已接入 UI、历史和公共 API。参数、兼容范围、算法口径及包体变更见 [处理质量说明](docs/processing-quality.md)。浏览器回归：`npm run test:browser:quality`。
+
+第二批已增加智能滤镜堆栈、滤镜蒙版、实时蒙版密度／羽化及 Blend If，并提供 55 个领域命令。详见 [非破坏性处理链](docs/non-destructive-pipeline.md)，包括界面入口、API 示例、工程版本及 PSD 兼容边界。
+
+第三批已增加命名选区／Alpha 通道、参考线吸附、参数化动作与模板批量导出，图像领域命令增至 65 个。工程 v8／恢复 v9 保留生产设置；入口在右侧「通道／生产工具」。详见 [生产效率说明](docs/productivity.md)。
+
+### 第四批兼容性与基础能力
+
+新增多层智能源编辑／回写、工程 v9／恢复 v10、带扩边的分块合成、16 位／浮点 SDR 色彩转换资源 API，以及两代 PSD 独立验证。公共命令共 68 个。主文档仍为 RGB8；完整高位深／HDR／ICC 与 Photoshop 实机认证尚未完成。见 [范围、API 和验证](docs/compatibility-foundations.md)。

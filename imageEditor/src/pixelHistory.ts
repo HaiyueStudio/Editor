@@ -10,8 +10,8 @@ function find(layers: readonly ImageLayer[], id: string): ImageLayer | undefined
   for (const layer of layers) { if (layer.id === id) return layer; const child = find(layer.children, id); if (child) return child; }
 }
 function retainedBytes(state: ImageState): number {
-  const visit = (layers: readonly ImageLayer[]): number => layers.reduce((sum, l) => sum + (l.bitmap?.data.byteLength ?? 0) + (l.mask?.data.byteLength ?? 0) + visit(l.children), 0);
-  return visit(state.layers) + (state.selection?.mask?.byteLength ?? 0) + (state.psdOrigin?.resources.byteLength ?? 0);
+  const visit = (layers: readonly ImageLayer[]): number => layers.reduce((sum, l) => sum + (l.bitmap?.data.byteLength ?? 0) + (l.mask?.data.byteLength ?? 0) + (l.filterMask?.data.byteLength ?? 0) + (l.content?.type==='smart'?l.content.source.data.byteLength+(l.content.sourcePsd?.byteLength??0):0) + visit(l.children), 0);
+  return (state.channels??[]).reduce((n,c)=>n+c.data.byteLength,0) + visit(state.layers) + (state.selection?.mask?.byteLength ?? 0) + (state.psdOrigin?.resources.byteLength ?? 0);
 }
 /** Same-size pixel edits retain only changed 128px tiles, with reversible XOR bytes. */
 export function pixelHistory(label: string, before: ImageState, after: ImageState, id: string, read: () => ImageState, write: (state: ImageState) => void, bounds?: { x: number; y: number; width: number; height: number }): EditorCommand | undefined {

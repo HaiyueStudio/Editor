@@ -1,18 +1,31 @@
+import { snapMove, snapPoint } from './layout.js';
+import type { Resampling } from './resampling.js';
+import { retouchSampler } from './retouch.js';
+import { copyPixels, pastePixels, sampleColor as pickColor, gradientPixels, selectedRoots, moveLayers, type PixelCopy } from './dailyEditing.js';
+import { FreeTransform, transformedLayer, commitTransform } from './freeTransform.js';
 import { maskStrokeState, maskFromStroke } from './maskTools.js';
 import { combineSelection, invertSelection, ellipseSelection, polygonSelection, colorSelection, modifySelection, selectionCount, type Selection, type SelectionMode } from './selection.js';
 import { ImageDocument, makeLayer, checkSize, layerLocked, type ImageState, type ImageLayer } from './document.js';
 import { CanvasView, paintDocument, bitmapCanvas, refreshBitmap } from './canvasView.js';
 import { PixelStroke, fillPixels, hexColor, parentOffset, replacePixel, selectionRect, transformBitmap, type Point, type Rect } from './pixelTools.js';
 
-export type Tool = 'hand' | 'move' | 'brush' | 'eraser' | 'select' | 'ellipse' | 'lasso' | 'polygon' | 'wand' | 'range' | 'crop';
+export type Tool = 'hand' | 'move' | 'brush' | 'eraser' | 'select' | 'ellipse' | 'lasso' | 'polygon' | 'wand' | 'range' | 'crop' | 'eyedropper' | 'gradient' | 'clone' | 'heal' | 'path';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const names: Record<Tool, string> = { hand: '画布浏览', move: '移动图层', brush: '画笔', eraser: '橡皮擦', select: '矩形选区', ellipse:'椭圆选区', lasso:'套索', polygon:'多边形套索', wand:'魔术棒', range:'颜色范围', crop: '裁剪画布' };
-const hints: Record<Tool, string> = { hand: '拖动平移 · 滚轮缩放', move: '拖动选中图层 · 方向键微调', brush: '拖动绘制 · Esc 取消笔画', eraser: '拖动擦除 · Esc 取消笔画', select: '拖动选择 · Shift 加选 / Alt 减选', ellipse:'拖动选择 · Shift 加选 / Alt 减选', lasso:'自由绘制闭合区域 · Esc 取消', polygon:'逐点单击 · Enter / 双击闭合 · 退格撤点', wand:'点击相近颜色 · 可选连续区域', range:'点击取样，选择全图相近颜色', crop: '拖动裁剪区域 · Enter 确认' };
-interface Gesture { doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; stroke?: PixelStroke; maskLayer?: ImageLayer; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
+const names: Record<Tool, string> = { path:'贝塞尔路径',clone:'仿制图章',heal:'修复画笔',eyedropper: '吸管', gradient: '渐变', hand: '画布浏览', move: '移动图层', brush: '画笔', eraser: '橡皮擦', select: '矩形选区', ellipse:'椭圆选区', lasso:'套索', polygon:'多边形套索', wand:'魔术棒', range:'颜色范围', crop: '裁剪画布' };
+const hints: Record<Tool, string> = { path:'单击加锚点 · 拖出控制柄 · Enter 应用 / Esc 取消',clone:'Alt 单击取样 · 拖动仿制 · Esc 取消',heal:'Alt 单击取样 · 保留纹理并匹配局部色调',eyedropper: '点击画布设置前景色 · 全部可见图层取样', gradient: '拖动绘制渐变 · Esc 取消', hand: '拖动平移 · 滚轮缩放', move: '拖动选中图层 · 方向键微调', brush: '拖动绘制 · Esc 取消笔画', eraser: '拖动擦除 · Esc 取消笔画', select: '拖动选择 · Shift 加选 / Alt 减选', ellipse:'拖动选择 · Shift 加选 / Alt 减选', lasso:'自由绘制闭合区域 · Esc 取消', polygon:'逐点单击 · Enter / 双击闭合 · 退格撤点', wand:'点击相近颜色 · 可选连续区域', range:'点击取样，选择全图相近颜色', crop: '拖动裁剪区域 · Enter 确认' };
+interface Gesture { doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; gradient?: ImageLayer; end?: Point; stroke?: PixelStroke; maskLayer?: ImageLayer; maskTarget?:'layer'|'filter'; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
 export class EditingTools {
   tool: Tool = 'hand';
-  maskEditing = false;
-  setMaskEditing(value:boolean){this.cancel();this.maskEditing=value;if(value)this.setTool('brush');this.sync();}
+  readonly freeTransform: FreeTransform;
+  private clipboard: PixelCopy | undefined;
+  private retouchSource:{docId:string;layerId:string;x:number;y:number;offset?:Point}|undefined;
+  private pressure(event:PointerEvent){return event.pointerType==='pen'?event.pressure:1;}
+  previewSelection(selection:Selection|null){this.showRect(selection);}
+  copy() { this.cancel(); const doc = this.active(); if (!doc) return; this.clipboard = copyPixels(doc.state, doc.selected?.id); this.notify('已复制当前图层的选区像素，可跨文档粘贴。'); }
+  paste() { this.cancel(); const doc = this.active(); if (!doc || !this.clipboard) throw new Error('请先在编辑器中复制像素。'); pastePixels(doc, this.clipboard); }
+  startTransform() { this.cancel(); this.freeTransform.start(); }
+  maskEditing = false; maskTarget:'layer'|'filter'='layer';
+  setMaskEditing(value:boolean,target:'layer'|'filter'='layer'){this.cancel();this.maskEditing=value;this.maskTarget=target;if(value)this.setTool('brush');this.sync();}
   private gesture: Gesture | undefined;
   private polygon: {doc:ImageDocument;before:ImageState;points:Point[];mode:SelectionMode}|undefined;
   private shown:Selection|null|undefined;
@@ -21,6 +34,7 @@ export class EditingTools {
   private activeId: string | undefined;
   private previewFrame: number | undefined;
   constructor(private active: () => ImageDocument | undefined, private view: CanvasView, private notify: (message: string, error?: boolean) => void) {
+    this.freeTransform = new FreeTransform(active, view, notify);
     const signal = this.abort.signal, viewport = view.viewport;
     view.canPan = event => event.button === 1 || event.button === 0 && (this.tool === 'hand' || this.space);
     viewport.addEventListener('pointerdown', event => this.guard(() => this.begin(event)), { signal });
@@ -37,18 +51,20 @@ export class EditingTools {
     window.addEventListener('blur', () => { this.space = false; this.cancel(); }, { signal });
     document.addEventListener('keydown', event => {
       if (this.isInput()) return;
+      if ((event.metaKey || event.ctrlKey) && ['c', 'v', 't'].includes(event.key.toLowerCase())) { event.preventDefault(); this.guard(() => event.key.toLowerCase() === 'c' ? this.copy() : event.key.toLowerCase() === 'v' ? this.paste() : this.startTransform()); return; }
+      if (this.freeTransform.busy) return;
       if (event.code === 'Space') { this.space = true; event.preventDefault(); }
       if (event.key === 'Escape') { event.preventDefault(); if (this.gesture || this.polygon) this.cancel(); else this.active()?.setSelection(null); }
       if (this.polygon && (event.key === 'Enter' || event.key === 'Backspace')) { event.preventDefault(); this.guard(() => { if(event.key === 'Enter')this.finishPolygon();else {this.polygon!.points.pop();this.showPath(this.polygon!.points);} }); return; }
       if (this.gesture) return;
       if (event.key === 'Enter' && this.tool === 'crop') { event.preventDefault(); this.guard(() => this.crop()); }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const tool = ({ h: 'hand', v: 'move', b: 'brush', e: 'eraser', m: 'select', l:'lasso', w:'wand', c: 'crop' } as Record<string, Tool>)[event.key.toLowerCase()];
+      const tool = ({ i: 'eyedropper', g: 'gradient', h: 'hand', v: 'move', b: 'brush', e: 'eraser', m: 'select', l:'lasso', w:'wand', c: 'crop' } as Record<string, Tool>)[event.key.toLowerCase()];
       if (tool) { event.preventDefault(); this.setTool(tool); }
       if (this.tool === 'move' && event.target === viewport && event.key.startsWith('Arrow')) {
         event.preventDefault(); this.guard(() => {
           const doc = this.active(), layer = doc?.selected, amount = event.shiftKey ? 10 : 1;
-          if (doc && layer) doc.updateLayer(layer.id, { x: layer.x + (event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0), y: layer.y + (event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0) });
+          if (doc && layer) moveLayers(doc, doc.selectedIds, event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0, event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0);
         });
       }
     }, { signal });
@@ -59,23 +75,24 @@ export class EditingTools {
   }
   private isInput() { return Boolean(document.querySelector('dialog[open]')) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? ''); }
   private guard(action: () => void) { try { action(); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
-  get busy() { return Boolean(this.gesture || this.polygon); }
+  get busy() { return Boolean(this.gesture || this.polygon || this.freeTransform.busy); }
   get color() { return hexColor($<HTMLInputElement>('paint-color').value); }
   get opacity() { return Number($<HTMLInputElement>('paint-opacity').value) / 100; }
   setTool(tool: Tool) {
     this.cancel(); this.tool = tool;
     document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => { const selected = button.dataset.tool === tool; button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected)); });
     $('tool-name').textContent = names[tool]; $('tool-hint').textContent = hints[tool];
-    $('paint-settings').hidden = tool !== 'brush' && tool !== 'eraser'; $('selection-settings').hidden = !['select','ellipse','lasso','polygon','wand','range','crop'].includes(tool);
+    $('paint-settings').hidden = !['brush', 'eraser', 'gradient', 'clone', 'heal'].includes(tool); $('gradient-settings').hidden = tool !== 'gradient'; $('selection-settings').hidden = !['select','ellipse','lasso','polygon','wand','range','crop'].includes(tool);
     $('color-settings').hidden = tool !== 'wand' && tool !== 'range';
-    $('apply-crop').hidden = tool !== 'crop'; this.view.viewport.dataset.tool = tool;
+    $('apply-crop').hidden = tool !== 'crop'; this.view.viewport.dataset.tool = tool;this.view.viewport.dispatchEvent(new CustomEvent('image-tool-change'));
   }
   sync() {
+    this.freeTransform.sync();
     const doc = this.active();
     if (this.polygon && (this.polygon.doc !== doc || this.polygon.before !== doc?.state)) this.cancel();
     if (this.gesture && (this.gesture.doc !== doc || this.gesture.before !== doc?.state)) this.cancel();
-    if (this.maskEditing && !doc?.selected?.mask) this.maskEditing=false;
-    const indicator=document.getElementById('mask-editing-status');if(indicator)indicator.textContent=this.maskEditing?'正在绘制蒙版 · 白色显示／黑色隐藏':'正在编辑图层像素';
+    if (this.maskEditing && !(this.maskTarget==='filter'?doc?.selected?.filterMask:doc?.selected?.mask)) this.maskEditing=false;
+    const indicator=document.getElementById('mask-editing-status');if(indicator)indicator.textContent=this.maskEditing?`正在绘制${this.maskTarget==='filter'?'滤镜':'图层'}蒙版 · 白色显示／黑色隐藏`:'正在编辑图层像素';
     if (this.activeId !== doc?.identity.id) { this.maskEditing=false; this.cancel(); this.activeId = doc?.identity.id; }
     // A save/status refresh must not paint the previous selection over a live drag.
     if (!this.gesture && !this.polygon) this.showRect(doc?.state.selection ?? null);
@@ -92,27 +109,32 @@ export class EditingTools {
     }
   }
   private begin(event: PointerEvent) {
-    const doc = this.active(); if (!doc || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    const doc = this.active(); if (!doc || this.freeTransform.busy || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
     const point = this.view.point(event);
     if (point.x < 0 || point.y < 0 || point.x >= doc.state.width || point.y >= doc.state.height) return;
     // Focus commits pending property inputs synchronously. Capture the gesture's
     // document snapshot only afterwards, otherwise that commit cancels this drag.
     this.view.viewport.focus({ preventScroll: true });
     if (this.active() !== doc) return;
+    if(this.tool==='path')return;
+    if((this.tool==='clone'||this.tool==='heal')&&event.altKey){if(!doc.selected?.bitmap)throw new Error('请选择含像素的取样图层。');this.retouchSource={docId:doc.identity.id,layerId:doc.selected.id,x:point.x,y:point.y};this.notify(`取样点 ${Math.round(point.x)}, ${Math.round(point.y)} · ${doc.selected.name}`);event.preventDefault();return;}
+    if (this.tool === 'eyedropper') { const color = pickColor(doc.state, Math.floor(point.x), Math.floor(point.y)); $<HTMLInputElement>('paint-color').value = '#' + color.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''); this.notify(`取色 RGBA(${color.join(', ')})`); return; }
+    if (this.tool === 'gradient' && (!doc.selected || this.maskEditing)) throw new Error('请选择像素图层并退出蒙版绘制。');
     const mode=this.selectionMode(event);
     if(this.tool==='wand'||this.tool==='range'){this.sampleColor(point,this.tool==='wand'&&$<HTMLInputElement>('wand-contiguous').checked,mode);return;}
     if(this.tool==='polygon') {if(!this.polygon)this.polygon={doc,before:doc.state,points:[],mode};if(this.polygon.points.length>=8192)throw new Error('套索顶点过多，请完成当前选区。');this.polygon.points.push(point);this.showPath(this.polygon.points);this.view.viewport.focus({preventScroll:true});event.preventDefault();return;}
     const gesture: Gesture = { doc, before: doc.state, start: point, pointer: event.pointerId,mode, ...(this.tool==='lasso'?{points:[point]}:{}) };
-    if (this.tool === 'brush' || this.tool === 'eraser') {
+    if (['brush','eraser','clone','heal'].includes(this.tool)) {
       if (!doc.selected) throw new Error('请先选择像素图层。');
-      const source=this.maskEditing?maskStrokeState(doc.state,doc.selected.id):doc.state;
-      if(this.maskEditing)gesture.maskLayer=doc.selected;
+      const source=this.maskEditing?maskStrokeState(doc.state,doc.selected.id,this.maskTarget):doc.state;
+      if(this.maskEditing){gesture.maskLayer=doc.selected;gesture.maskTarget=this.maskTarget;}
       const tone=this.tool==='eraser'?0:Number($<HTMLSelectElement>('mask-paint-tone').value);
-      gesture.stroke = new PixelStroke(source, doc.selected.id, Number($<HTMLInputElement>('brush-size').value), this.opacity, this.maskEditing?[tone,tone,tone]:this.color, !this.maskEditing&&this.tool === 'eraser');
-      gesture.stroke.point(point);
+      let sample:ReturnType<typeof retouchSampler>|undefined;if(this.tool==='clone'||this.tool==='heal'){if(this.maskEditing)throw new Error('仿制／修复前请退出蒙版绘制。');const s=this.retouchSource;if(!s||s.docId!==doc.identity.id)throw new Error('请先 Alt 单击源图取样。');if(!s.offset||!$<HTMLInputElement>('clone-aligned').checked)s.offset={x:s.x-point.x,y:s.y-point.y};sample=retouchSampler(doc.state,doc.selected.id,s.layerId,s.offset,this.tool,Number($<HTMLInputElement>('heal-radius').value));}
+      gesture.stroke = new PixelStroke(source, doc.selected.id, Number($<HTMLInputElement>('brush-size').value), this.opacity, this.maskEditing?[tone,tone,tone]:this.color, !this.maskEditing&&this.tool === 'eraser',{hardness:Number($<HTMLInputElement>('brush-hardness')?.value??100)/100,pressure:($<HTMLSelectElement>('brush-pressure')?.value??'none') as 'none',...(sample?{sample}:{})});
+      gesture.stroke.point({...point,pressure:this.pressure(event)});
     } else if (this.tool === 'move') {
       if (!doc.selected) throw new Error('请先选择图层。');
-      if (layerLocked(doc.state.layers, doc.selected.id)) throw new Error('图层或上级图层组已锁定。');
+      if (selectedRoots(doc.state, doc.selectedIds).some(layer => layerLocked(doc.state.layers, layer.id))) throw new Error('图层或上级图层组已锁定。');
       gesture.layer = doc.selected;
     }
     this.gesture = gesture; this.view.viewport.focus({ preventScroll: true }); this.view.viewport.setPointerCapture(event.pointerId); event.preventDefault(); this.preview();
@@ -121,18 +143,21 @@ export class EditingTools {
     const gesture = this.gesture; if (!gesture || gesture.pointer !== event.pointerId) return;
     if (gesture.doc !== this.active() || gesture.doc.state !== gesture.before) { this.cancel(); return; }
     const point = this.view.point(event);
-    if (gesture.stroke) gesture.stroke.point(point);
-    else if (gesture.layer) gesture.delta = { x: Math.round(point.x - gesture.start.x), y: Math.round(point.y - gesture.start.y) };
+    if (this.tool === 'gradient') gesture.end = point;
+    else if (gesture.stroke){const coalesced=event.getCoalescedEvents?.()??[];for(const p of coalesced.length?coalesced:[event])gesture.stroke.point({...this.view.point(p),pressure:this.pressure(p)});}
+    else if (gesture.layer) {const delta={x:Math.round(point.x-gesture.start.x),y:Math.round(point.y-gesture.start.y)};gesture.delta=event.altKey?delta:snapMove(gesture.before,gesture.doc.selectedIds,delta,this.view.scale);}
     else if(gesture.points){if(gesture.points.length<8192&&Math.hypot(point.x-gesture.points.at(-1)!.x,point.y-gesture.points.at(-1)!.y)>=.5)gesture.points.push(point);}
-    else gesture.rect = selectionRect(gesture.start, point, gesture.before.width, gesture.before.height);
+    else gesture.rect = selectionRect(gesture.start, event.altKey?point:snapPoint(gesture.before,point,this.view.scale), gesture.before.width, gesture.before.height);
     this.preview();
   }
   private preview() {
     if (this.previewFrame !== undefined) return;
     this.previewFrame = requestAnimationFrame(() => {
       this.previewFrame = undefined; const g = this.gesture; if (!g) return;
+      if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) this.guard(() => { g.gradient = this.gradientLayer(g); this.view.preview({ ...g.before, layers: replacePixel(g.before.layers, g.gradient.id, g.gradient) }); }); return; }
+      if (g.layer) { let layers = g.before.layers; for (const layer of selectedRoots(g.before, g.before.selectedIds ?? [g.layer.id])) layers = replacePixel(layers, layer.id, { ...layer, x: layer.x + (g.delta?.x ?? 0), y: layer.y + (g.delta?.y ?? 0) }); this.view.preview({ ...g.before, layers }); return; }
       if (g.stroke) refreshBitmap(g.stroke.layer.bitmap!, g.stroke.takeDirty());
-      const layer = g.stroke ? g.maskLayer?{...g.maskLayer,mask:maskFromStroke(g.maskLayer,g.stroke.layer)}:g.stroke.layer : g.layer && { ...g.layer, x: g.layer.x + (g.delta?.x ?? 0), y: g.layer.y + (g.delta?.y ?? 0) };
+      const layer = g.stroke ? g.maskLayer?{...g.maskLayer,[g.maskTarget==='filter'?'filterMask':'mask']:maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget)}:g.stroke.layer : undefined;
       if (layer) this.view.preview({ ...g.before, layers: replacePixel(g.before.layers, layer.id, layer) });
       else if(g.points)this.showPath(g.points);
       else this.showRect(g.rect ?? null);
@@ -144,9 +169,10 @@ export class EditingTools {
     this.gesture = undefined; if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
     if (this.view.viewport.hasPointerCapture(event.pointerId)) this.view.viewport.releasePointerCapture(event.pointerId);
     this.view.preview();
-    if(g.stroke?.changed&&g.maskLayer)g.doc.setMask(g.maskLayer.id,maskFromStroke(g.maskLayer,g.stroke.layer));
-    else if (g.stroke?.changed) g.doc.replaceLayerPixels(g.stroke.layer.id, g.stroke.layer, this.tool === 'eraser' ? '橡皮擦笔画' : '画笔笔画', g.before.revision, g.stroke.changedBounds);
-    else if (g.layer && g.delta) g.doc.updateLayer(g.layer.id, { x: g.layer.x + g.delta.x, y: g.layer.y + g.delta.y });
+    if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) { const layer = this.gradientLayer(g); g.doc.replaceLayerPixels(layer.id, layer, '渐变', g.before.revision); } }
+    else if(g.stroke?.changed&&g.maskLayer)g.doc.setMask(g.maskLayer.id,maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget),g.maskTarget);
+    else if (g.stroke?.changed) g.doc.replaceLayerPixels(g.stroke.layer.id, g.stroke.layer, this.tool === 'eraser' ? '橡皮擦笔画' : this.tool==='clone'?'仿制笔画':this.tool==='heal'?'修复笔画':'画笔笔画', g.before.revision, g.stroke.changedBounds);
+    else if (g.layer && g.delta) moveLayers(g.doc, g.doc.selectedIds, g.delta.x, g.delta.y);
     else if (!g.stroke && !g.layer) {
       const selected=g.points?polygonSelection(g.points,g.before.width,g.before.height):g.rect?(this.tool==='ellipse'?ellipseSelection(g.rect):g.rect):null;
       if(selected)g.doc.setSelection(combineSelection(g.before.selection,selected,this.tool==='crop'?'replace':g.mode!,g.before.width,g.before.height));
@@ -154,7 +180,9 @@ export class EditingTools {
     }
     this.sync();
   }
+  private gradientLayer(g: Gesture) { return gradientPixels(g.before, g.before.selectedId!, g.start, g.end!, this.color, hexColor($<HTMLInputElement>('gradient-color').value), $<HTMLSelectElement>('gradient-kind').value as 'linear' | 'radial', this.opacity); }
   cancel() {
+    this.freeTransform?.cancel();
     const g = this.gesture; this.gesture = undefined; this.polygon=undefined; this.shown=undefined;
     if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
     if (g) { if (this.view.viewport.hasPointerCapture(g.pointer)) this.view.viewport.releasePointerCapture(g.pointer); this.view.preview(); }
@@ -181,15 +209,13 @@ export class EditingTools {
   deselect() { this.cancel(); this.active()?.setSelection(null); }
   fill(clear = false) {
     this.cancel(); const doc = this.active(); if (!doc?.selected) return;
-    if(this.maskEditing){const source=maskStrokeState(doc.state,doc.selected.id),tone=clear?0:Number($<HTMLSelectElement>('mask-paint-tone').value);doc.setMask(doc.selected.id,maskFromStroke(doc.selected,fillPixels(source,doc.selected.id,[tone,tone,tone],clear?1:this.opacity)));return;}
+    if(this.maskEditing){const source=maskStrokeState(doc.state,doc.selected.id,this.maskTarget),tone=clear?0:Number($<HTMLSelectElement>('mask-paint-tone').value);doc.setMask(doc.selected.id,maskFromStroke(doc.selected,fillPixels(source,doc.selected.id,[tone,tone,tone],clear?1:this.opacity),this.maskTarget),this.maskTarget);return;}
     doc.replaceLayerPixels(doc.selected.id, fillPixels(doc.state, doc.selected.id, clear ? null : this.color, clear ? 1 : this.opacity), clear ? '清除选区像素' : '填充前景色');
   }
   crop() { this.cancel(); this.active()?.cropToSelection(); this.view.fit(); }
-  transform(width: number, height: number, angle: number, flipX: boolean, flipY: boolean) {
+  transform(width: number, height: number, angle: number, flipX: boolean, flipY: boolean, resampling:Resampling='bicubic') {
     this.cancel(); const doc = this.active(), layer = doc?.selected; if (!doc || !layer?.bitmap) throw new Error('请选择含像素的图层。');
-    if(layer.content||layer.mask)throw new Error('带可编辑内容或蒙版的图层请先栅格化／应用蒙版后变换。');
-    const bitmap = transformBitmap(layer.bitmap, width, height, angle, flipX, flipY);
-    doc.replaceLayerPixels(layer.id, { ...layer, bitmap, x: Math.round(layer.x + (layer.bitmap.width - bitmap.width) / 2), y: Math.round(layer.y + (layer.bitmap.height - bitmap.height) / 2) }, '变换图层');
+    commitTransform(doc, transformedLayer(doc.state, layer.id, {width,height,angle,dx:0,dy:0,flipX,flipY,resampling}), '变换图层');
   }
   addText(text: string, size: number) {
     this.cancel(); const doc = this.active(); if (!doc) return;
@@ -212,5 +238,5 @@ export class EditingTools {
     try { return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('导出失败。')), `image/${format}`, quality)); }
     finally { canvas.width = canvas.height = 1; }
   }
-  dispose() { this.cancel(); this.abort.abort(); }
+  dispose() { this.cancel(); this.abort.abort(); this.freeTransform.dispose(); this.clipboard = undefined; }
 }

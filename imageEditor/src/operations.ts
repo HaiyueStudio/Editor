@@ -1,7 +1,13 @@
+import { registerFoundationOperations } from './foundationOperations.js';
+import { registerProductivityOperations } from './productivityOperations.js';
+import { documentHistogram } from './histogram.js';
+import { pixelJob } from './pixelJobs.js';
+import { registerProfessionalOperations } from './professionalOperations.js';
+import { registerDailyOperations } from './dailyOperations.js';
 import type { EditorDisposable, EditorJsonValue, EditorOperationContext, EditorOperationSchema } from '@haiyue/editor-plugin-sdk';
 import type { ImageWorkspace } from './workspace.js';
-import { ellipseSelection, invertSelection, selectionCount } from './selection.js';
-import { FILTERS, filterLayer, type FilterKind } from './filters.js';
+import { combineSelection, ellipseSelection, invertSelection, selectionCount, type SelectionMode } from './selection.js';
+import { FILTERS, filterLayer, type FilterKind, type FilterSettings } from './filters.js';
 import { BLEND_MODES } from './layerFeatures.js';
 import { allLayers, makeLayer, ImageDocument, type ImageLayer } from './document.js';
 import { deserializeProject, serializeProject } from './projectFile.js';
@@ -28,7 +34,7 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
   }
   owned.push(platform.operations.register({ ownerId: 'image.operations',
     descriptor: { id: 'image.document.open', version: 1, title: 'Open image project or PSD', target: 'workspace', access: 'write',
-      input: { type: 'object', properties: { resourceId: string, name: string, format: { type: 'string', enum: ['project', 'psd'] } }, required: ['resourceId', 'name', 'format'] }, output: { type: 'json' } },
+      input: { type: 'object', properties: { resourceId: string, name: string, format: { type: 'string', enum: ['project', 'psd', 'png', 'jpeg'] } }, required: ['resourceId', 'name', 'format'] }, output: { type: 'json' } },
     async prepare(params: Params) {
       const bytes = platform.resources.read(params.resourceId as string);
       let state;
@@ -38,6 +44,9 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
         const result = importPsd(bytes, params.name as string);
         if (!result.layered || result.blockers.length) throw new Error(result.blockers.join(' ') || 'PSD cannot be opened losslessly.');
         state = result.layered; warnings = result.warnings;
+      } else if (params.format === 'png' || params.format === 'jpeg') {
+        const { decodeImage, imageDocument } = await import('./imageImport.js');
+        const imported = imageDocument(params.name as string, await decodeImage(new File([bytes.slice().buffer], params.name as string))); state = imported.state; imported.dispose();
       } else state = deserializeProject(new TextDecoder('utf-8', { fatal: true }).decode(bytes), true);
       return { document: new ImageDocument(state, true), warnings, previousActiveId: null as string | null };
     },
@@ -55,11 +64,18 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
       } else document.dispose();
     },
   }));
+  owned.push(platform.operations.register({ ownerId: 'image.operations',
+    descriptor: { id: 'image.document.create', version: 1, title: 'New image document', target: 'workspace', access: 'write', input: { type: 'object', properties: { name: string, width: { type: 'integer', minimum: 1, maximum: 8192 }, height: { type: 'integer', minimum: 1, maximum: 8192 }, white: { type: 'boolean' } }, required: ['name', 'width', 'height'] }, output: { type: 'json' } },
+    prepare(p: Params) { return { document: ImageDocument.create(p.name as string, p.width as number, p.height as number, p.white === true), previousActiveId: workspace.active?.identity.id }; },
+    commit(p) { workspace.add(p.document); return { documentId: p.document.identity.id, revision: p.document.revision }; },
+    async rollback(p) { if (!p) return; if (workspace.documents.includes(p.document)) { try { await workspace.close(p.document.identity.id); } finally { if (p.previousActiveId && workspace.documents.some(d => d.identity.id === p.previousActiveId)) workspace.activate(p.previousActiveId); } } else p.document.dispose(); },
+  }));
   register('document.query', empty, 'read', (_, context) => doc(context), document => ({
     name: document.state.name, width: document.state.width, height: document.state.height, dirty: document.dirty,
-    canUndo: document.history.canUndo, canRedo: document.history.canRedo,
+    selectedId: document.state.selectedId, selectedIds: [...document.selectedIds], canUndo: document.history.canUndo, canRedo: document.history.canRedo,
     selection: document.state.selection ? { x: document.state.selection.x, y: document.state.selection.y, width: document.state.selection.width, height: document.state.selection.height, pixels: selectionCount(document.state.selection) } : null,
-    layers: allLayers(document.state.layers).map(layer => ({ id: layer.id, name: layer.name, opacity: layer.opacity, visible: layer.visible, locked: layer.locked, kind: layer.kind, x: layer.x, y: layer.y, blend: layer.blend })),
+    channels:(document.state.channels??[]).map(c=>({id:c.id,name:c.name,width:document.state.width,height:document.state.height})),layout:document.state.layout?JSON.parse(JSON.stringify(document.state.layout)):null,actions:JSON.parse(JSON.stringify(document.state.actions??[])),
+    layers: allLayers(document.state.layers).map(layer => ({ id: layer.id, name: layer.name, opacity: layer.opacity, visible: layer.visible, locked: layer.locked, parentId: allLayers(document.state.layers).find(parent => parent.children.some(child => child.id === layer.id))?.id ?? null, width: layer.bitmap?.width ?? null, height: layer.bitmap?.height ?? null, clipping: layer.clipping ?? false,smartFilters:layer.smartFilters?JSON.parse(JSON.stringify(layer.smartFilters)):null,blendIf:layer.blendIf?JSON.parse(JSON.stringify(layer.blendIf)):null,filterMask:layer.filterMask?{width:layer.filterMask.width,height:layer.filterMask.height,x:layer.filterMask.x,y:layer.filterMask.y,disabled:layer.filterMask.disabled,defaultColor:layer.filterMask.defaultColor,density:layer.filterMask.density??1,feather:layer.filterMask.feather??0}:null, styles: layer.styles ? JSON.parse(JSON.stringify(layer.styles)) : null, content: layer.content?.type==='smart' ? {type:'smart',name:layer.content.name,sourceId:layer.content.sourceId,sourceWidth:layer.content.source.width,sourceHeight:layer.content.source.height,multilayer:Boolean(layer.content.sourcePsd),sourceBytes:layer.content.sourcePsd?.byteLength??0,transform:{...layer.content.transform}} : layer.content ? JSON.parse(JSON.stringify(layer.content)) : null, mask: layer.mask ? { width: layer.mask.width, height: layer.mask.height, x: layer.mask.x, y: layer.mask.y, disabled: layer.mask.disabled, defaultColor: layer.mask.defaultColor,density:layer.mask.density??1,feather:layer.mask.feather??0 } : null, kind: layer.kind, x: layer.x, y: layer.y, blend: layer.blend })),
   }));
   register('layer.opacity', { type: 'object', properties: { layerId: string, opacity: { type: 'number', minimum: 0, maximum: 1 } }, required: ['layerId', 'opacity'] }, 'write',
     (params, context) => ({ document: doc(context), layerId: params.layerId as string, opacity: params.opacity as number }),
@@ -78,28 +94,30 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
   } } }, required: ['layerId', 'patch'] }, 'write',
     (params, context) => ({ document: doc(context), id: params.layerId as string, patch: params.patch as Partial<ImageLayer> }),
     ({ document, id, patch }) => document.runAtomic(() => { const revision = document.revision; document.updateLayer(id, patch); return { applied: revision !== document.revision }; }));
+  register('histogram.query',{type:'object',properties:{layerId:string,selection:{type:'boolean'}}},'read',async(p,c)=>{const state=doc(c).state;return typeof Worker==='undefined'?documentHistogram(state,p.layerId as string|undefined,p.selection===true):await pixelJob<ReturnType<typeof documentHistogram>>({kind:'histogram',state,id:p.layerId,selectionOnly:p.selection===true},c.signal);},h=>({...h}));
   register('filters.query', empty, 'read', () => null, () => Object.entries(FILTERS).map(([kind, settings]) => ({ kind, ...settings })));
-  register('filter.apply', { type: 'object', properties: { layerId: string, kind: { type: 'string', enum: Object.keys(FILTERS) }, amount: { type: 'integer' } }, required: ['layerId', 'kind', 'amount'] }, 'write',
-    (params, context) => { const document = doc(context), id = params.layerId as string;
-      return { document, id, layer: filterLayer(document.state, id, { kind: params.kind as FilterKind, amount: params.amount as number }) }; },
+  register('filter.apply', { type: 'object', properties: { layerId: string, kind: { type: 'string', enum: Object.keys(FILTERS) }, amount: { type: 'number' },radius:{type:'number',minimum:0.1,maximum:32},threshold:{type:'integer',minimum:0,maximum:255} }, required: ['layerId', 'kind', 'amount'] }, 'write',
+    async (params, context) => { const document = doc(context), id = params.layerId as string,settings={kind:params.kind,amount:params.amount,...(params.radius!==undefined?{radius:params.radius}:{}),...(params.threshold!==undefined?{threshold:params.threshold}:{})} as unknown as FilterSettings;
+      return { document, id, layer: typeof Worker==='undefined'?filterLayer(document.state,id,settings):await pixelJob<ImageLayer>({kind:'filter',state:document.state,id,settings},context.signal) }; },
     ({ document, id, layer }) => document.runAtomic(() => { document.replaceLayerPixels(id, layer, 'API: filter'); return { applied: true }; }));
   const position = { type: 'integer', minimum: 0, maximum: 8191 } as const, dimension = { type: 'integer', minimum: 1, maximum: 8192 } as const;
-  register('selection.set', { type: 'object', properties: { shape: { type: 'string', enum: ['rectangle', 'ellipse'] }, x: position, y: position, width: dimension, height: dimension }, required: ['shape', 'x', 'y', 'width', 'height'] }, 'write',
+  register('selection.set', { type: 'object', properties: { shape: { type: 'string', enum: ['rectangle', 'ellipse'] }, x: position, y: position, width: dimension, height: dimension, mode: { type: 'string', enum: ['replace', 'add', 'subtract', 'intersect'] } }, required: ['shape', 'x', 'y', 'width', 'height'] }, 'write',
     (params, context) => { const document = doc(context), rect = { x: params.x as number, y: params.y as number, width: params.width as number, height: params.height as number };
       if (rect.x + rect.width > document.state.width || rect.y + rect.height > document.state.height) throw new Error('Selection is outside the canvas.');
-      return { document, selection: params.shape === 'ellipse' ? ellipseSelection(rect) : rect }; },
+      return { document, selection: combineSelection(document.state.selection, params.shape === 'ellipse' ? ellipseSelection(rect) : rect, (params.mode ?? 'replace') as SelectionMode, document.state.width, document.state.height) }; },
     ({ document, selection }) => document.runAtomic(() => { document.setSelection(selection); return { applied: true }; }));
   register('selection.invert', empty, 'write', (_, context) => { const document = doc(context); return { document, selection: invertSelection(document.state.selection, document.state.width, document.state.height) }; },
     ({ document, selection }) => document.runAtomic(() => { document.setSelection(selection); return { applied: true }; }));
   register('selection.clear', empty, 'write', (_, context) => doc(context), document => document.runAtomic(() => { document.setSelection(null); return { applied: true }; }));
   register('document.crop', empty, 'write', (_, context) => doc(context), document => document.runAtomic(() => { document.cropToSelection(); return { applied: true }; }));
-  register('document.export', { type: 'object', properties: { format: { type: 'string', enum: ['project', 'psd'] } }, required: ['format'] }, 'read',
+  register('document.export', { type: 'object', properties: { format: { type: 'string', enum: ['project', 'psd', 'png', 'jpeg'] }, allowRasterize: { type: 'boolean' }, quality: { type: 'number', minimum: 0.1, maximum: 1 } }, required: ['format'] }, 'read',
     async (params, context) => {
       const snapshot = structuredClone(doc(context).state);
       const bytes = params.format === 'psd'
-        ? (await import('./psdAdapter.js')).exportPsd(snapshot).bytes
-        : new TextEncoder().encode(serializeProject(snapshot));
+        ? (await import('./psdAdapter.js')).exportPsd(snapshot, params.allowRasterize === true).bytes
+        : params.format === 'png' || params.format === 'jpeg' ? await (await import('./rasterExport.js')).exportRaster(snapshot, params.format, (params.quality ?? 0.92) as number) : new TextEncoder().encode(serializeProject(snapshot));
       return { bytes, format: params.format as string };
     }, ({ bytes, format }) => ({ ...platform.resources.put(bytes), format }));
+  owned.push(registerFoundationOperations(workspace), registerDailyOperations(workspace), registerProfessionalOperations(workspace), registerProductivityOperations(workspace));
   return { async dispose() { await Promise.all(owned.map(item => item.dispose())); } };
 }

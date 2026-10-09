@@ -31,7 +31,16 @@
     "test:performance": "npm run build:types && node --expose-gc scripts/run-p4-performance.mjs",
     "test:browser:p5": "npm run build:app && node test/p5-browser-smoke.mjs",
     "p5": "npm run test && node scripts/run-p5.mjs",
-    "test:electron:p4": "node test/p4-electron-smoke.mjs"
+    "test:electron:p4": "node test/p4-electron-smoke.mjs",
+    "test:browser:daily": "npm run build:app && node test/daily-browser.mjs",
+    "test:browser:native": "npm run build:app && node test/non-destructive-browser.mjs",
+    "test:psd:native": "npm run build:types && node scripts/run-native-psd.mjs",
+    "test:browser:professional": "npm run build:app && node test/professional-browser.mjs",
+    "test:browser:quality": "npm run build:app && node test/quality-browser.mjs",
+    "test:browser:live": "npm run build:app && node test/live-effects-browser.mjs",
+    "test:browser:productivity": "npm run build:app && node test/productivity-browser.mjs",
+    "test:browser:foundations": "npm run build:app && node test/foundations-browser.mjs",
+    "test:psd:foundations": "npm run build:types && node scripts/check-foundations.mjs"
   },
   "dependencies": {
     "@haiyue/editor-platform": "0.1.0",

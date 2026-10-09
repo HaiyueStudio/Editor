@@ -260,3 +260,121 @@ sandboxed IPC and external local HTTP, transfers >1 MiB of binary data, and runs
 edit → undo → redo → export with real PSD/HYA/VOX reparsing. This runner requires a desktop
 Electron environment. Platform/App Kit unit tests also cover protocol failures, isolation,
 cancellation, main-frame validation, stale responses and descriptor ownership.
+
+### Image daily editing commands
+
+The renderer API, sandboxed IPC and local RPC discover and dispatch the same commands.
+Use `operations.list` (or `haiyueEditor.listOperations()`) for the actual bounded input schemas.
+All document writes require `expectedRevision`; failed commits restore pixels, selection, dirty
+state and history including redo. Coordinates are document pixels unless stated otherwise.
+
+| Area | Commands (prefix `image.`) | Contract |
+| --- | --- | --- |
+| Documents/codecs | `document.create`, `document.open`, `document.export`, `layer.import` | Create bounded canvases; open project/PSD/PNG/JPEG. Export project/PSD/PNG/JPEG. Import PNG/JPEG as a root layer. Codec work runs in the renderer. PSD conversion requires explicit `allowRasterize: true` when lossy; no silent fallback. JPEG uses white behind transparency and `quality` 0.1–1. |
+| Inspection | `document.query`, `color.sample` | Query includes primary and multiple selected IDs, parent IDs, pixel dimensions, editable content and mask metadata. Sample integer x/y returns encoded RGBA8 and hex; omit layerId for visible composite, provide it for isolated layer rendering including its opacity/mask. |
+| Pixel clipboard | `pixels.copy`, `pixels.paste` | Copy crops to the current selection and weights alpha by feather coverage. Returns owned binary resource plus format `rgba8`, width/height and document x/y. Paste requires resourceId/width/height; optional x/y default zero. Creates one root layer and one undo entry. Resource size must equal width×height×4; release copied resources after use. |
+| Pixel editing | `pixels.fill`, `pixels.stroke`, `pixels.gradient` | Fill/stroke take layerId, optional color/opacity/erase; stroke requires bounded points and size. `target: "mask"` edits the enabled mask (black hides; white reveals). Gradient requires start/end, from/to hex colors and linear/radial kind. Selection coverage, locks and pixel budgets apply; editable text/shapes must first be rasterized. |
+| Selections | `selection.all`, `selection.set`, `selection.polygon`, `selection.color`, `selection.wand`, `selection.modify` | Rectangle/ellipse, polygon/lasso points, color range, sampled wand and feather/expand/contract. Set/polygon/color/wand accept replace/add/subtract/intersect mode. Wand defaults contiguous, samples RGBA including alpha; optional layerId controls source. Modify radius 1–64. Existing invert/clear remain available. |
+| Layers | `layers.select`, `layers.move`, `layers.align`, `layers.merge` | Explicit layerIds; selected ancestors prune selected descendants. Move uses integer dx/dy. Align uses left/center/right/top/middle/bottom relative to selection union (default) or canvas. Selection alone is view state and does not increment revision/history. |
+| Layer details | `layer.delete`, `layer.duplicate`, `layer.reorder`, `layer.rasterize`, `layer.transform` | Explicit layerId. Reorder up/down within siblings. Transform requires width/height; angle/dx/dy default zero, flipX/flipY false. Nearest-neighbor, center-based pixel transform. Masks and text/shapes must first be applied/rasterized; smart objects retain their original source. |
+| Editable content | `content.create`, `content.update` | Create requires name/content; update requires layerId/content. Supply a complete text, shape or adjustment object from query/schema; missing type-specific fields fail validation. Text/shape previews rasterize in the renderer; editable parameters remain in projects. Create x/y are root coordinates. |
+| Masks | `mask.update`, `layer.mask.apply` | Update action fromSelection/invert/enable/disable/remove. FromSelection without selection reveals the canvas. Apply explicitly bakes an enabled mask into a raster layer. |
+
+Merge requires visible, unlocked, contiguous siblings whose top-level blend mode is normal;
+standalone adjustment layers are rejected because they depend on the unselected backdrop.
+Nested normal groups remain composited with their existing masks and adjustments. This
+constraint preserves the visible result instead of silently changing unrelated layers.
+
+Example using the existing revision-aware `call` helper:
+
+```js
+const snapshot = await call('image.document.query');
+const layerId = snapshot.selectedId;
+const copy = await call('image.pixels.copy', { layerId });
+try {
+  await call('image.pixels.paste', {
+    resourceId: copy.resourceId, width: copy.width, height: copy.height,
+    x: copy.x + 20, y: copy.y + 20, name: '选区副本',
+  });
+} finally { api.releaseResource(copy.resourceId); }
+await call('image.history.undo');
+const png = await call('image.document.export', { format: 'png' });
+// readResource / RPC download, then releaseResource / RPC release.
+```
+
+UI: I samples the visible composite into foreground color; G drags a linear/radial gradient.
+Cmd/Ctrl+C/V uses an editor-local pixel clipboard shared across its documents (not the system
+clipboard). Cmd/Ctrl-click toggles layer selection; Shift-click selects a visible range. The
+move tool moves all selected roots; alignment and merge are in the layer panel. Cmd/Ctrl+T
+opens interactive single-layer free transform: drag interior, edge/corner handles or rotation
+handle, then Enter to commit or Esc to cancel. Scaling is center-based. An external document
+mutation, tool change, pointer cancellation, window blur or document switch cancels previews.
+
+The Engine CMYK object is a separate color-authoring API in `@haiyue/engine/color`; this batch
+does not change the editor's RGB8 document/PSD support or add ICC print conversion.
+
+### Image non-destructive commands
+
+These additions bring Image Editor to 46 operations, all using the same renderer/IPC/RPC
+registry. Query includes `clipping`, `styles`, adjustment parameters, and a bounded smart
+summary (`sourceWidth`, `sourceHeight`, `sourceId`, `name`, `transform`); no source bytes in JSON.
+
+| Command (prefix `image.`) | Parameters and behavior |
+| --- | --- |
+| `layer.clipping` | `layerId`, `enabled`. Enable requires a lower non-clipped pixel/group sibling as base. Consecutive clipped siblings share base alpha; base opacity applies once. |
+| `layer.styles` | `layerId`, either `styles` or `remove: true`. Styles has required `enabled`; optional `overlay: {color, opacity}`, `stroke: {color, opacity, size}`, `shadow: {color, opacity, dx, dy, blur}`. Hex RGB, opacity 0–1, stroke 1–64, integer dx/dy ±256, blur 0–64. Normal blend only, pixel/group layers only. |
+| `smart.convert` | `layerId`. An unlocked raster layer becomes an independent embedded source with an identity transform; original source pixels are copied and owned. |
+| `smart.source` | `layerId`. Read returns owned RGBA8 binary resource, width, height, name; release resource when finished. |
+| `smart.replace` | `layerId`, `resourceId`, `width`, `height`, `name`. Exact RGBA8 length, dimension/budget checks; replaces source while preserving transform, one undo entry. No external links are fetched. |
+| `layer.transform` (extended) | Smart layers use absolute width/height/angle/flip relative to original source; dx/dy translate current center. Defaults remain angle/dx/dy=0 and flips=false. Every preview and commit resamples the source rather than previously resized pixels. |
+| `content.create/update` (extended) | Adjustment `filter: 'levels'`, `amount: 100`, `levels: {black, white, gamma, outputBlack, outputWhite}`; or `filter: 'curves'`, `amount: 100`, `curves: [{input, output}, ...]`. Black ≤253, white ≥2, black<white, outputs ordered 0–255; gamma 0.10–9.99 in hundredths. Curves: 2–16 ordered integer points, endpoints input 0 and 255. Use layer opacity for strength. Text optionally accepts `fontName`; unavailable fonts use the chosen family fallback. |
+
+Native PSD exports now preserve the supported basic text/shape/levels/curves/invert,
+clipping, effects and embedded pixel smart objects. Unsupported content still needs explicit
+`allowRasterize: true`, which flattens **only the exported copy**. This is not full PSD fidelity;
+read the [native support matrix](../../../imageEditor/docs/non-destructive-and-native-psd.md).
+
+```js
+await call('image.smart.convert', { layerId });
+await call('image.layer.transform', { layerId, width: 400, height: 300, angle: 15 });
+await call('image.layer.styles', {
+  layerId, styles: { enabled: true, stroke: { color: '#ffffff', opacity: 1, size: 3 } },
+});
+await call('image.content.create', {
+  name: 'RGB curves',
+  content: { type: 'adjustment', filter: 'curves', amount: 100,
+    curves: [{ input: 0, output: 0 }, { input: 128, output: 160 }, { input: 255, output: 255 }] },
+});
+const psd = await call('image.document.export', { format: 'psd' });
+// Download/read the resource, then release it.
+```
+
+## Image professional / production commands
+
+This professional-production milestone brought Image to 51 commands; the processing-quality extension below brings it to 52. `image.pixels.stroke` adds hardness and optional per-point pressure; `image.retouch.stroke` adds immutable clone/heal sampling. `image.selection.refine` and `image.color.convert` prepare cancellable Worker results and commit one document history entry with the normal revision guard. `image.color.query` reports the bounded RGB ICC contract. `image.content.create/update` accepts Bezier path nodes and rich text runs / wrap width.
+
+`image.batch.run` is a workspace operation on resource handles: up to 16 inputs, 32 ordered fit/filter steps, and 128 MiB total input/output limits. It exports isolated flattened copies, reports progress and per-file errors, rejects unsupported PSD/ICC instead of silently flattening on admission, and rolls back already allocated output resources if commit fails. Cancellation publishes no partial outputs. The same descriptors are exposed by in-process discovery, IPC and local RPC. See [Image professional production contract](../../../imageEditor/docs/professional-production.md) for parameters and limitations.
+
+### Image processing quality
+
+处理质量这一批完成时为 52 个领域命令（下方第二批扩展到 55 个）。新增只读 `image.histogram.query({layerId?,selection?})`，返回 RGBA8 编码值下的 R/G/B／亮度 256 桶及加权统计。Alpha × 选区覆盖率作为权重；完全透明像素不计入。
+
+`image.layer.transform` 增加可选 `resampling: nearest|bilinear|bicubic|lanczos`，新变换默认 `bicubic`。`image.content.create/update` 的曲线／色阶内容增加 `channels.red/green/blue`，子项使用对应 `curves` 或 `levels`；主 RGB 字段保持原契约。`image.filter.apply` 增加 `gaussian`（amount 为 σ，0.1–32）和 `usm`（amount 0–500%，radius 0.1–32，threshold 0–255）；radius／threshold 仅用于 USM，默认 2／0。滤镜在浏览器使用可取消 Worker，提交继续受 revision 与原子写入约束。
+
+`image.batch.run` 的 fit 支持 resampling，filter 支持相同高斯／USM 参数。所有接口自动通过现有 IPC／本地 RPC 暴露，无新增传输专用命令。完整口径见 `imageEditor/docs/processing-quality.md`。
+
+### Image 非破坏性处理链
+
+第二批扩展后共有 55 个图像命令：`image.smart.filters({layerId,filters})` 完整替换可取消计算的有序智能滤镜；`image.layer.blend-if({layerId,rule})` 设置单通道分离颜色带（`remove:true` 删除）；`image.mask.settings({layerId,target?,density?,feather?,disabled?})` 修改蒙版参数。`mask.update` 新增 `target: layer|filter`；`pixels.fill/stroke` 的 target 新增 `filterMask`。查询返回新效果及蒙版元数据，不存在时为 null。
+
+调用仍经同一 Platform 队列、revision 检查及原子历史提交，浏览器、IPC／RPC 契约一致。完整格式、渲染顺序、示例、版本门禁及 PSD 兼容范围见 [非破坏性处理链](../../../imageEditor/docs/non-destructive-pipeline.md)。
+
+### Image 生产效率扩展
+
+第三批将图像命令扩展到 65 个：`channel.save/update/delete/load/read`、`layout.set`、`action.save/delete/run`、`template.export`。领域写操作仍使用 documentId／expectedRevision，`channel.read` 返回独立 gray8 资源。动作在隔离快照中执行，成功后一次提交历史；模板导出不改变原稿，取消不发布部分结果，资源分配失败回滚已分配句柄。
+
+查询新增通道元数据、参考线／吸附配置与动作定义；工程 v8／恢复 v9 完整保存。本批生产数据尚不映射 PSD，导出须明确确认省略。参数、动作白名单、模板数据行、尺寸适配及限制见 [生产效率契约](../../../imageEditor/docs/productivity.md)。
+
+## 图像第四批扩展
+
+新增 `image.smart.source.read`、`image.smart.source.replace`（document 目标）和 `image.color.precision`（workspace 目标），图像命令共 68 个。多层智能源通过工程／PSD 资源回写，使用父文档版本锁并支持一次撤销；高精度转换为独立的 RGBA16LE／RGBA32FLE SDR 资源转换，不改变 RGB8 文档。IPC／本地 RPC 使用相同调用契约。详见 [兼容性与基础能力](../../../imageEditor/docs/compatibility-foundations.md)。

@@ -76,3 +76,10 @@ export function validateCompositeBytes(bytes: Uint8Array) {
     if(decoded!==width)throw new Error('PSD 合成行像素不完整。');
   }
 }
+
+/** PSD raw planar composite, with the specified white matte for partial RGB alpha. */
+export function rawCompositeData(encoded:Uint8Array,image:{width:number;height:number;data:Uint8ClampedArray}):Uint8Array {
+ const channels=new DataView(encoded.buffer,encoded.byteOffset,encoded.byteLength).getUint16(12),n=image.width*image.height,raw=new Uint8Array(2+n*channels);
+ for(let c=0;c<channels;c++)for(let i=0;i<n;i++){const a=image.data[i*4+3]!,value=image.data[i*4+c]!;raw[2+c*n+i]=c<3&&a>0&&a<255?Math.round(value*a/255+255-a):value;}
+ return raw;
+}

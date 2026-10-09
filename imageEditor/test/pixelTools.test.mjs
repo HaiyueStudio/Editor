@@ -60,7 +60,7 @@ test('quarter rotation, flip and integer scale preserve exact RGBA including tra
   assert.deepEqual(pixel(rotated,0,0),pixel(bitmap,0,1));assert.deepEqual(pixel(rotated,1,0),pixel(bitmap,0,0));
   assert.deepEqual(pixel(rotated,0,1),pixel(bitmap,1,1));
   const flipped=transformBitmap(bitmap,2,2,0,true);assert.deepEqual(pixel(flipped,0,0),pixel(bitmap,1,0));
-  const scaled=transformBitmap(bitmap,4,6,0);assert.deepEqual(pixel(scaled,3,5),pixel(bitmap,1,1));
+  const scaled=transformBitmap(bitmap,4,6,0,false,false,'nearest');assert.deepEqual(pixel(scaled,3,5),pixel(bitmap,1,1));
   assert.equal(transformBitmap(bitmap,2,2,45).width,3);assert.throws(()=>transformBitmap(bitmap,8192,8192,0),/尺寸/);
 });
 test('crop preserves all layer bytes, moves root coordinates once, and restores selection on undo',()=>{

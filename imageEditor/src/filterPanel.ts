@@ -3,6 +3,7 @@ import { FILTERS, type FilterKind } from './filters.js';
 import { paintDocument } from './canvasView.js';
 import { editablePixel, replacePixel } from './pixelTools.js';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+const selectKind=()=>$<HTMLSelectElement>('filter-kind').value;
 export class FilterPanel {
   private worker:Worker|undefined; private timer:ReturnType<typeof setTimeout>|undefined; private debounce:ReturnType<typeof setTimeout>|undefined;
   private generation=0;private doc:ImageDocument|undefined;private before:ImageState|undefined;private result:ImageLayer|undefined;
@@ -11,7 +12,7 @@ export class FilterPanel {
     const select=$<HTMLSelectElement>('filter-kind');for(const [value,config] of Object.entries(FILTERS)){const option=document.createElement('option');option.value=value;option.textContent=config.name;select.append(option);}
     const options={signal:this.abort.signal};
     select.addEventListener('change',()=>{this.configure();this.schedule();},options);
-    $('filter-amount').addEventListener('input',()=>this.schedule(),options);
+    for(const id of ['filter-amount','filter-radius','filter-threshold'])$(id).addEventListener('input',()=>this.schedule(),options);
     $('filter-original').addEventListener('change',()=>this.render(),options);
     // The previous session's queued close event can arrive after a fast reopen.
     $('filter-dialog').addEventListener('close',()=>{if(!$<HTMLDialogElement>('filter-dialog').open)this.stop();},options);
@@ -23,7 +24,7 @@ export class FilterPanel {
     this.doc=doc;this.before=doc.state;$<HTMLInputElement>('filter-original').checked=false;
     this.configure();$<HTMLDialogElement>('filter-dialog').showModal();this.render();this.schedule();
   }
-  private configure(){const config=FILTERS[$<HTMLSelectElement>('filter-kind').value as FilterKind],input=$<HTMLInputElement>('filter-amount');input.min=String(config.min);input.max=String(config.max);input.value=String(config.value);$('filter-unit').textContent=config.unit;}
+  private configure(){const config=FILTERS[$<HTMLSelectElement>('filter-kind').value as FilterKind],input=$<HTMLInputElement>('filter-amount');input.step=selectKind()==='gaussian'?'0.1':'1';$('filter-usm').hidden=selectKind()!=='usm';for(const id of ['filter-radius','filter-threshold'])$<HTMLInputElement>(id).disabled=selectKind()!=='usm';input.min=String(config.min);input.max=String(config.max);input.value=String(config.value);$('filter-unit').textContent=config.unit;}
   private cancelWorker(){this.generation++;this.worker?.terminate();this.worker=undefined;clearTimeout(this.timer);clearTimeout(this.debounce);}
   private schedule(){
     this.cancelWorker();this.result=undefined;$<HTMLButtonElement>('filter-apply').disabled=true;
@@ -44,7 +45,7 @@ export class FilterPanel {
       };
       const selectedId=this.before.selectedId;
       const strip=(layers:readonly ImageLayer[]):ImageLayer[]=>layers.map(layer=>({...layer,bitmap:layer.id===selectedId?layer.bitmap:null,children:strip(layer.children)}));
-      worker.postMessage({state:{...this.before,layers:strip(this.before.layers),psdOrigin:undefined},id:selectedId,settings:{kind:$<HTMLSelectElement>('filter-kind').value,amount:Number($<HTMLInputElement>('filter-amount').value)}});
+      worker.postMessage({state:{...this.before,layers:strip(this.before.layers),psdOrigin:undefined},id:selectedId,settings:{kind:$<HTMLSelectElement>('filter-kind').value,amount:Number($<HTMLInputElement>('filter-amount').value),...(selectKind()==='usm'?{radius:Number($<HTMLInputElement>('filter-radius').value),threshold:Number($<HTMLInputElement>('filter-threshold').value)}:{})}});
     }catch(error){fail(String(error));}
   }
   private render(){

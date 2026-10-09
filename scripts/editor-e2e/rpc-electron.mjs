@@ -85,6 +85,74 @@ for (const item of cases.filter(item => !selected.length || selected.includes(it
       else if (item.prefix === 'hya') assert.ok(parseAnimation(new Uint8Array(bytes).buffer));
       else assert.ok(parseMagicaVoxel(new Uint8Array(bytes)));
     }
+    if (item.prefix === 'image') {
+      const layerId = before.layers[0].id;
+      await call('pixels.gradient', { layerId, start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, from: '#ff0000', to: '#0000ff', kind: 'linear' });
+      const sampled = await call('color.sample', { x: 0, y: 0 }); assert.ok(sampled.rgba[0] > sampled.rgba[2]);
+      const copy = await call('pixels.copy', { layerId }); assert.equal((await client.download(copy)).length, 64);
+      const pasted = await call('pixels.paste', { resourceId: copy.resourceId, width: copy.width, height: copy.height, x: 1, y: 1 }); await client.release(copy.resourceId);
+      await call('layers.select', { layerIds: [layerId, pasted.layerId] });
+      await call('layers.align', { layerIds: [layerId, pasted.layerId], alignment: 'left', relativeTo: 'canvas' });
+      await call('layers.merge', { layerIds: [layerId, pasted.layerId] }); assert.equal((await call('document.query')).layers.length, 1); await call('history.undo');
+      const shape = await call('content.create', { name: 'RPC shape', content: { type: 'shape', shape: 'rectangle', width: 2, height: 2, radius: 0, fill: '#00ff00', stroke: '#000000', strokeWidth: 0 } });
+      await call('layer.rasterize', { layerId: shape.layerId });
+      const png = await call('document.export', { format: 'png' }); assert.deepEqual((await client.download(png)).subarray(0,4), Buffer.from([137,80,78,71])); await client.release(png.resourceId);
+      const ipcSample = await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'sample-ipc',method:'operations.execute',params:{apiVersion:'1',requestId:'sample-ipc',operation:'image.color.sample',documentId:${JSON.stringify(documentId)},params:{x:0,y:0}}})`);
+      assert.equal(ipcSample.result.status, 'completed'); assert.deepEqual(ipcSample.result.value.rgba, [0,255,0,255]);
+      await call('smart.convert', { layerId: shape.layerId });
+      const smartSource = await call('smart.source', { layerId: shape.layerId });
+      assert.equal((await client.download(smartSource)).length, 16);
+      await call('layer.transform', { layerId: shape.layerId, width: 1, height: 1, resampling:'lanczos' });
+      await call('smart.replace', { layerId: shape.layerId, resourceId: smartSource.resourceId, width: 2, height: 2, name: 'RPC source' });
+      await call('history.undo'); assert.equal((await call('document.query')).layers.find(l => l.id === shape.layerId).content.name, 'RPC shape');
+      await client.release(smartSource.resourceId);
+      await call('layer.clipping', { layerId: shape.layerId, enabled: true });
+      await call('layer.styles', { layerId: shape.layerId, styles: { enabled: true, overlay: { color: '#ff0000', opacity: 0.5 } } });
+      await call('content.create', { name: 'RPC curves', content: { type: 'adjustment', filter: 'curves', amount: 100, curves: [{ input: 0, output: 0 }, { input: 128, output: 170 }, { input: 255, output: 255 }],channels:{red:{curves:[{input:0,output:255},{input:255,output:0}]}} } });
+      const native = importPsd(new Uint8Array(await exported()), 'native-rpc.psd'); assert.ok(native.layered, native.blockers.join('\n'));
+      assert.ok(native.layered.layers.some(l => l.clipping && l.styles && l.content?.type === 'smart'));
+      assert.ok(native.layered.layers.some(l => l.content?.filter === 'curves'));
+      await call('history.undo'); // Remove the live adjustment before explicit color conversion.
+      const histogram=await call('histogram.query');assert.equal(histogram.red.length,256);assert(histogram.pixels>0);
+      const filterBefore=await call('color.sample',{x:0,y:0});await call('filter.apply',{layerId,kind:'gaussian',amount:0.8});await call('history.undo');assert.deepEqual(await call('color.sample',{x:0,y:0}),filterBefore);
+      await call('pixels.stroke', { layerId, points: [{ x: 1, y: 1, pressure: 0.6 }], size: 3, hardness: 0.2, pressure: 'both', color: '#112233' });
+      await call('retouch.stroke', { layerId, sourceLayerId: layerId, kind: 'clone', offset: { x: -1, y: 0 }, points: [{ x: 2, y: 1 }], size: 2 });
+      await call('history.undo');
+      await call('selection.set', { shape: 'rectangle', x: 0, y: 0, width: 2, height: 2 });
+      await call('selection.refine', { radius: 2, contrast: 10, shift: 0, edgeAware: true });
+      await call('history.undo');
+      await call('color.convert', { source: 'srgb' });
+      assert.equal((await call('color.query')).convertedFrom, 'srgb');
+      await call('history.undo');
+      const batchInput = await call('document.export', { format: 'project' });
+      const batch = await client.execute({ apiVersion: '1', requestId: randomUUID(), operation: 'image.batch.run', params: { inputs: [{ resourceId: batchInput.resourceId, name: 'rpc.hyimage', format: 'project' }], steps: [{ type: 'fit', width: 2, height: 2,resampling:'bicubic' },{type:'filter',kind:'usm',amount:90,radius:1,threshold:3}], format: 'png' } });
+      assert.equal(batch.status, 'completed', JSON.stringify(batch));assert(batch.value[0].resourceId);
+      assert.deepEqual((await client.download(batch.value[0])).subarray(0,4), Buffer.from([137,80,78,71]));
+      await client.release(batch.value[0].resourceId);await client.release(batchInput.resourceId);
+      const smartId=shape.layerId,filters=[{id:'rpc-filter',enabled:true,opacity:.7,blend:'normal',settings:{kind:'gaussian',amount:.8}}];
+      await call('smart.filters',{layerId:smartId,filters});
+      await call('mask.update',{layerId:smartId,target:'filter',action:'fromSelection'});
+      await call('mask.settings',{layerId:smartId,target:'filter',density:.6,feather:1.2});
+      await call('pixels.fill',{layerId:smartId,target:'filterMask',color:'#000000'});await call('history.undo');
+      await call('layer.blend-if',{layerId:smartId,rule:{enabled:true,channel:'red',source:[0,30,240,255],underlying:[0,0,255,255]}});
+      const live=(await call('document.query')).layers.find(l=>l.id===smartId);assert.equal(live.filterMask.density,.6);assert.equal(live.smartFilters[0].id,'rpc-filter');assert.equal(live.blendIf.source[1],30);
+      const ipcLive=await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'live-query',method:'operations.execute',params:{apiVersion:'1',requestId:'live-query',operation:'image.document.query',documentId:${JSON.stringify(documentId)},params:{}}})`);
+      assert.equal(ipcLive.result.status,'completed');assert.equal(ipcLive.result.value.layers.find(l=>l.id===smartId).filterMask.feather,1.2);
+      const liveFile=await call('document.export',{format:'project'});assert.equal(JSON.parse((await client.download(liveFile)).toString()).version,7);await client.release(liveFile.resourceId);
+      await call('history.undo');assert.equal((await call('document.query')).layers.find(l=>l.id===smartId).blendIf,null);
+      const livePsd=await call('document.export',{format:'psd',allowRasterize:true});assert(importPsd(new Uint8Array(await client.download(livePsd)),'live.psd').layered);await client.release(livePsd.resourceId);
+      const alpha=await call('channel.save',{name:'RPC selection',source:'alpha'});await call('channel.load',{id:alpha.channelId,mode:'replace'});const gray=await call('channel.read',{id:alpha.channelId});assert.equal((await client.download(gray)).length,16);await client.release(gray.resourceId);
+      await call('layout.set',{layout:{visible:true,snap:true,canvas:false,layers:false,tolerance:6,guides:[{id:'rpc-guide',axis:'x',position:2}]}});
+      const recipe={id:'rpc-template',name:'RPC template',parameters:[{name:'opacity',type:'number',default:1}],steps:[{operation:'layer.update',params:{layerId,patch:{opacity:{param:'opacity'}}}}]};await call('action.save',{action:recipe});const previous=(await call('document.query')).layers.find(l=>l.id===layerId).opacity;await call('action.run',{id:recipe.id,values:{opacity:.4}});assert.equal((await call('document.query')).layers.find(l=>l.id===layerId).opacity,.4);await call('history.undo');assert.equal((await call('document.query')).layers.find(l=>l.id===layerId).opacity,previous);
+      const variants=await call('template.export',{actionId:recipe.id,rows:[{name:'opaque',values:{opacity:1}},{name:'translucent',values:{opacity:.5}}],format:'project'});assert.equal(variants.length,2);for(const variant of variants){const data=JSON.parse((await client.download(variant)).toString());assert.equal(data.version,8);assert.equal(data.document.channels.length,1);await client.release(variant.resourceId);}
+      const sourceRead=await call('smart.source.read',{layerId:smartId});const sourceJson=JSON.parse((await client.download(sourceRead)).toString());sourceJson.document.layers.push({...sourceJson.document.layers[0],id:randomUUID(),name:'RPC second source layer',opacity:.5});const replacement=await client.upload(Buffer.from(JSON.stringify(sourceJson)));await call('smart.source.replace',{layerId:smartId,resourceId:replacement.resourceId,format:'project'});assert.equal((await call('document.query')).layers.find(l=>l.id===smartId).content.multilayer,true);await call('history.undo');assert.equal((await call('document.query')).layers.find(l=>l.id===smartId).content.multilayer,false);await client.release(sourceRead.resourceId);await client.release(replacement.resourceId);
+      const high=Buffer.alloc(8);[32767,32768,32769,43210].forEach((v,i)=>high.writeUInt16LE(v,i*2));const highRef=await client.upload(high),highResult=await client.execute({apiVersion:'1',requestId:randomUUID(),operation:'image.color.precision',params:{resourceId:highRef.resourceId,width:1,height:1,input:'rgba16le',output:'rgba16le',source:'srgb',target:'srgb'}});assert.equal(highResult.status,'completed',JSON.stringify(highResult));assert.deepEqual(await client.download(highResult.value),high);await client.release(highRef.resourceId);await client.release(highResult.value.resourceId);
+      const productionIpc=await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'production-query',method:'operations.execute',params:{apiVersion:'1',requestId:'production-query',operation:'image.document.query',documentId:${JSON.stringify(documentId)},params:{}}})`);assert.equal(productionIpc.result.status,'completed');assert.equal(productionIpc.result.value.channels[0].id,alpha.channelId);assert.equal(productionIpc.result.value.actions[0].id,recipe.id);
+
+
+
+
+    }
     assert.deepEqual(errors, []);
     console.log(`[rpc-electron] ${item.prefix}: IPC + HTTP open/query/domain edit/undo/redo/export + chunked binary passed`);
   } finally {

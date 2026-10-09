@@ -1,10 +1,11 @@
-import { compositeState, hasAdvancedComposite } from './compositor.js';
+import { forEachCompositeTile, hasAdvancedComposite } from './compositor.js';
 import type { Bitmap, ImageLayer, ImageState } from './document.js';
 
 export function paintDocument(canvas: HTMLCanvasElement, state: ImageState) {
-  canvas.width = state.width; canvas.height = state.height;
+  if(canvas.width!==state.width)canvas.width=state.width;if(canvas.height!==state.height)canvas.height=state.height;
   const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('浏览器无法创建 2D 画布。');
-  if(hasAdvancedComposite(state.layers)){const image=compositeState(state);ctx.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>,image.width,image.height),0,0);return;}
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(hasAdvancedComposite(state.layers)){forEachCompositeTile(state,(image,rect)=>ctx.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>,image.width,image.height),rect.x,rect.y));return;}
   const draw = (context: CanvasRenderingContext2D, layers: readonly ImageLayer[], x = 0, y = 0) => {
     for (const layer of layers) {
       if (!layer.visible || layer.opacity === 0) continue;
@@ -47,7 +48,7 @@ export function refreshBitmap(bitmap: Bitmap, rect: { x: number; y: number; widt
 function sameLayers(a: readonly ImageLayer[], b: readonly ImageLayer[]): boolean {
   return a.length === b.length && a.every((layer, i) => {
     const other = b[i]!;
-    return layer.id === other.id && layer.visible === other.visible && layer.opacity === other.opacity && layer.blend === other.blend && layer.x === other.x && layer.y === other.y && layer.bitmap === other.bitmap && layer.mask === other.mask && layer.content === other.content && sameLayers(layer.children, other.children);
+    return layer.id === other.id && layer.visible === other.visible && layer.opacity === other.opacity && layer.blend === other.blend && layer.x === other.x && layer.y === other.y && layer.bitmap === other.bitmap && layer.mask === other.mask && layer.clipping===other.clipping && layer.styles===other.styles && layer.smartFilters===other.smartFilters && layer.filterMask===other.filterMask && layer.blendIf===other.blendIf && layer.content === other.content && sameLayers(layer.children, other.children);
   });
 }
 interface Camera { zoom: number; x: number; y: number }
@@ -91,6 +92,7 @@ export class CanvasView {
     if (this.renderedKey !== key) { if (!samePixels) paintDocument(this.canvas, state); this.renderedKey = key; }
     this.artboard.style.width = `${state.width}px`; this.artboard.style.height = `${state.height}px`; this.transform();
   }
+  get scale(){return this.state?this.camera.zoom:1;}
   point(event: { clientX: number; clientY: number }) {
     const rect = this.canvas.getBoundingClientRect();
     return { x: (event.clientX - rect.left) / this.camera.zoom, y: (event.clientY - rect.top) / this.camera.zoom };

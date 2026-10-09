@@ -1,0 +1,47 @@
+import type { Bitmap } from './document.js';
+import type { AdjustmentContent, LayerStyles } from './layerFeatures.js';
+import { filterBitmap } from './filters.js';
+export function adjustmentBitmap(source:Bitmap,content:AdjustmentContent):Bitmap {
+ if(content.filter!=='curves'&&content.filter!=='levels')return filterBitmap(source,{kind:content.filter,amount:content.amount});
+ const lut=adjustmentLut(content),channels=['red','green','blue'].map(k=>{const v=content.channels?.[k as 'red'];return v?adjustmentLut({...content,...v}):null;});
+ const data=source.data.slice();for(let i=0;i<data.length;i+=4)for(let c=0;c<3;c++){const v=lut[data[i+c]!]!;data[i+c]=channels[c]?.[v]??v;}return {...source,data};
+}
+function adjustmentLut(content:AdjustmentContent):Uint8ClampedArray {
+ const lut=new Uint8ClampedArray(256);
+ if(content.filter==='levels'){
+  const l=content.levels!;for(let i=0;i<256;i++)lut[i]=l.outputBlack+Math.pow(Math.max(0,Math.min(1,(i-l.black)/(l.white-l.black))),1/l.gamma)*(l.outputWhite-l.outputBlack);
+ }else{
+  // Natural cubic spline, evaluated once per edit rather than once per pixel.
+  const p=content.curves!,n=p.length,m=new Float64Array(n),u=new Float64Array(n);
+  for(let i=1;i<n-1;i++){const span=p[i+1]!.input-p[i-1]!.input,s=(p[i]!.input-p[i-1]!.input)/span,q=s*m[i-1]!+2;m[i]=(s-1)/q;u[i]=(6*((p[i+1]!.output-p[i]!.output)/(p[i+1]!.input-p[i]!.input)-(p[i]!.output-p[i-1]!.output)/(p[i]!.input-p[i-1]!.input))/span-s*u[i-1]!)/q;}
+  for(let i=n-2;i>=0;i--)m[i]=m[i]!*m[i+1]!+u[i]!;
+  let j=0;for(let x=0;x<256;x++){while(j<n-2&&x>p[j+1]!.input)j++;const a=p[j]!,b=p[j+1]!,h=b.input-a.input,t=(b.input-x)/h,v=(x-a.input)/h;lut[x]=t*a.output+v*b.output+((t*t*t-t)*m[j]!+(v*v*v-v)*m[j+1]!)*h*h/6;}
+ }
+ return lut;
+}
+function rgb(color:string){return [1,3,5].map(i=>parseInt(color.slice(i,i+2),16));}
+function spread(alpha:Float32Array,width:number,height:number,radius:number,maximum:boolean):Float32Array {
+ if(!radius)return alpha.slice();
+ const pass=(input:Float32Array,horizontal:boolean)=>{
+  const out=new Float32Array(input.length),length=horizontal?width:height,rows=horizontal?height:width,queue=new Int32Array(length);
+  for(let row=0;row<rows;row++){
+   const at=(i:number)=>horizontal?row*width+i:i*width+row;let head=0,tail=0,sum=0,right=-1;
+   for(let i=0;i<length;i++){
+    const end=Math.min(length-1,i+radius);while(right<end){right++;if(maximum){while(tail>head&&input[at(queue[tail-1]!)]!<=input[at(right)]!)tail--;queue[tail++]=right;}else sum+=input[at(right)]!;}
+    if(maximum){while(head<tail&&queue[head]!<i-radius)head++;out[at(i)]=input[at(queue[head]!)]!;}
+    else {const gone=i-radius-1;if(gone>=0)sum-=input[at(gone)]!;out[at(i)]=sum/(radius*2+1);}
+   }
+  }return out;
+ };return pass(pass(alpha,true),false);
+}
+/** Common styles are live parameters. Shadow uses a bounded separable blur; stroke uses square dilation. */
+export function styleBitmap(source:Bitmap,styles:LayerStyles|undefined):Bitmap {
+ if(!styles?.enabled)return source;
+ const {width,height}=source,alpha=Float32Array.from({length:width*height},(_,i)=>source.data[i*4+3]!/255),data=new Uint8ClampedArray(source.data.length);
+ const put=(i:number,color:readonly number[],a:number)=>{if(!a)return;const b=data[i+3]!/255,o=a+b*(1-a);for(let c=0;c<3;c++)data[i+c]=(color[c]!*a+data[i+c]!*b*(1-a))/o;data[i+3]=o*255;};
+ if(styles.shadow){const s=styles.shadow,color=rgb(s.color),blurred=spread(alpha,width,height,s.blur,false);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const sx=x-s.dx,sy=y-s.dy;if(sx>=0&&sy>=0&&sx<width&&sy<height)put((y*width+x)*4,color,blurred[sy*width+sx]!*s.opacity);}}
+ if(styles.stroke){const s=styles.stroke,color=rgb(s.color),dilated=spread(alpha,width,height,s.size,true);for(let i=0;i<alpha.length;i++)put(i*4,color,Math.max(0,dilated[i]!-alpha[i]!)*s.opacity);}
+ const overlay=styles.overlay,color=overlay?rgb(overlay.color):null;
+ for(let p=0;p<alpha.length;p++){const i=p*4,base=[source.data[i]!,source.data[i+1]!,source.data[i+2]!];if(color&&overlay)for(let c=0;c<3;c++)base[c]=base[c]!*(1-overlay.opacity)+color[c]!*overlay.opacity;put(i,base,alpha[p]!);}
+ return {width,height,data};
+}

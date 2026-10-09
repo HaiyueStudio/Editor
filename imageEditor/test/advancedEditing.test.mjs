@@ -52,7 +52,7 @@ test('selection history owns mask bytes, marks dirty and roundtrips in version 2
 });
 test('all filters preserve input buffers, dimensions, valid channels and color-only alpha',()=>{
  const b=image(3,2,[[200,40,20,255],[0,200,20,128],[80,30,200,0],[0,0,0,255],[255,255,255,255],[30,70,180,200]]),before=b.data.slice();
- for(const [kind,config] of Object.entries(FILTERS)){const out=filterBitmap(b,{kind,amount:config.value});assert.deepEqual(b.data,before);assert.equal(out.width,b.width);assert.equal(out.height,b.height);assert.notEqual(out.data,b.data);if(!['blur','pixelate'].includes(kind))for(let i=3;i<before.length;i+=4)assert.equal(out.data[i],before[i]);}
+ for(const [kind,config] of Object.entries(FILTERS)){const out=filterBitmap(b,{kind,amount:config.value});assert.deepEqual(b.data,before);assert.equal(out.width,b.width);assert.equal(out.height,b.height);assert.notEqual(out.data,b.data);if(!['blur','gaussian','pixelate'].includes(kind))for(let i=3;i<before.length;i+=4)assert.equal(out.data[i],before[i]);}
  assert.throws(()=>filterBitmap(b,{kind:'brightness',amount:101}),/参数/);
 });
 test('filter math produces expected invert grayscale threshold and posterize values',()=>{

@@ -32,7 +32,7 @@ export class IndexedDbRecovery implements RecoveryStore {
     });
     this.keys = new Set([...entries.keys()].filter(key => key.startsWith('chunk:')));
     const value = entries.get('session');
-    return [3,4].includes((value as StoredSession)?.version) ? decodeRecovery(value as StoredSession, entries) : value;
+    return [3,4,5,6,7,8,9,10].includes((value as StoredSession)?.version) ? decodeRecovery(value as StoredSession, entries) : value;
   }
   async save(session: RecoverySession): Promise<void> {
     const db = await this.db();

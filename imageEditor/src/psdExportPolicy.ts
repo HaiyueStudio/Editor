@@ -1,7 +1,8 @@
 import { allLayers, type ImageState } from './document.js';
+import { nativeWritable } from './layerFeatures.js';
 export function psdExportWarnings(state:ImageState):string[] {
- const layers=allLayers(state.layers),warnings:string[]=[];
- if(layers.some(l=>l.kind==='adjustment'))warnings.push('调整图层暂不能写为 Photoshop 调整对象：此 PSD 将合并为一张像素图层，保留当前可见画面。');
- else {const names=layers.filter(l=>l.content).map(l=>l.name);if(names.length)warnings.push('以下文字／形状将作为像素图层导出，PSD 中无法继续修改文字与形状参数：'+names.join('、'));}
- if(warnings.length)warnings.push('请保存 .hyimage 工程以保留全部可编辑内容。');return warnings;
+ const unsupported=allLayers(state.layers).filter(l=>l.content&&!nativeWritable(l.content)||l.smartFilters!==undefined||l.filterMask!==undefined);
+ return unsupported.length?['以下内容尚未实现可靠的 PSD 原生映射（智能滤镜／滤镜蒙版／部分调整／富文本／换行布局／末尾空行文字／大于 32 MiB 的智能源），此副本将合并为像素：'+unsupported.map(l=>l.name).join('、'),'请保存 .hyimage 工程以保留全部可编辑内容。']:[];
 }
+
+export function psdMetadataWarnings(state:ImageState):string[]{return state.channels?.length||state.actions?.length||state.layout?['PSD 副本不保存命名 Alpha 通道、参考线／吸附设置和参数化动作；请保存 .hyimage 工程。']:[];}
