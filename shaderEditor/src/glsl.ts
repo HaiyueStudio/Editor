@@ -60,6 +60,7 @@ class Parser {
   constructor(private readonly tokens: Token[], private readonly channels: ChannelTypes, private readonly entryPoint: 'image' | 'sound' | 'common' = 'image') {
     for (let i = 0; i < 4; i++) this.globals.set('iChannel' + i, channels.sampler(i));
   }
+  get textureBiasUsed() { return this.textures.usesBias; }
   private get token() { return this.tokens[this.index]!; }
   private is(value: string) { return this.token.value === value; }
   private take() { return this.tokens[this.index++]!; }
@@ -669,15 +670,15 @@ export function translateGlsl(source: string, options: TranslationOptions = {}):
       if (!shared.code) return { ...shared, diagnostics: shared.diagnostics.map(d => ({ ...d, source: 'common' as const })) };
     }
     const tokens = preprocessGlsl(options.common !== undefined ? options.common + '\n' + source : source), channels = new ChannelTypes(options);
-    let code = '';
+    let code = '', textureBiasUsed = false;
     for (let attempt = 0; attempt < 5; attempt++) {
-      try { code = new Parser(tokens, channels, options.entryPoint).parse(); break; }
+      try { const parser = new Parser(tokens, channels, options.entryPoint); code = parser.parse(); textureBiasUsed = parser.textureBiasUsed; break; }
       catch (error) { if (!(error instanceof ChannelRetry) || attempt === 4) throw error; }
     }
     const channelTypes = channels.types.map(t => t ?? '2d');
     code = cubemapRequirements(channelTypes) + (options.common !== undefined ? '// @haiyue-common-included\n' : '') + code;
     const cubeWarnings = channelTypes.flatMap((t, i) => t === 'cube' ? [`iChannel${i} 使用 Cubemap，请在该 Pass 的通道面板绑定六面立方体贴图。`] : []);
-    return { code, channelTypes, diagnostics: [], warnings: [...cubeWarnings,'支持 #define 常量宏/带参数宏、#undef、#if/#ifdef/#ifndef/#elif/#else/#endif 条件编译及 defined、标量/向量/矩阵/结构体全局变量、具名结构体（含嵌套成员、构造、成员读写、参数与返回值）、定长数组（全局/局部/成员/参数、初始化与长度推断、多维索引、length）、矩阵构造、乘法、索引与常用矩阵函数、函数重载与原型、辅助函数 out/inout 参数、惰性三元表达式、整数移位及按位运算、isnan/isinf 与布尔向量、条件、for/while、switch/case/default（含贯穿执行）、只读 gl_FragCoord、sampler2D / samplerCube 函数参数及 texture/texture2D/textureCube/textureLod/textureSize/texelFetch。可变全局变量按像素独立初始化；重载按 GLSL ES 参数类型精确匹配并改名。WGSL 保留名称自动改名并同步引用。不支持 include、宏标记拼接/字符串化、运行时长度数组及 sampler2D / samplerCube 数组或结构体成员。转换后需通过 WGSL 编译；不保证与原作逐像素一致。'] }; }
+    return { code, channelTypes, diagnostics: [], warnings: [...cubeWarnings, ...(textureBiasUsed ? ['已接受 texture 的 bias 参数。当前纹理只有基础 mip 层，采样仍使用第 0 层；bias 表达式会正常求值。'] : []),'支持 #define 常量宏/带参数宏、#undef、#if/#ifdef/#ifndef/#elif/#else/#endif 条件编译及 defined、标量/向量/矩阵/结构体全局变量、具名结构体（含嵌套成员、构造、成员读写、参数与返回值）、定长数组（全局/局部/成员/参数、初始化与长度推断、多维索引、length）、矩阵构造、乘法、索引与常用矩阵函数、函数重载与原型、辅助函数 out/inout 参数、惰性三元表达式、整数移位及按位运算、isnan/isinf 与布尔向量、条件、for/while、switch/case/default（含贯穿执行）、只读 gl_FragCoord、sampler2D / samplerCube 函数参数及 texture/texture2D/textureCube/textureLod/textureSize/texelFetch。可变全局变量按像素独立初始化；重载按 GLSL ES 参数类型精确匹配并改名。WGSL 保留名称自动改名并同步引用。不支持 include、宏标记拼接/字符串化、运行时长度数组及 sampler2D / samplerCube 数组或结构体成员。转换后需通过 WGSL 编译；不保证与原作逐像素一致。'] }; }
   catch (error) {
     const line = error instanceof TranslationError ? error.token.line : 1, commonLines = options.common?.split('\n').length ?? 0;
     return { code: null, diagnostics: [{ line: commonLines && line > commonLines ? line - commonLines : line, column: error instanceof TranslationError ? error.token.column : 1, message: error instanceof Error ? error.message : String(error), ...(commonLines ? { source: line <= commonLines ? 'common' as const : 'pass' as const } : {}) }], warnings: [] };

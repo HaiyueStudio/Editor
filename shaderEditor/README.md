@@ -508,3 +508,5 @@ Sound 的 `iResolution` 为合成块大小 1024×64；鼠标、日期和 iFrame 
 静态纹理/Common、试听手势与时间轴、失败保留、WAV 下载以及工程保存恢复。
 
 GLSL 导入支持右结合的连续赋值（如 `a = b = value`、`q.x = q.x = 26-q.x`）以及赋值表达式。内层赋值返回实际写入的值，右侧调用与动态索引仅求值一次；可用于声明初值、函数参数、返回值、条件与循环。三元分支和短路逻辑中的赋值保持惰性求值。
+
+GLSL 的 `texture(sampler, uv, bias)`、`texture2D(..., bias)`、`textureCube(..., bias)` 支持可选的第三个 float 参数，包括 `-100.0`。按 [GLSL ES 规范](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html)，bias 是隐式 mip 层级的偏移。当前 Shader Editor 为图片、Buffer、视频与 Cubemap 分配单个 mip 层，因此生成的辅助函数在完整求值坐标和 bias 后，以 `textureSampleLevel(..., 0.0)` 采样；转换提示会注明这一限制。它不等同于 `textureLod(..., bias)`，也不提供多级 mipmap 的偏移过滤效果。

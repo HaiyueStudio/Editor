@@ -58,7 +58,7 @@ test('invalid sampler declarations, writes, conversions and sampling signatures 
     [main('c=vec4(iChannel0);'),/不能构造或转换/],
     [main('c=texture(vec4(1.0),p);'),/第一个参数/],
     ['uniform sampler2D iChannel0;'+main('c=texture(iChannel0,vec3(p,0.0));'),/类型冲突/],
-    [main('c=texture(iChannel0,p,0.0);'),/需要 2 个参数/],
+    [main('c=texture(iChannel0,p,0.0,0.0);'),/需要 2 或 3 个参数/],
     [main('c=textureLod(iChannel0,p,vec2(0.0));'),/层级需要 float/],
     [main('ivec2 size=textureSize(iChannel0,0.0);'),/层级需要 int/],
     [main('c=texelFetch(iChannel0,p,0);'),/ivec2/],

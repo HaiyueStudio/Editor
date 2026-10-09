@@ -20,7 +20,7 @@ const direction=`vec3 direction(vec2 p) {
 }`;
 const helpers=`vec4 read(samplerCube tex,vec3 d){
   vec3 n=vec3(0.0,1.0,0.0),rd=reflect(d,n),col=vec3(0.0);float fres=1.0;
-  col=mix(col,texture(tex,reflect(rd,n)).rgb,fres);
+  col=mix(col,texture(tex,reflect(rd,n),-100.0).rgb,fres);
   return vec4(col,1.0);
 }
 vec4 read(sampler2D tex,vec2 uv){return texture(tex,uv);}
