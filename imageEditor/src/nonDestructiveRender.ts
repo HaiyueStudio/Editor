@@ -1,8 +1,10 @@
+import { hueSaturationBitmap } from './hueSaturation.js';
 import { pixelColor, depthOf, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import type { Bitmap } from './document.js';
 import type { AdjustmentContent, LayerStyles } from './layerFeatures.js';
 import { filterBitmap } from './filters.js';
 export function adjustmentBitmap(source:Bitmap,content:AdjustmentContent):Bitmap {
+ if(content.filter==='hue-saturation')return hueSaturationBitmap(source,content.hueSaturation!);
  if(content.filter!=='curves'&&content.filter!=='levels')return filterBitmap(source,{kind:content.filter,amount:content.amount});
  if(depthOf(source)!==8){const fn=continuousAdjustment(content),channels=['red','green','blue'].map(k=>{const v=content.channels?.[k as 'red'];return v?continuousAdjustment({...content,...v}):null;}),data=source.data.slice();for(let i=0;i<data.length;i+=4)for(let c=0;c<3;c++){const v=fn(data[i+c]!);data[i+c]=channels[c]?.(v)??v;}return {...source,data};}
  const lut=adjustmentLut(content),channels=['red','green','blue'].map(k=>{const v=content.channels?.[k as 'red'];return v?adjustmentLut({...content,...v}):null;});
@@ -24,6 +26,7 @@ function adjustmentLut(content:AdjustmentContent):Uint8ClampedArray {
 function rgb(color:string,source:Bitmap){return pixelColor([1,3,5].map(i=>parseInt(color.slice(i,i+2),16)),depthOf(source));}
 function spread(alpha:Float32Array,width:number,height:number,radius:number,maximum:boolean):Float32Array {
  if(!radius)return alpha.slice();
+ if(!Number.isInteger(radius)){const lo=Math.floor(radius),t=radius-lo,a=spread(alpha,width,height,lo,maximum),b=spread(alpha,width,height,lo+1,maximum);return a.map((v,i)=>v*(1-t)+b[i]!*t);}
  const pass=(input:Float32Array,horizontal:boolean)=>{
   const out=new Float32Array(input.length),length=horizontal?width:height,rows=horizontal?height:width,queue=new Int32Array(length);
   for(let row=0;row<rows;row++){

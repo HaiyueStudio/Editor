@@ -14,6 +14,11 @@ export function registerProductivityOperations(workspace:ImageWorkspace):EditorD
  function register(id:string,properties:Record<string,EditorOperationSchema>,required:string[],prepare:(p:Params,d:ImageDocument,c:EditorOperationContext)=>Promise<()=>EditorJsonValue>|(()=>EditorJsonValue),access:'read'|'write'='write'){
   owned.push(workspace.registerOperation({ownerId:'image.operations',descriptor:{id:'image.'+id,version:1,title:id,target:'document',documentKinds:['haiyue.image'],access,input:{type:'object',properties,required},output:json},async prepare(p:Params,c){const d=doc(c);return {d,apply:await prepare(p,d,c)};},commit:({d,apply})=>access==='write'?d.runAtomic(apply):apply(),rollback(){}}));
  }
+ const compId={type:'integer',minimum:1,maximum:2147483647} as const;
+ register('comp.list',{},[],(_p,d)=>()=>JSON.parse(JSON.stringify(d.state.layerComps??{list:[]})),'read');
+ register('comp.apply',{id:compId},['id'],(p,d)=>()=>{d.applyComp(p.id as number);return {applied:true};});
+ register('comp.capture',{id:compId,name:str,comment:{type:'string',maxLength:2000}},['name'],(p,d)=>()=>{d.captureComp(p.name as string,p.id as number|undefined,(p.comment??'') as string);return {id:d.state.layerComps!.lastApplied!};});
+ register('comp.delete',{id:compId},['id'],(p,d)=>()=>{d.deleteComp(p.id as number);return {applied:true};});
  const channel=(d:ImageDocument,id:EditorJsonValue|undefined)=>{const c=d.state.channels?.find(c=>c.id===id);if(!c)throw new Error('Alpha 通道不存在。');return c;};
  register('channel.save',{id:str,name:str,source:{type:'string',enum:['selection','red','green','blue','alpha','resource']},resourceId:str},['name','source'],async(p,d,c)=>{
   const s=d.state;if(p.id)channel(d,p.id);if(!p.id&&(s.channels?.length??0)>=32)throw new Error('最多保存 32 个 Alpha 通道。');const id=(p.id??uid()) as string;let data:Uint8Array;

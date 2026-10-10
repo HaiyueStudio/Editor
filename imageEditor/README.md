@@ -174,3 +174,11 @@ Windows/Linux 实机、公开发行签名及公证尚未验收。P3 Worker 复�
 ### 分项图层锁定
 
 支持透明像素、像素编辑、位置和整层锁定，覆盖 UI、公共命令、撤销、工程恢复与 PSD 往返。见 [行为与 API](docs/layer-locks.md)。
+
+## Layer Comps PSD
+
+支持 17 层 Adobe `Layer Comps.psd` 的分层编辑、4 个图层复合的可见性／位置切换与撤销、色相／饱和度着色、复合矢量轮廓和缩放投影。新增 `image.comp.list/apply/capture/delete`；详情、范围和本地验收见 [Layer Comps PSD](docs/layer-comps-psd.md)。
+
+## Fish PSD
+
+支持 Adobe `Fish.psd` 的 8 层 RGB 16 位编辑，保留蒙版显示设置、效果面板状态及图案预设；覆盖编辑／撤销、PSD 导出、工程与磁盘恢复。见 [Fish PSD 验收](docs/fish-psd.md)。

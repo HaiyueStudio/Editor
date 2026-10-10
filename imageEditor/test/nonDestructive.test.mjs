@@ -61,9 +61,9 @@ for(const kind of ['text','rectangle','ellipse','line','levels','curves','invert
  if(kind==='styles')assert.deepEqual(b.styles,styles);if(kind==='clipping')assert(b.clipping);
  assert.deepEqual(compositeState(opened.layered),compositeState(d.state));const again=importPsd(exportPsd(opened.layered).bytes,'again.psd');assert(again.layered,again.blockers.join('\n'));assert.deepEqual(compositeState(again.layered),compositeState(d.state));d.dispose();
 });
-test('PSD channel adjustments import natively while custom text layout stays an explicit blocker',()=>{
+test('PSD channel adjustments and ZIP-compressed custom text layout import natively',()=>{
  const d=doc();d.setContent(d.selected.id,levels,null);const raw=readPsd(exportPsd(d.state).bytes,{useImageData:true});raw.children.at(-1).adjustment.red.shadowInput=10;let opened=importPsd(writePsdUint8Array(raw,{noBackground:true,compress:true}),'channel.psd');assert(opened.layered,opened.blockers.join());assert.equal(opened.layered.layers.at(-1).content.channels.red.levels.black,10);
- const t=doc();t.setContent(t.selected.id,{type:'text',text:'text',size:12,family:'sans-serif',bold:false,italic:false,align:'left',color:'#000000'},t.selected.bitmap);const text=readPsd(exportPsd(t.state).bytes,{useImageData:true});text.children.at(-1).text.transform[4]+=10;opened=importPsd(writePsdUint8Array(text,{noBackground:true,compress:true}),'custom.psd');assert.equal(opened.layered,null);assert.match(opened.blockers.join(),/自定义原点/);
+ const t=doc();t.setContent(t.selected.id,{type:'text',text:'text',size:12,family:'sans-serif',bold:false,italic:false,align:'left',color:'#000000'},t.selected.bitmap);const text=readPsd(exportPsd(t.state).bytes,{useImageData:true});text.children.at(-1).text.transform[4]+=10;opened=importPsd(writePsdUint8Array(text,{noBackground:true,compress:true}),'custom.psd');assert(opened.layered,opened.blockers.join());assert.equal(opened.layered.layers.at(-1).content.type,'text');assert.equal(opened.layered.layers.at(-1).content.layout.x,text.children.at(-1).text.transform[4]-(text.children.at(-1).left??0));
  d.dispose();t.dispose();
 });
 test('new public API commands are atomic, revision checked and preserve smart resources across undo/export',async()=>{

@@ -1,3 +1,4 @@
+import { applyLayerComp, captureLayerComp, validateLayerComps, freezeLayerComps, type LayerComps } from './layerComps.js';
 import { isLayerLocked, validateLocks, protectLayerChanges, type LayerLocks, type LockAction } from './layerLocks.js';
 import { archiveBytes, hydrateArchive, validateDiskBlob, type DiskBacking } from './diskPager.js';
 import { pageBuffers, hydratePixels, hydrateBitmap, pagedState, packLayers, pixelStorageBytes, isPaged, type PixelPages } from './pagedPixels.js';
@@ -28,6 +29,7 @@ export interface ImageLayer {
   readonly kind: 'pixel' | 'group' | 'adjustment'; readonly bitmap: Bitmap | null; readonly children: readonly ImageLayer[];
 }
 export interface ImageState {
+  readonly layerComps?:LayerComps;
   readonly paging?:{enabled:boolean}; readonly psdArchive?:Uint8Array; readonly psdArchiveStore?:DiskBacking;
   readonly colorMode?:'rgb'|'cmyk';readonly icc?:IccSettings; readonly bitDepth?:BitDepth; readonly display?:DisplaySettings;
   readonly channels?:readonly AlphaChannel[]; readonly layout?:Layout; readonly actions?:readonly ImageAction[];
@@ -55,7 +57,7 @@ function retainedStateBytes(...states: ImageState[]) {
       collect(state);return buffers;
     };
     const a=backing(states[0]!),b=backing(states[1]!);
-    const metadata=states.reduce((n,s)=>n+JSON.stringify(s.actions??[]).length*2+JSON.stringify(s.layout??{}).length*2,4096);
+    const metadata=states.reduce((n,s)=>n+JSON.stringify(s.actions??[]).length*2+JSON.stringify(s.layout??{}).length*2+JSON.stringify(s.layerComps??{}).length*2,4096);
     return [...new Set([...a,...b])].filter(v=>!a.has(v)||!b.has(v)).reduce((n,v)=>n+v.byteLength,0)+metadata;
   }
 
@@ -81,10 +83,10 @@ function siblings(layers: readonly ImageLayer[], id: string, operation: (items: 
 }
 function freezeState(state: ImageState): ImageState {
   const freeze = (layers: readonly ImageLayer[]): readonly ImageLayer[] => Object.freeze(layers.map(layer => Object.freeze({ ...layer, ...(layer.locks?{locks:Object.freeze({...layer.locks})}:{}), ...(layer.smartFilters?{smartFilters:Object.freeze(layer.smartFilters.map(f=>Object.freeze({...f,settings:Object.freeze({...f.settings})})))}:{}),...(layer.filterMask?{filterMask:Object.freeze({...layer.filterMask})}:{}),...(layer.blendIf?{blendIf:Object.freeze({...layer.blendIf,source:Object.freeze([...layer.blendIf.source]) as typeof layer.blendIf.source,underlying:Object.freeze([...layer.blendIf.underlying]) as typeof layer.blendIf.underlying})}:{}), ...(layer.styles?{styles:Object.freeze({...layer.styles,...(layer.styles.innerGlow?{innerGlow:Object.freeze({...layer.styles.innerGlow})}:{}),...(layer.styles.overlay?{overlay:Object.freeze({...layer.styles.overlay})}:{}),...(layer.styles.stroke?{stroke:Object.freeze({...layer.styles.stroke})}:{}),...(layer.styles.shadow?{shadow:Object.freeze({...layer.styles.shadow})}:{})})}:{}), ...(layer.content ? {content:freezeContent(layer.content)}:{}), ...(layer.mask?{mask:Object.freeze({...layer.mask})}:{}), children: freeze(layer.children) })));
-  return Object.freeze(hydrateArchive({ ...state,paging:state.paging??{enabled:false}, ...(state.icc?{icc:Object.freeze({...state.icc})}:{}),...freezeProductivity(state), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) }));
+  return Object.freeze(hydrateArchive({ ...state,...(state.layerComps?{layerComps:freezeLayerComps(state.layerComps)}:{}),paging:state.paging??{enabled:false}, ...(state.icc?{icc:Object.freeze({...state.icc})}:{}),...freezeProductivity(state), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) }));
 }
 export function validateState(state: ImageState) {
-  hydratePixels(state);
+  hydratePixels(state);validateLayerComps(state.layerComps);
   if(state.psdArchiveStore?.disk)validateDiskBlob(state.psdArchiveStore.disk);
   else if(state.psdArchive&&(!(state.psdArchive instanceof Uint8Array)||state.psdArchive.length<26||state.psdArchive.length>IMAGE_LIMITS.bytes||new DataView(state.psdArchive.buffer,state.psdArchive.byteOffset).getUint32(0)!==0x38425053))throw Error('PSD 原生档案无效。');
   if(state.paging&&typeof state.paging.enabled!=='boolean')throw Error('换页策略无效。');
@@ -103,7 +105,7 @@ export function validateState(state: ImageState) {
   if (rect?.mask && (!(rect.mask instanceof Uint8Array) || rect.mask.length !== rect.width * rect.height)) throw new Error('选区蒙版无效。');
   if (!state.name.trim() || state.name.length > 160) throw new Error('文档名称长度应为 1–160 个字符。');
   const ids = new Set<string>();
-  let bytes = validateProductivity(state)+(state.psdArchiveStore?.disk?0:archiveBytes(state));if(state.icc){const c=state.icc;if(![0,1,2,3].includes(c.intent)||![0,1,2,3].includes(c.proofIntent)||typeof c.bpc!=='boolean'||typeof c.gamutWarning!=='boolean'||c.proofEnabled!==undefined&&typeof c.proofEnabled!=='boolean'||c.proofEnabled===true&&!c.proofProfile)throw new Error('ICC 设置无效。');for(const p of [c.proofProfile,c.monitorProfile])if(p){inspectIccBytes(p);bytes+=p.byteLength;}}
+  let bytes = JSON.stringify(state.layerComps??{}).length*2+validateProductivity(state)+(state.psdArchiveStore?.disk?0:archiveBytes(state));if(state.icc){const c=state.icc;if(![0,1,2,3].includes(c.intent)||![0,1,2,3].includes(c.proofIntent)||typeof c.bpc!=='boolean'||typeof c.gamutWarning!=='boolean'||c.proofEnabled!==undefined&&typeof c.proofEnabled!=='boolean'||c.proofEnabled===true&&!c.proofProfile)throw new Error('ICC 设置无效。');for(const p of [c.proofProfile,c.monitorProfile])if(p){inspectIccBytes(p);bytes+=p.byteLength;}}
   const visit = (layers: readonly ImageLayer[], depth: number) => {
     if (depth > IMAGE_LIMITS.depth) throw new Error('图层组嵌套过深。');
     for (const layer of layers) {
@@ -239,6 +241,9 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   setDepth(bitDepth:BitDepth,allowLoss=false){if(this.state.colorMode==='cmyk'&&bitDepth===32)throw Error('CMYK 仅支持 8／16 位。');if(![8,16,32].includes(bitDepth))throw new Error('位深无效。');if(bitDepth<(this.state.bitDepth??8)&&!allowLoss)throw new Error('降低位深需要 allowLoss 确认。');if(allLayers(this.state.layers).some(l=>layerLocked(this.state.layers,l.id)))throw new Error('请先解除图层锁定。');if(allLayers(this.state.layers).some(l=>l.content?.type==='smart'&&l.content.sourcePsd))throw new Error('请先栅格化多层智能对象，再转换位深。');this.edit('转换文档位深',s=>{const crossing=(s.bitDepth===32)!==(bitDepth===32),profile=embeddedProfile(s);if(!crossing||!profile)return {...s,bitDepth};const target=s.bitDepth===32?linearSrgbProfile():srgbProfileBytes(),layers=convertIccLayers(s.layers,workingProfile(s),target,s.icc??{}),resources=concatBytes([...resourceBlocks(s.psdOrigin!.resources).filter(b=>b.id!==1039).map(b=>b.bytes),profileResource(bitDepth===32?linearSrgbProfile():srgbProfileBytes())]);return {...s,bitDepth,layers,psdOrigin:{...s.psdOrigin!,resources}};});}
   setDisplay(display:DisplaySettings){this.edit('HDR 显示设置',s=>({...s,display:{...display}}));}
   commitIcc(resources:Uint8Array,icc:IccSettings,layers=this.state.layers){const owned=structuredClone(layers),settings=structuredClone(icc),data=resources.slice();this.edit('ICC 色彩管理',s=>({...s,layers:owned,icc:settings,psdOrigin:{sourceName:s.psdOrigin?.sourceName??s.name,flattened:s.psdOrigin?.flattened??false,resources:data}}));}
+  applyComp(id:number){this.edit('应用图层复合',s=>applyLayerComp(s,id));}
+  captureComp(name:string,id?:number,comment=''){this.edit(id===undefined?'新建图层复合':'更新图层复合',s=>({...s,layerComps:captureLayerComp(s,name,id,comment)}));}
+  deleteComp(id:number){if(!this.state.layerComps?.list.some(c=>c.id===id))throw Error('图层复合不存在。');this.edit('删除图层复合',s=>({...s,layerComps:{list:s.layerComps!.list.filter(c=>c.id!==id),...(s.layerComps!.lastApplied!==undefined&&s.layerComps!.lastApplied!==id?{lastApplied:s.layerComps!.lastApplied}:{})}}));}
   setProductivity(patch:Partial<Pick<ImageState,'channels'|'layout'|'actions'>>,label='生产设置') {
     const owned=structuredClone(patch);validateProductivity({...this.state,...owned});this.edit(label,state=>({...state,...owned}));
   }

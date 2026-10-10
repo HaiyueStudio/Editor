@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writePsdUint8Array } from 'ag-psd';
+import {clearPagedPixelCache,pagedPixelStats,bitmapRegion} from '../dist/pagedPixels.js';
 import { importPsd } from '../dist/psdAdapter.js';
 import { estimatePsdMemory } from '../dist/psdMemory.js';
 import { psdTransferBuffers } from '../dist/psdTransfer.js';
@@ -19,11 +20,11 @@ function largePsd(hasRealMergedData=true) {
   return writePsdUint8Array({...large,imageResources:{versionInfo:{hasRealMergedData,writerName:'test',readerName:'test',fileVersion:1}}},{compress:true,noBackground:true});
 }
 
-test('compressed over-budget PSD exposes exact merged pixels instead of throwing or decoding layers',()=>{
-  const bytes=largePsd(),source=bytes.slice(),result=importPsd(bytes,'large.psd');
+test('ZIP over-budget PSD retains paged layers and exact merged pixels without eager channel decoding',()=>{
+  clearPagedPixelCache();const bytes=largePsd(),source=bytes.slice(),result=importPsd(bytes,'large.psd');
   assert(bytes.length<1024*1024);assert.deepEqual(bytes,source);
-  assert.equal(result.layered,null);assert.equal(result.memory.layerPixelBytes,144*1024*1024);
-  assert.equal(result.memory.compositeOnly,true);assert.match(result.blockers[0],/跳过图层解码/);
+  assert(Boolean(result.layered));assert.equal(result.layered.layers.length,9);assert.equal(result.memory.layerPixelBytes,144*1024*1024);
+  assert.equal(result.memory.compositeOnly,false);assert.equal(result.memory.paged,true);assert.deepEqual(result.blockers,[]);assert.equal(pagedPixelStats().materializedBytes,0);assert.deepEqual(Array.from(bitmapRegion(result.layered.layers[0].bitmap,100,100,1,1).data),[0,0,0,255]);assert(pagedPixelStats().materializedBytes<=pagedPixelStats().materializedBudget);
   assert.deepEqual(result.flattened.layers[0].bitmap.data,merged.data);
   assert.equal(result.flattened.psdOrigin.flattened,true);
   const doc=new ImageDocument(result.flattened);doc.rename('edited');assert.equal(doc.identity.name,'edited');doc.history.undo();assert.match(doc.identity.name,/合并副本/);doc.dispose();
@@ -33,7 +34,7 @@ test('compressed over-budget PSD exposes exact merged pixels instead of throwing
 
 test('over-budget PSD without a real merged image never silently imports a flattened document',()=>{
   const result=importPsd(largePsd(false),'no-preview.psd');
-  assert.equal(result.layered,null);assert.equal(result.flattened,null);assert.match(result.notes.join(),/没有可用的合并预览/);
+  assert(Boolean(result.layered));assert.equal(result.flattened,null);assert.match(result.notes.join(),/没有可用的合并预览/);
 });
 
 test('admission counts native working precision, masks, and off-canvas layers before decoding',()=>{
@@ -78,3 +79,5 @@ for(const [depth,cmyk] of [[16,false],[32,false],[8,true],[16,true]])test(`compo
   assert(full.children[0].imageData);assert.equal(flat.children[0].imageData,undefined);
   assert.deepEqual(flat.imageData,full.imageData);
 });
+
+test('over-budget unsupported metadata still takes an explicit composite-only fallback',()=>{const bytes=largePsd(),at=Buffer.from(bytes).indexOf(Buffer.from('luni'));assert(at>0);bytes.set([90,90,90,90],at);const result=importPsd(bytes,'unsupported.psd');assert.equal(Boolean(result.layered),false);assert(result.blockers.some(b=>b.includes('跳过图层解码')));assert.deepEqual(result.flattened.layers[0].bitmap.data,merged.data);});

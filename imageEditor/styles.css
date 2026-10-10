@@ -125,3 +125,8 @@ hy-button.save-button { padding: 0; background: none; --hy-surface-elevated-colo
 #selection-radius-dialog { width: min(360px, calc(100vw - 32px)); }
 
 .layer-lock-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 0}.layer-lock.partial{color:var(--accent,#f47f4b)}
+
+.layer-comps-panel { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.layer-comps-panel summary { cursor: pointer; margin-bottom: 8px; }
+.layer-comps-panel hy-select, .layer-comps-panel hy-input { width: 100%; }
+.layer-comps-panel small { color: var(--muted); font-size: 11px; }

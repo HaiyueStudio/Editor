@@ -1,3 +1,4 @@
+import { LayerCompsPanel } from './layerCompsPanel.js';
 import { textDiagnosticMessage } from './textDiagnostics.js';
 import { spillState, serializeDiskProject, deserializeDiskProject } from './diskImage.js';
 import { withDiskPages } from './diskPager.js';
@@ -55,6 +56,7 @@ const psdJobs = new PsdJobs((busy, label) => { $('psd-progress').hidden = !busy;
 let choosePsd: ((state: import('./document.js').ImageState | null) => void) | undefined;
 let pendingPsd: PsdImportResult | undefined;
 const editing = new EditingTools(() => workspace.active, view, notice);
+const layerCompsPanel=new LayerCompsPanel(()=>workspace.active,notice);
 const paths=new PathEditor(()=>workspace.active,view,editing,notice);
 const professional=new ProfessionalPanel(workspace,notice);
 const colorPanel=new ColorPanel(workspace,notice);
@@ -162,7 +164,7 @@ function render() {
   $('layer-count').textContent = `${doc ? allLayers(doc.state.layers).length : 0} 个图层 · 已选 ${doc?.selectedIds.length ?? 0}`;
   $('document-info').textContent = doc ? `${doc.state.width} × ${doc.state.height} px   /   ${(doc.state.colorMode??'rgb').toUpperCase()} · ${doc.state.bitDepth??8} 位 · ${iccDocumentInfo(doc.state).working?.name??(doc.state.colorMode==='cmyk'?'未标记 ICC · 近似预览':'未标记 ICC')}${doc.state.bitDepth===32?' 线性 HDR':''}${doc.dirty ? '   /   工程副本未保存' : ''}` : '准备就绪';
   $('navigator-size').textContent = doc ? `${doc.state.width} × ${doc.state.height}` : '—'; $('navigator-empty').hidden = Boolean(doc);
-  view.setDocument(doc?.state); productivity.sync(); cmykPanel.sync(); colorPanel.sync(); editing.sync(); headerMenus.update(Boolean(doc), Boolean(doc?.state.selection)); advanced.sync(); nonDestructive.sync(); paths.sync();
+  view.setDocument(doc?.state); productivity.sync(); cmykPanel.sync(); colorPanel.sync(); editing.sync(); headerMenus.update(Boolean(doc), Boolean(doc?.state.selection)); advanced.sync(); nonDestructive.sync(); paths.sync(); layerCompsPanel.sync();
   const navigator = $<HTMLCanvasElement>('navigator-canvas'), ctx = navigator.getContext('2d')!; ctx.clearRect(0, 0, 240, 130);
   if (doc) { const ratio = Math.min(220 / doc.state.width, 112 / doc.state.height); ctx.drawImage(view.displayCanvas, (240 - doc.state.width * ratio) / 2, (130 - doc.state.height * ratio) / 2, doc.state.width * ratio, doc.state.height * ratio); }
 }

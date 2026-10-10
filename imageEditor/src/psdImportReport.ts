@@ -12,9 +12,13 @@ export function psdImportReport(psd:Psd,layered:ImageState|null,hasPreview:boole
  if(ids.some(id=>!DERIVED_RESOURCE_IDS.has(id)))notes.push('其他图像资源按原字节保留，其中历史等元数据不自动更新。');
  if(!hasPreview)notes.push('原件没有可用的合并预览，无法打开合并图副本。');
  if(!layered)return {warnings,notes,textDiagnostics:[]};
+ if(layered.layerComps?.list.length)notes.push(`${layered.layerComps.list.length} 个图层复合：可在右侧面板切换可见性与位置；原生复合描述保留。`);
+ if(psd.userMask)notes.push('保留蒙版叠加显示颜色及透明度，不影响图像像素。');
+ if(psd.globalLayerMaskInfo?.kind===128)notes.push('保留全局蒙版显示颜色设置，不将其误作额外像素蒙版。');
  const layers=allLayers(layered.layers),names=(ls:readonly {name?:string}[])=>ls.slice(0,6).map(l=>l.name??'未命名').join('、')+(ls.length>6?` 等 ${ls.length} 层`:'');
  const textDiagnostics=inspectTextLayers(psd,layered);if(textDiagnostics.length){notes.push(`${textDiagnostics.length} 个文字层保留原像素缓存；仅在修改该层文字时重新排版。`);warnings.push(...textDiagnostics.filter(d=>d.issues.length).map(textDiagnosticMessage));}
  const effects=layers.filter(l=>l.styles?.enabled&&(l.styles.shadow||l.styles.stroke||l.styles.innerGlow));if(effects.length)warnings.push(`图层样式：${names(effects)}。投影模糊、描边或内发光使用近似渲染，可能与原软件不同。`);
+ const hsl=layers.filter(l=>l.content?.type==='adjustment'&&l.content.filter==='hue-saturation');if(hsl.length)warnings.push(`色相／饱和度：${names(hsl)}。支持原生参数和着色；当前 HSL 合成尚未完成 Photoshop 像素对齐。`);
  const blends=layers.filter(l=>l.blendIf?.enabled);if(blends.length)warnings.push(`混合颜色带：${names(blends)}。编码 RGB／亮度合成尚未完成逐像素对齐。`);
  const feather=layers.filter(l=>l.mask?.feather);if(feather.length)warnings.push(`蒙版羽化：${names(feather)}。当前使用高斯 σ，边缘可能不同。`);
  const raw:Layer[]=[];const walk=(ls:Layer[])=>{for(const l of ls){raw.push(l);walk(l.children??[]);}};walk(psd.children??[]);

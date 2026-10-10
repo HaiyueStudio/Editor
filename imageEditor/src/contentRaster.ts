@@ -4,7 +4,13 @@ import { validateContent, type TextContent, type PathContent, type ShapeContent 
 export function rasterContent(content:TextContent|ShapeContent|PathContent):Bitmap {
  validateContent(content);const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d')!;
  if(content.type==='path'){
-  checkSize(content.width,content.height);canvas.width=content.width;canvas.height=content.height;const p=content.nodes;ctx.beginPath();ctx.moveTo(p[0]!.x,p[0]!.y);for(let i=1;i<p.length;i++){const a=p[i-1]!,b=p[i]!;ctx.bezierCurveTo(a.outX,a.outY,b.inX,b.inY,b.x,b.y);}if(content.closed){const a=p.at(-1)!,b=p[0]!;ctx.bezierCurveTo(a.outX,a.outY,b.inX,b.inY,b.x,b.y);ctx.closePath();}if(content.fill){ctx.fillStyle=content.fill;ctx.fill(content.fillRule);}if(content.strokeWidth){ctx.strokeStyle=content.stroke;ctx.lineWidth=content.strokeWidth*(content.strokeAlignment==='inside'?2:1);if(content.strokeAlignment==='inside'){ctx.save();ctx.clip(content.fillRule);ctx.stroke();ctx.restore();}else ctx.stroke();}
+  checkSize(content.width,content.height);canvas.width=content.width;canvas.height=content.height;
+  const groups:{path:Path2D;rule:CanvasFillRule}[]=[];
+  for(const contour of [{...content,operation:'combine'},...(content.contours??[])]){
+   if(contour.operation==='combine'||!groups.length)groups.push({path:new Path2D(),rule:contour.fillRule});const group=groups.at(-1)!;if(contour.fillRule==='evenodd')group.rule='evenodd';const path=group.path,p=contour.nodes;
+   path.moveTo(p[0]!.x,p[0]!.y);for(let i=1;i<p.length;i++){const a=p[i-1]!,b=p[i]!;path.bezierCurveTo(a.outX,a.outY,b.inX,b.inY,b.x,b.y);}if(contour.closed){const a=p.at(-1)!,b=p[0]!;path.bezierCurveTo(a.outX,a.outY,b.inX,b.inY,b.x,b.y);path.closePath();}
+  }
+  for(const {path,rule} of groups){if(content.fill){ctx.fillStyle=content.fill;ctx.fill(path,rule);}if(content.strokeWidth){ctx.strokeStyle=content.stroke;ctx.lineWidth=content.strokeWidth*(content.strokeAlignment==='inside'?2:1);if(content.strokeAlignment==='inside'){ctx.save();ctx.clip(path,rule);ctx.stroke(path);ctx.restore();}else ctx.stroke(path);}}
  }else if(content.type==='text'&&content.layout&&(content.runs?.length||content.layout.box||content.layout.transform)){rasterNativeText(canvas,content);
  }else if(content.type==='text'&&(content.runs?.length||content.wrapWidth)){rasterRichText(canvas,content);
  }else if(content.type==='text'&&content.layout){

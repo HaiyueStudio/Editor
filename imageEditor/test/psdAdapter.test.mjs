@@ -12,10 +12,11 @@ for(const entry of cases())test(`P3 layer bytes, Unicode, group properties and a
 });
 test('real unsupported features require explicit flattened fallback; bad modes and depth refuse',()=>{
   for(const sample of manifest.samples){const bytes=fixture(sample.file);assert.equal(bytes.length,sample.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),sample.sha256);}
-  for(const name of ['layer-mask','smart-object','adjustment-layers','effects']){const result=importPsd(fixture(name+'.psd'),name+'.psd');assert.equal(Boolean(result.layered),false,name);assert(result.blockers.length);assert(result.flattened,name);assert.equal(result.flattened.layers.length,1);assert.equal(result.flattened.psdOrigin.flattened,true);}
+  for(const name of ['smart-object','adjustment-layers','effects']){const result=importPsd(fixture(name+'.psd'),name+'.psd');assert.equal(Boolean(result.layered),false,name);assert(result.blockers.length);assert(result.flattened,name);assert.equal(result.flattened.layers.length,1);assert.equal(result.flattened.psdOrigin.flattened,true);}
+  assert(importPsd(fixture('layer-mask.psd'),'layer-mask.psd').layered,'global mask display metadata and layer masks are now supported');
   assert(importPsd(fixture('text-layer.psd'),'text-layer.psd').layered,'native styled text is now supported');
   assert.throws(()=>importPsd(fixture('psb.psb'),'psb.psb'));const cmyk=importPsd(fixture('cmyk.psd'),'cmyk.psd');assert.equal(cmyk.flattened.colorMode,'cmyk');assert(cmyk.flattened.layers[0].bitmap.cmyk instanceof Float32Array);
-  for(const name of ['16bits.psd','32bits.psd']){const result=importPsd(fixture(name),name);assert(result.blockers.some(b=>b.includes('LMsk')));assert(!result.blockers.some(b=>b.includes('位深')));}
+  for(const name of ['16bits.psd','32bits.psd']){const result=importPsd(fixture(name),name);assert(result.layered,result.blockers.join('\n'));assert.deepEqual(result.blockers,[]);const out=exportPsd(result.layered);assert.equal(importPsd(out.bytes,name).layered.bitDepth,result.layered.bitDepth);}
   assert(importPsd(fixture('groups.psd'),'groups.psd').layered,'pass-through groups are now supported');
   const noComposite=importPsd(fixture('pass-through.psd'),'pass-through.psd');assert.equal(noComposite.flattened,null);
 });
@@ -24,7 +25,7 @@ test('ICC and opaque resources survive export and project recovery as exact raw 
   const state=deserializeProject(serializeProject(original.layered));assert.deepEqual(state.psdOrigin.resources,original.layered.psdOrigin.resources);
   const out=exportPsd(state),sections=psdSections(out.bytes),blocks=resourceBlocks(out.bytes.slice(sections.resources.data,sections.resources.end));
   assert(out.preservedResourceIds.includes(1039));for(const source of resourceBlocks(state.psdOrigin.resources))assert.deepEqual(blocks.find(block=>block.id===source.id).bytes,source.bytes);
-  const bad=JSON.parse(serializeProject(state));bad.document.psdOrigin.resources='!!!!';assert.throws(()=>deserializeProject(JSON.stringify(bad)),/资源/);
+  const bad=JSON.parse(serializeProject(state));if(bad.archive)bad.archive.tree.psdOrigin.resources.$pixelBuffer=999999;else bad.document.psdOrigin.resources='!!!!';assert.throws(()=>deserializeProject(JSON.stringify(bad)),/资源|二进制/);
 });
 test('unknown additional blocks are detected independently of codec warnings',()=>{
   const d=ImageDocument.create('未知块',8,8);d.addLayer(makeLayer('像素',bitmap(4,4,[1,2,3,255])));const bytes=exportPsd(d.state).bytes;
