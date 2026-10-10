@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "haiyue-shader-editor",
+  "version": "0.1.0",
+  "productName": "Haiyue Shader Editor",
+  "appId": "studio.haiyue.shader-editor",
+  "artifactName": "Haiyue-Shader-Editor-${version}-${os}-${arch}.${ext}",
+  "storageNamespace": "haiyue.shader-editor.v1",
+  "supportTier": "experimental",
+  "entries": [
+    "index.html"
+  ],
+  "staticFiles": [
+    "styles.css",
+    "assets/icon.svg",
+    "assets/blue_noise.png",
+    "assets/future_city.png",
+    "assets/msdf.png",
+    "assets/noise_medium.png",
+    "assets/noise_small.png",
+    "assets/rgba_noise_medium.png",
+    "assets/rgba_noise_small.png",
+    "assets/webgpu.png"
+  ],
+  "workers": [],
+  "distDirectory": "web",
+  "outputDirectory": "app-dist",
+  "electronRendererDirectory": "electron/app-dist",
+  "budget": {
+    "maxRawBytes": 10000000,
+    "maxGzipBytes": 8000000
+  },
+  "pwa": {
+    "enabled": true,
+    "shortName": "Shader Lab",
+    "description": "Haiyue WGSL shader playground",
+    "themeColor": "#111318",
+    "backgroundColor": "#111318",
+    "icons": [
+      {
+        "src": "./assets/icon.svg",
+        "sizes": "any",
+        "type": "image/svg+xml",
+        "purpose": "any"
+      }
+    ]
+  },
+  "electron": {
+    "enabled": true,
+    "width": 1500,
+    "height": 960,
+    "minWidth": 760,
+    "minHeight": 600,
+    "backgroundColor": "#111318",
+    "unsavedCloseProtection": true
+  }
+}

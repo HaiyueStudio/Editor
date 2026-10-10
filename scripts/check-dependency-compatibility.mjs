@@ -9,7 +9,7 @@ const externalPackages = [
   '@haiyue/shader-language',
   '@haiyue/ui',
 ];
-const workspaces = ['editor', 'AnimationEditor', 'voxelEditor', 'editor-shell'];
+const workspaces = ['editor', 'AnimationEditor', 'voxelEditor', 'shaderEditor', 'editor-shell'];
 const root = resolve(import.meta.dirname, '..');
 const mode = process.argv.includes('--minimum') ? 'minimum' : 'allowed';
 const violations = [];

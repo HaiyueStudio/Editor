@@ -1,0 +1,14 @@
+{
+  "generator": "built-in image_gen",
+  "postprocess": "Lanczos downscale to 512×512; source images preserved",
+  "images": [
+    {
+      "file": "future_city.png",
+      "prompt": "Generate a single square 512x512 pixel raster image for a shader editor's reusable texture library. Subject: science-fiction futuristic city architecture. Premium cinematic architectural concept art: clearly readable futuristic skyscrapers, skybridges and layered building facades, luminous windows, rich light and shadow, crisp details that remain legible when texture mapped onto a 3D object. Full-bleed scene, no typography, no labels, no watermark, no border. Landscape architecture is the focus, not characters. Deliver exactly 512 by 512 pixels."
+    },
+    {
+      "file": "webgpu.png",
+      "prompt": "Generate a single square 512x512 pixel raster icon for a shader editor texture library. A polished original WebGPU-themed icon: centered geometric GPU chip/cube symbol with flowing parallel compute lines, and the exact clearly legible word 'WebGPU' below it. Clean graphic design, high contrast, restrained luminous blue/cyan and lime accents on a dark solid background, generous margins, crisp edges readable at small sizes. This is an original illustrative technology icon, not a recreation of an official trademark logo. No extra text, no watermark, no border. Deliver exactly 512 by 512 pixels."
+    }
+  ]
+}

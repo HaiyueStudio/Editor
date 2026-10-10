@@ -1,0 +1,50 @@
+{
+  "name": "@haiyue/shader-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Haiyue WebGPU shader playground with multipass feedback and 3D material previews.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "electron/main.mjs",
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run build:types && node ../scripts/build-rollup-once.mjs --expect web",
+    "build:app": "npm run build && node ../scripts/run-editor-app-kit.mjs assemble",
+    "app:check": "npm run build:app && node ../scripts/run-editor-app-kit.mjs validate",
+    "preview": "npm run build:app && node ../scripts/run-editor-app-kit.mjs preview",
+    "test": "npm run build:types && node --test test/*.test.mjs",
+    "test:browser": "npm run build:app && node test/browser-smoke.mjs && node test/pass-tabs-browser.mjs && node test/common-browser.mjs && node test/common-glsl-browser.mjs && node test/arrays-browser.mjs && node test/assignments-browser.mjs && node test/sound-browser.mjs && node test/sound-duration-browser.mjs && node test/cubemap-browser.mjs && node test/media-browser.mjs && node test/tutorial-browser.mjs",
+    "test:electron": "npm run build:app && node test/electron-smoke.mjs",
+    "electron:start": "npm run build:app && electron .",
+    "electron:pack": "npm run build:app && node ../scripts/run-editor-app-kit.mjs electron-pack"
+  },
+  "dependencies": {
+    "@haiyue/ui": ">=0.1.0 <0.2.0",
+    "@haiyue/engine": ">=0.1.0 <0.2.0",
+    "@haiyue/editor-platform": "0.1.0",
+    "@haiyue/editor-plugin-sdk": "0.1.0",
+    "@haiyue/editor-app-kit": "0.1.0",
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/language": "^6.10.2",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.33.0",
+    "@codemirror/lint": "^6.8.0",
+    "@codemirror/autocomplete": "^6.18.0",
+    "@lezer/highlight": "^1.2.1",
+    "codemirror": "^6.0.1"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.40",
+    "typescript": "^5.2.0",
+    "tslib": "^2.6.0",
+    "rollup": "^4.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "electron": "43.2.0"
+  }
+}
