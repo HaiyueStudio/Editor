@@ -1,3 +1,9 @@
+import { compositeDamage } from './compositor.js';
+import { exportRaster } from './rasterExport.js';
+import { CmykStroke,fillCmyk } from './cmykEditing.js';
+import { nativeInkEnabled,inkSettings,setInkValues } from './cmykPanel.js';
+import { compositeCmyk } from './cmyk.js';
+import { sampleHex } from './pixelFormat.js';
 import { snapMove, snapPoint } from './layout.js';
 import type { Resampling } from './resampling.js';
 import { retouchSampler } from './retouch.js';
@@ -13,7 +19,7 @@ export type Tool = 'hand' | 'move' | 'brush' | 'eraser' | 'select' | 'ellipse' |
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const names: Record<Tool, string> = { path:'贝塞尔路径',clone:'仿制图章',heal:'修复画笔',eyedropper: '吸管', gradient: '渐变', hand: '画布浏览', move: '移动图层', brush: '画笔', eraser: '橡皮擦', select: '矩形选区', ellipse:'椭圆选区', lasso:'套索', polygon:'多边形套索', wand:'魔术棒', range:'颜色范围', crop: '裁剪画布' };
 const hints: Record<Tool, string> = { path:'单击加锚点 · 拖出控制柄 · Enter 应用 / Esc 取消',clone:'Alt 单击取样 · 拖动仿制 · Esc 取消',heal:'Alt 单击取样 · 保留纹理并匹配局部色调',eyedropper: '点击画布设置前景色 · 全部可见图层取样', gradient: '拖动绘制渐变 · Esc 取消', hand: '拖动平移 · 滚轮缩放', move: '拖动选中图层 · 方向键微调', brush: '拖动绘制 · Esc 取消笔画', eraser: '拖动擦除 · Esc 取消笔画', select: '拖动选择 · Shift 加选 / Alt 减选', ellipse:'拖动选择 · Shift 加选 / Alt 减选', lasso:'自由绘制闭合区域 · Esc 取消', polygon:'逐点单击 · Enter / 双击闭合 · 退格撤点', wand:'点击相近颜色 · 可选连续区域', range:'点击取样，选择全图相近颜色', crop: '拖动裁剪区域 · Enter 确认' };
-interface Gesture { doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; gradient?: ImageLayer; end?: Point; stroke?: PixelStroke; maskLayer?: ImageLayer; maskTarget?:'layer'|'filter'; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
+interface Gesture { doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; gradient?: ImageLayer; end?: Point; stroke?: PixelStroke|CmykStroke; maskLayer?: ImageLayer; maskTarget?:'layer'|'filter'; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
 export class EditingTools {
   tool: Tool = 'hand';
   readonly freeTransform: FreeTransform;
@@ -118,7 +124,7 @@ export class EditingTools {
     if (this.active() !== doc) return;
     if(this.tool==='path')return;
     if((this.tool==='clone'||this.tool==='heal')&&event.altKey){if(!doc.selected?.bitmap)throw new Error('请选择含像素的取样图层。');this.retouchSource={docId:doc.identity.id,layerId:doc.selected.id,x:point.x,y:point.y};this.notify(`取样点 ${Math.round(point.x)}, ${Math.round(point.y)} · ${doc.selected.name}`);event.preventDefault();return;}
-    if (this.tool === 'eyedropper') { const color = pickColor(doc.state, Math.floor(point.x), Math.floor(point.y)); $<HTMLInputElement>('paint-color').value = '#' + color.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''); this.notify(`取色 RGBA(${color.join(', ')})`); return; }
+    if (this.tool === 'eyedropper') { if(doc.state.colorMode==='cmyk'&&nativeInkEnabled()){const b=compositeCmyk(doc.state,{x:Math.floor(point.x),y:Math.floor(point.y),width:1,height:1});setInkValues(Array.from(b.cmyk!));this.notify('原生 CMYK (%)：'+Array.from(b.cmyk!,v=>v.toFixed(2)).join(', '));return;} const color = pickColor(doc.state, Math.floor(point.x), Math.floor(point.y)); $<HTMLInputElement>('paint-color').value = sampleHex(color,doc.state); this.notify(`取色 RGBA(${color.join(', ')})`); return; }
     if (this.tool === 'gradient' && (!doc.selected || this.maskEditing)) throw new Error('请选择像素图层并退出蒙版绘制。');
     const mode=this.selectionMode(event);
     if(this.tool==='wand'||this.tool==='range'){this.sampleColor(point,this.tool==='wand'&&$<HTMLInputElement>('wand-contiguous').checked,mode);return;}
@@ -130,7 +136,7 @@ export class EditingTools {
       if(this.maskEditing){gesture.maskLayer=doc.selected;gesture.maskTarget=this.maskTarget;}
       const tone=this.tool==='eraser'?0:Number($<HTMLSelectElement>('mask-paint-tone').value);
       let sample:ReturnType<typeof retouchSampler>|undefined;if(this.tool==='clone'||this.tool==='heal'){if(this.maskEditing)throw new Error('仿制／修复前请退出蒙版绘制。');const s=this.retouchSource;if(!s||s.docId!==doc.identity.id)throw new Error('请先 Alt 单击源图取样。');if(!s.offset||!$<HTMLInputElement>('clone-aligned').checked)s.offset={x:s.x-point.x,y:s.y-point.y};sample=retouchSampler(doc.state,doc.selected.id,s.layerId,s.offset,this.tool,Number($<HTMLInputElement>('heal-radius').value));}
-      gesture.stroke = new PixelStroke(source, doc.selected.id, Number($<HTMLInputElement>('brush-size').value), this.opacity, this.maskEditing?[tone,tone,tone]:this.color, !this.maskEditing&&this.tool === 'eraser',{hardness:Number($<HTMLInputElement>('brush-hardness')?.value??100)/100,pressure:($<HTMLSelectElement>('brush-pressure')?.value??'none') as 'none',...(sample?{sample}:{})});
+      gesture.stroke = !this.maskEditing&&source.colorMode==='cmyk'&&(this.tool==='eraser'||this.tool==='brush'&&nativeInkEnabled())?new CmykStroke(source,doc.selected.id,Number($<HTMLInputElement>('brush-size').value),{...inkSettings(),opacity:this.opacity,erase:this.tool==='eraser'},{hardness:Number($<HTMLInputElement>('brush-hardness')?.value??100)/100,pressure:($<HTMLSelectElement>('brush-pressure')?.value??'none') as 'none'}):new PixelStroke(source, doc.selected.id, Number($<HTMLInputElement>('brush-size').value), this.opacity, this.maskEditing?[tone,tone,tone]:this.color, !this.maskEditing&&this.tool === 'eraser',{hardness:Number($<HTMLInputElement>('brush-hardness')?.value??100)/100,pressure:($<HTMLSelectElement>('brush-pressure')?.value??'none') as 'none',...(sample?{sample}:{})});
       gesture.stroke.point({...point,pressure:this.pressure(event)});
     } else if (this.tool === 'move') {
       if (!doc.selected) throw new Error('请先选择图层。');
@@ -156,9 +162,9 @@ export class EditingTools {
       this.previewFrame = undefined; const g = this.gesture; if (!g) return;
       if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) this.guard(() => { g.gradient = this.gradientLayer(g); this.view.preview({ ...g.before, layers: replacePixel(g.before.layers, g.gradient.id, g.gradient) }); }); return; }
       if (g.layer) { let layers = g.before.layers; for (const layer of selectedRoots(g.before, g.before.selectedIds ?? [g.layer.id])) layers = replacePixel(layers, layer.id, { ...layer, x: layer.x + (g.delta?.x ?? 0), y: layer.y + (g.delta?.y ?? 0) }); this.view.preview({ ...g.before, layers }); return; }
-      if (g.stroke) refreshBitmap(g.stroke.layer.bitmap!, g.stroke.takeDirty());
+      const dirty=g.stroke?.takeDirty();if(g.stroke){if(!dirty)return;refreshBitmap(g.stroke.layer.bitmap!,dirty);}
       const layer = g.stroke ? g.maskLayer?{...g.maskLayer,[g.maskTarget==='filter'?'filterMask':'mask']:maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget)}:g.stroke.layer : undefined;
-      if (layer) this.view.preview({ ...g.before, layers: replacePixel(g.before.layers, layer.id, layer) });
+      if (layer) {const state={ ...g.before, layers: replacePixel(g.before.layers, layer.id, layer) };this.view.preview(state,!g.maskLayer&&dirty?compositeDamage(state,layer.id,dirty):undefined);}
       else if(g.points)this.showPath(g.points);
       else this.showRect(g.rect ?? null);
     });
@@ -168,7 +174,8 @@ export class EditingTools {
     this.update(event); if (this.gesture !== g) return;
     this.gesture = undefined; if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
     if (this.view.viewport.hasPointerCapture(event.pointerId)) this.view.viewport.releasePointerCapture(event.pointerId);
-    this.view.preview();
+    if(g.stroke)refreshBitmap(g.stroke.layer.bitmap!,g.stroke.takeDirty());
+    try {
     if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) { const layer = this.gradientLayer(g); g.doc.replaceLayerPixels(layer.id, layer, '渐变', g.before.revision); } }
     else if(g.stroke?.changed&&g.maskLayer)g.doc.setMask(g.maskLayer.id,maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget),g.maskTarget);
     else if (g.stroke?.changed) g.doc.replaceLayerPixels(g.stroke.layer.id, g.stroke.layer, this.tool === 'eraser' ? '橡皮擦笔画' : this.tool==='clone'?'仿制笔画':this.tool==='heal'?'修复笔画':'画笔笔画', g.before.revision, g.stroke.changedBounds);
@@ -178,6 +185,7 @@ export class EditingTools {
       if(selected)g.doc.setSelection(combineSelection(g.before.selection,selected,this.tool==='crop'?'replace':g.mode!,g.before.width,g.before.height));
       else if(g.mode==='replace')g.doc.setSelection(null);
     }
+    }finally{if(g.doc.state===g.before&&(g.stroke||g.layer||this.tool==='gradient'))this.view.preview();}
     this.sync();
   }
   private gradientLayer(g: Gesture) { return gradientPixels(g.before, g.before.selectedId!, g.start, g.end!, this.color, hexColor($<HTMLInputElement>('gradient-color').value), $<HTMLSelectElement>('gradient-kind').value as 'linear' | 'radial', this.opacity); }
@@ -185,7 +193,7 @@ export class EditingTools {
     this.freeTransform?.cancel();
     const g = this.gesture; this.gesture = undefined; this.polygon=undefined; this.shown=undefined;
     if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
-    if (g) { if (this.view.viewport.hasPointerCapture(g.pointer)) this.view.viewport.releasePointerCapture(g.pointer); this.view.preview(); }
+    if (g) { if (this.view.viewport.hasPointerCapture(g.pointer)) this.view.viewport.releasePointerCapture(g.pointer); const dirty=g.stroke?.changedBounds;const local=!g.maskLayer&&dirty&&this.active()===g.doc&&g.doc.state===g.before?compositeDamage({...g.before,layers:replacePixel(g.before.layers,g.stroke!.layer.id,g.stroke!.layer)},g.stroke!.layer.id,dirty):undefined;if(g.stroke||g.layer||this.tool==='gradient')this.view.preview(undefined,local); }
     this.showRect(this.active()?.state.selection ?? null);
   }
   private selectionMode(event?:PointerEvent):SelectionMode {return event?.shiftKey&&event.altKey?'intersect':event?.shiftKey?'add':event?.altKey?'subtract':$<HTMLSelectElement>('selection-mode').value as SelectionMode;}
@@ -199,7 +207,7 @@ export class EditingTools {
     const image=ctx.getImageData(0,0,canvas.width,canvas.height);canvas.width=canvas.height=1;return image;
   }
   private sampleColor(point:Point,contiguous:boolean,mode:SelectionMode){const doc=this.active();if(!doc)return;const bitmap=this.sampleBitmap(),x=Math.floor(point.x),y=Math.floor(point.y),i=(y*bitmap.width+x)*4,color=Array.from(bitmap.data.slice(i,i+4)) as [number,number,number,number];
-    $<HTMLInputElement>('range-color').value='#'+color.slice(0,3).map(v=>v.toString(16).padStart(2,'0')).join('');
+    $<HTMLInputElement>('range-color').value=sampleHex(color,doc.state);
     const selected=colorSelection(bitmap,color,Number($<HTMLInputElement>('selection-tolerance').value),contiguous?point:undefined);doc.setSelection(combineSelection(doc.state.selection,selected,mode,doc.state.width,doc.state.height));this.view.viewport.focus({preventScroll:true});
   }
   selectColor(){this.cancel();const doc=this.active();if(!doc)return;const selected=colorSelection(this.sampleBitmap(),hexColor($<HTMLInputElement>('range-color').value),Number($<HTMLInputElement>('selection-tolerance').value));doc.setSelection(combineSelection(doc.state.selection,selected,this.selectionMode(),doc.state.width,doc.state.height));}
@@ -210,6 +218,7 @@ export class EditingTools {
   fill(clear = false) {
     this.cancel(); const doc = this.active(); if (!doc?.selected) return;
     if(this.maskEditing){const source=maskStrokeState(doc.state,doc.selected.id,this.maskTarget),tone=clear?0:Number($<HTMLSelectElement>('mask-paint-tone').value);doc.setMask(doc.selected.id,maskFromStroke(doc.selected,fillPixels(source,doc.selected.id,[tone,tone,tone],clear?1:this.opacity),this.maskTarget),this.maskTarget);return;}
+    if(doc.state.colorMode==='cmyk'&&(clear||nativeInkEnabled())){doc.replaceLayerPixels(doc.selected.id,fillCmyk(doc.state,doc.selected.id,{...inkSettings(),opacity:clear?1:this.opacity,erase:clear}),clear?'清除选区像素':'填充 CMYK 通道');return;}
     doc.replaceLayerPixels(doc.selected.id, fillPixels(doc.state, doc.selected.id, clear ? null : this.color, clear ? 1 : this.opacity), clear ? '清除选区像素' : '填充前景色');
   }
   crop() { this.cancel(); this.active()?.cropToSelection(); this.view.fit(); }
@@ -230,13 +239,9 @@ export class EditingTools {
     doc.addLayer({ ...makeLayer(text.trim().split('\n')[0]!.slice(0, 150) + ' · 文字', { width, height, data }), x: Math.round((doc.state.width - width) / 2) - parent.x, y: Math.round((doc.state.height - height) / 2) - parent.y });
     canvas.width = canvas.height = 1;
   }
-  async export(format: 'png' | 'jpeg', quality: number): Promise<Blob> {
-    this.cancel(); const doc = this.active(); if (!doc) throw new Error('请先打开文档。');
-    if (!Number.isFinite(quality) || quality < 0.1 || quality > 1) throw new Error('JPEG 质量应为 10–100。');
-    const canvas = document.createElement('canvas'); paintDocument(canvas, doc.state);
-    if (format === 'jpeg') { const ctx = canvas.getContext('2d')!; ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-    try { return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('导出失败。')), `image/${format}`, quality)); }
-    finally { canvas.width = canvas.height = 1; }
+  async export(format:'png'|'jpeg',quality:number,embedProfile=true):Promise<Blob>{
+    this.cancel();const doc=this.active();if(!doc)throw Error('请先打开文档。');if(!Number.isFinite(quality)||quality<.1||quality>1)throw Error('JPEG 质量应为 10–100。');
+    return new Blob([(await exportRaster(doc.state,format,quality,embedProfile)).slice().buffer],{type:'image/'+format});
   }
   dispose() { this.cancel(); this.abort.abort(); this.freeTransform.dispose(); this.clipboard = undefined; }
 }

@@ -44,3 +44,21 @@
 #live-preview{height:180px;object-fit:contain}#live-filter-settings{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}#live-mask-settings{display:flex;flex-wrap:wrap;gap:0 20px}#live-mask-settings label{flex:1;min-width:140px}#live-dialog>.dialog-actions{position:sticky;bottom:-28px;background:#272b31;border-top:1px solid #535963;padding:12px 0;margin-bottom:-16px;z-index:1}@media(max-width:600px){#live-filter-settings{grid-template-columns:1fr}#live-preview{height:140px}}
 
 #guide-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:hidden}#guide-overlay line{stroke:#49d6ed;stroke-width:1;stroke-dasharray:5 3}#production-dialog{width:min(680px,95vw)}#production-dialog section[hidden]{display:none}#production-dialog label{display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap}#production-dialog textarea{width:100%;font:12px/1.5 monospace;resize:vertical;min-height:60px}#production-dialog input[type=number]{width:100px}#production-dialog select{max-width:100%}#guide-list,#channel-list,#action-list{flex:1;min-width:150px}#guide-list{width:100%}#channel-preview{width:100%;height:180px;object-fit:contain;background:#15191f}#production-dialog .production-buttons{display:flex;flex-wrap:wrap;gap:8px}#production-dialog p{line-height:1.6}#production-dialog>.dialog-actions{position:sticky;bottom:-28px;background:#272b31;padding:12px 0}#production-error{color:#f5a38d}#template-results a{color:#8ed8ff}
+
+/* Precision and color controls remain readable at laptop and narrow window sizes. */
+#document-color-dialog { width: min(620px, calc(100vw - 48px)); max-height: calc(100vh - 64px); overflow-y: auto; }
+#document-color-dialog > label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+#document-color-dialog > label:has(input[type="checkbox"]) { font-size: 12px; }
+#document-color-dialog input[type="file"] { max-width: 100%; min-width: 0; flex: 1; }
+#document-color-dialog > button { margin: 4px 8px 4px 0; border: 1px solid var(--border, #454950); }
+#document-color-dialog > p { line-height: 1.6; }
+#document-color-dialog > hr { border: 0; border-top: 1px solid #454950; margin: 18px 0 12px; }
+
+#document-color-status { white-space: pre-wrap; max-height: 240px; overflow: auto; }
+
+.cmyk-panel { padding: 12px; border-bottom: 1px solid var(--border, #38383e); }
+.cmyk-panel > label { display: block; margin: 8px 0; font-size: 12px; }
+.ink-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ink-grid > label { display: flex; flex-direction: column; gap: 4px; }
+.ink-grid canvas { width: 100%; height: 40px; border: 1px solid #555; }
+.ink-grid input[type=number] { width: 68px; }

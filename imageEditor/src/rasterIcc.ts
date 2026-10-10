@@ -1,0 +1,11 @@
+import { deflate } from 'pako';
+import { concatBytes } from './psdResources.js';
+/** Embed the profile of encoded output samples, never the document's source profile. */
+export function embedRasterIcc(bytes:Uint8Array,format:'png'|'jpeg',profile:Uint8Array):Uint8Array {
+ if(profile.length>4*1024*1024)throw Error('ICC 配置超过 4 MiB。');
+ if(format==='jpeg'){if(bytes[0]!==255||bytes[1]!==216)throw Error('JPEG 编码无效。');const parts=[bytes.subarray(0,2)],size=65519,count=Math.ceil(profile.length/size);for(let n=0;n<count;n++){const body=profile.subarray(n*size,(n+1)*size),segment=new Uint8Array(18+body.length),view=new DataView(segment.buffer);segment.set([255,226]);view.setUint16(2,16+body.length);segment.set(new TextEncoder().encode('ICC_PROFILE\0'),4);segment[16]=n+1;segment[17]=count;segment.set(body,18);parts.push(segment);}let p=2;while(p<bytes.length){if(bytes[p]!==255||p+1>=bytes.length)throw Error('JPEG 段无效。');const marker=bytes[p+1]!;if(marker===0xda||marker===0xd9){parts.push(bytes.subarray(p));p=bytes.length;break;}if(p+4>bytes.length)throw Error('JPEG 段截断。');const length=(bytes[p+2]!<<8)|bytes[p+3]!,end=p+2+length;if(length<2||end>bytes.length)throw Error('JPEG 段长度无效。');const icc=marker===0xe2&&String.fromCharCode(...bytes.subarray(p+4,p+16))==='ICC_PROFILE\0';if(!icc)parts.push(bytes.subarray(p,end));p=end;}return concatBytes(parts);}
+ const packed=deflate(profile),name=new TextEncoder().encode('Haiyue ICC\0'),payload=concatBytes([name,new Uint8Array(1),packed]),chunk=new Uint8Array(payload.length+12),v=new DataView(chunk.buffer);v.setUint32(0,payload.length);chunk.set(new TextEncoder().encode('iCCP'),4);chunk.set(payload,8);let crc=0xffffffff;for(const byte of chunk.subarray(4,-4)){crc^=byte;for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}v.setUint32(chunk.length-4,(crc^0xffffffff)>>>0);
+ const parts=[bytes.subarray(0,8)],input=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let p=8,inserted=false;
+ while(p+12<=bytes.length){const length=input.getUint32(p),end=p+12+length;if(end>bytes.length)throw Error('PNG 块截断。');const type=String.fromCharCode(...bytes.subarray(p+4,p+8));if(!['iCCP','sRGB','cICP'].includes(type))parts.push(bytes.subarray(p,end));if(type==='IHDR'){parts.push(chunk);inserted=true;}p=end;}
+ if(!inserted||p!==bytes.length)throw Error('PNG 编码无效。');return concatBytes(parts);
+}

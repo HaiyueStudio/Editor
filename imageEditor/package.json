@@ -40,24 +40,42 @@
     "test:browser:live": "npm run build:app && node test/live-effects-browser.mjs",
     "test:browser:productivity": "npm run build:app && node test/productivity-browser.mjs",
     "test:browser:foundations": "npm run build:app && node test/foundations-browser.mjs",
-    "test:psd:foundations": "npm run build:types && node scripts/check-foundations.mjs"
+    "test:psd:foundations": "npm run build:types && node scripts/check-foundations.mjs",
+    "test:browser:depth": "npm run build:app && node test/high-depth-browser.mjs",
+    "test:psd:depth": "npm run build:types && node scripts/check-high-depth.mjs",
+    "test:icc": "npm run build:types && node scripts/check-icc.mjs",
+    "photoshop:prepare": "npm run build:types && node scripts/photoshop-certification.mjs prepare",
+    "photoshop:verify": "node scripts/photoshop-certification.mjs verify",
+    "test:browser:color-domains": "npm run build:app && node test/color-domains-browser.mjs",
+    "test:psd:cmyk": "npm run build:types && node scripts/check-color-domains.mjs",
+    "test:browser:cmyk-daily": "npm run build:app && node test/cmyk-daily-browser.mjs",
+    "test:browser:icc-workflow": "npm run build:app && node test/icc-workflow-browser.mjs",
+    "test:icc:workflow": "node scripts/check-icc-workflow.mjs",
+    "test:browser:large": "npm run build:app && node test/large-image-browser.mjs",
+    "test:hdr:environment": "npm run build:app && node test/hdr-environment-browser.mjs",
+    "test:hdr:simulated": "npm run build:app && node test/hdr-environment-browser.mjs --simulated",
+    "hdr:verify": "node scripts/verify-hdr-environment.mjs"
   },
   "dependencies": {
+    "@haiyue/editor-app-kit": "0.1.0",
     "@haiyue/editor-platform": "0.1.0",
     "@haiyue/editor-plugin-sdk": "0.1.0",
     "@haiyue/editor-shell": "0.1.1",
-    "@haiyue/editor-app-kit": "0.1.0",
-    "ag-psd": "31.0.2"
+    "ag-psd": "31.0.2",
+    "iccdev": "2.3.23",
+    "lcms-wasm": "1.0.5",
+    "pako": "2.1.0"
   },
   "devDependencies": {
-    "typescript": "^5.2.0",
-    "tslib": "^2.6.0",
-    "rollup": "^4.0.0",
-    "@rollup/plugin-typescript": "^11.0.0",
-    "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@webgpu/types": "0.1.71",
     "electron": "43.2.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "rollup": "^4.0.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.2.0"
   },
   "main": "electron/main.mjs"
 }

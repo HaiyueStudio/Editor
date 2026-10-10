@@ -13,7 +13,8 @@ for(const entry of cases())test(`P3 layer bytes, Unicode, group properties and a
 test('real unsupported features require explicit flattened fallback; bad modes and depth refuse',()=>{
   for(const sample of manifest.samples){const bytes=fixture(sample.file);assert.equal(bytes.length,sample.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),sample.sha256);}
   for(const name of ['text-layer','layer-mask','smart-object','adjustment-layers','effects','groups']){const result=importPsd(fixture(name+'.psd'),name+'.psd');assert.equal(result.layered,null,name);assert(result.blockers.length);assert(result.flattened,name);assert.equal(result.flattened.layers.length,1);assert.equal(result.flattened.psdOrigin.flattened,true);}
-  for(const name of ['cmyk.psd','16bits.psd','32bits.psd','psb.psb'])assert.throws(()=>importPsd(fixture(name),name));
+  assert.throws(()=>importPsd(fixture('psb.psb'),'psb.psb'));const cmyk=importPsd(fixture('cmyk.psd'),'cmyk.psd');assert.equal(cmyk.flattened.colorMode,'cmyk');assert(cmyk.flattened.layers[0].bitmap.cmyk instanceof Float32Array);
+  for(const name of ['16bits.psd','32bits.psd']){const result=importPsd(fixture(name),name);assert(result.blockers.some(b=>b.includes('LMsk')));assert(!result.blockers.some(b=>b.includes('位深')));}
   const noComposite=importPsd(fixture('pass-through.psd'),'pass-through.psd');assert.equal(noComposite.flattened,null);
 });
 test('ICC and opaque resources survive export and project recovery as exact raw bytes',()=>{

@@ -5,7 +5,7 @@ export class PsdJobs {
   private stop: (()=>void) | undefined;
   constructor(private status:(busy:boolean,label:string)=>void) {}
   import(bytes:Uint8Array,name:string) { return this.run<PsdImportResult>({kind:'import',bytes,name},'正在解析 PSD…'); }
-  export(state:ImageState,allowRasterize=false) { return this.run<PsdExportResult>({kind:'export',state,allowRasterize},'正在编码并校验 PSD…'); }
+  export(state:ImageState,allowRasterize=false,embedProfile=true) { return this.run<PsdExportResult>({kind:'export',state,allowRasterize,embedProfile},'正在编码并校验 PSD…'); }
   cancel() { this.stop?.(); }
   private run<T>(request:PsdRequest,label:string):Promise<T> {
     if(this.stop) return Promise.reject(new Error('正在处理另一项 PSD 任务，请完成或取消后重试。'));

@@ -1,6 +1,6 @@
 import type { LayerMask } from './layerFeatures.js';
 export function rawMaskWeight(mask:LayerMask,x:number,y:number):number {x-=mask.x;y-=mask.y;return (x<0||y<0||x>=mask.width||y>=mask.height?mask.defaultColor:mask.data[y*mask.width+x]!)/255;}
-const cache=new WeakMap<Uint8Array,{sigma:number;defaultColor:number;w:number;h:number;data:Float32Array;radius:number}>();
+const cache=new WeakMap<Uint8Array|Float32Array,{sigma:number;defaultColor:number;w:number;h:number;data:Float32Array;radius:number}>();
 /** Gaussian feather pads with the mask's explicit exterior value; raw coverage is never changed. */
 export function effectiveMaskWeight(mask:LayerMask|undefined,x:number,y:number):number {
  if(!mask||mask.disabled)return 1;const sigma=mask.feather??0;let value:number;
@@ -14,4 +14,4 @@ export function effectiveMaskWeight(mask:LayerMask|undefined,x:number,y:number):
  }const xx=x-mask.x+item.radius,yy=y-mask.y+item.radius,w=item.w+2*item.radius,h=item.h+2*item.radius;value=xx<0||yy<0||xx>=w||yy>=h?mask.defaultColor/255:item.data[yy*w+xx]!;}
  return 1-(mask.density??1)*(1-value);
 }
-export function validateMask(mask:LayerMask){if(!mask||![mask.width,mask.height].every(n=>Number.isInteger(n)&&n>=1&&n<=8192)||mask.width*mask.height>16777216||!(mask.data instanceof Uint8Array)||mask.data.length!==mask.width*mask.height||![mask.x,mask.y].every(n=>Number.isInteger(n)&&Math.abs(n)<=32768)||typeof mask.disabled!=='boolean'||!Number.isInteger(mask.defaultColor)||mask.defaultColor<0||mask.defaultColor>255||mask.density!==undefined&&(!Number.isFinite(mask.density)||mask.density<0||mask.density>1)||mask.feather!==undefined&&(!Number.isFinite(mask.feather)||mask.feather<0||mask.feather>64))throw new Error('蒙版像素、密度或羽化参数无效。');}
+export function validateMask(mask:LayerMask){if(!mask||![mask.width,mask.height].every(n=>Number.isInteger(n)&&n>=1&&n<=8192)||mask.width*mask.height>16777216||!(mask.data instanceof Uint8Array||mask.data instanceof Float32Array)||mask.data.length!==mask.width*mask.height||![mask.x,mask.y].every(n=>Number.isInteger(n)&&Math.abs(n)<=32768)||typeof mask.disabled!=='boolean'||!Number.isInteger(mask.defaultColor)||mask.defaultColor<0||mask.defaultColor>255||mask.density!==undefined&&(!Number.isFinite(mask.density)||mask.density<0||mask.density>1)||mask.feather!==undefined&&(!Number.isFinite(mask.feather)||mask.feather<0||mask.feather>64))throw new Error('蒙版像素、密度或羽化参数无效。');if(mask.data instanceof Float32Array&&mask.data.some(v=>!Number.isFinite(v)||v<0||v>255))throw Error('浮点蒙版数值无效。');}

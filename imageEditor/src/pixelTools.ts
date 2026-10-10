@@ -1,3 +1,5 @@
+import { mapCmykGeometry } from './cmykGeometry.js';
+import { pixelColor, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { resizeBitmap, rotateBitmap, validateResampling, type Resampling } from './resampling.js';
 import { selectionWeight, type Selection } from './selection.js';
 import { IMAGE_LIMITS, pixelBytes, checkSize, findLayer, layerLocked, type Bitmap, type ImageLayer, type ImageState } from './document.js';
@@ -43,7 +45,7 @@ export function hexColor(hex: string): Color {
 /** A stroke owns its buffers. Coverage is accumulated once, independent of pointer event frequency. */
 export class PixelStroke {
   readonly layer: ImageLayer;
-  private readonly original: Uint8ClampedArray;
+  private readonly original: PixelArray;
   private readonly coverage: StrokeCoverage;
   get coverageBytes(){return this.coverage.bytes;}
   private readonly bounds: Rect;
@@ -57,6 +59,7 @@ export class PixelStroke {
   constructor(state: ImageState, id: string, private size: number, private opacity: number, private color: Color, private erase = false, private dynamics:BrushDynamics = {}) {
     if (!Number.isFinite(size) || size < 1 || size > 512 || !Number.isFinite(opacity) || opacity <= 0 || opacity > 1) throw new Error('画笔大小或不透明度无效。');
     if(!Number.isFinite(dynamics.hardness??1)||(dynamics.hardness??1)<0||(dynamics.hardness??1)>1||!['none','size','opacity','both'].includes(dynamics.pressure??'none'))throw new Error('画笔硬度或笔压模式无效。');
+    this.color=pixelColor(color,state.bitDepth??8) as unknown as Color;
     const layer = editablePixel(state, id), parent = parentOffset(state.layers, id)!;
     this.selection = state.selection;
     this.bounds = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height };
@@ -65,13 +68,13 @@ export class PixelStroke {
     const right = Math.max(layer.x + (layer.bitmap?.width ?? 0), this.bounds.x + this.bounds.width - parent.x);
     const bottom = Math.max(layer.y + (layer.bitmap?.height ?? 0), this.bounds.y + this.bounds.height - parent.y);
     const width = right - left, height = bottom - top; checkSize(width, height);
-    if (pixelBytes(state.layers) - (layer.bitmap?.data.byteLength ?? 0) + width * height * 4 > IMAGE_LIMITS.bytes) throw new Error('绘图超出文档像素预算，请缩小选区。');
-    const data = new Uint8ClampedArray(width * height * 4);
+    if (pixelBytes(state.layers) - (layer.bitmap?.data.byteLength ?? 0) + width * height * ((state.bitDepth??8)===8?4:16) > IMAGE_LIMITS.bytes) throw new Error('绘图超出文档像素预算，请缩小选区。');
+    const data = pixelArray(width * height * 4,state.bitDepth??8);
     if (layer.bitmap) for (let y = 0; y < layer.bitmap.height; y++) {
       const offset = ((y + layer.y - top) * width + layer.x - left) * 4;
       data.set(layer.bitmap.data.subarray(y * layer.bitmap.width * 4, (y + 1) * layer.bitmap.width * 4), offset);
     }
-    this.layer = { ...layer, x: left, y: top, bitmap: { width, height, data } };
+    this.layer = { ...layer, x: left, y: top, bitmap: withPixels(width,height,data,state.bitDepth??8) };
     this.original = layer.bitmap && layer.bitmap.width === width && layer.bitmap.height === height && layer.x === left && layer.y === top ? layer.bitmap.data : data.slice(); this.coverage = new StrokeCoverage(width); this.origin = { x: left + parent.x, y: top + parent.y };
   }
   point(point: BrushPoint) {
@@ -106,7 +109,7 @@ export class PixelStroke {
       if(this.dynamics.sample&&!sample||!this.coverage.increase(localX,localY,coverage))continue;
       const i=p*4,sourceAlpha=coverage/255*this.opacity*(sample?sample[3]/255:1),oldAlpha=this.original[i+3]!/255,tone=sample??this.color;
       if(!sourceAlpha)continue;
-      if (this.erase) bitmap.data[i + 3] = Math.round(oldAlpha * (1 - sourceAlpha) * 255);
+      if (this.erase) bitmap.data[i + 3] = oldAlpha * (1 - sourceAlpha) * 255;
       else {
         const alpha = sourceAlpha + oldAlpha * (1 - sourceAlpha);
         for (let c = 0; c < 3; c++) bitmap.data[i + c] = (tone[c]! * sourceAlpha + this.original[i + c]! * oldAlpha * (1 - sourceAlpha)) / alpha;
@@ -118,6 +121,7 @@ export class PixelStroke {
 }
 export function fillPixels(state: ImageState, id: string, color: Color | null, opacity = 1): ImageLayer {
   const stroke = new PixelStroke(state, id, 1, opacity, color ?? [0, 0, 0], color === null);
+  if(color)color=pixelColor(color,state.bitDepth??8) as unknown as Color;
   const layer = stroke.layer, bitmap = layer.bitmap!, offset = parentOffset(state.layers, id)!;
   const bounds = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height };
   for (let y = bounds.y; y < bounds.y + bounds.height; y++) for (let x = bounds.x; x < bounds.x + bounds.width; x++) {
@@ -137,10 +141,11 @@ export function transformBitmap(source: Bitmap, width: number, height: number, a
   checkSize(width, height);
   if (!Number.isFinite(angle) || Math.abs(angle) > 360) throw new Error('旋转角度应在 -360°–360° 内。');
   validateResampling(resampling);
+  if(source.cmyk)return mapCmykGeometry(source,b=>transformBitmap(b,width,height,angle,flipX,flipY,resampling));
   if(resampling!=='nearest'){const scaled=resizeBitmap(source,width,height,resampling);return angle===0&&!flipX&&!flipY?scaled:rotateBitmap(scaled,angle,flipX,flipY,resampling);}
   const radians = angle * Math.PI / 180, cos = Math.cos(radians), sin = Math.sin(radians);
   const w = Math.ceil(Math.abs(width * cos) + Math.abs(height * sin) - 1e-8), h = Math.ceil(Math.abs(width * sin) + Math.abs(height * cos) - 1e-8); checkSize(w, h);
-  const data = new Uint8ClampedArray(w * h * 4);
+  const data = pixelArray(w * h * 4,source);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const cx = x + 0.5 - w / 2, cy = y + 0.5 - h / 2;
     let sx = (cx * cos + cy * sin) / width + 0.5, sy = (-cx * sin + cy * cos) / height + 0.5;
@@ -149,5 +154,5 @@ export function transformBitmap(source: Bitmap, width: number, height: number, a
     const from = (Math.floor(sy * source.height) * source.width + Math.floor(sx * source.width)) * 4;
     data.set(source.data.subarray(from, from + 4), (y * w + x) * 4);
   }
-  return { width: w, height: h, data };
+  return withPixels(w,h,data,source);
 }

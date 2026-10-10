@@ -1,3 +1,8 @@
+import { synchronizeCmyk,validateCmyk } from './cmyk.js';
+import { embeddedProfile,profileResource,srgbProfileBytes } from './colorManagement.js';
+import { concatBytes } from './psdResources.js';
+import { workingProfile,convertIccLayers,linearSrgbProfile,inspectIccBytes, type IccSettings } from './iccEngine.js';
+import { type BitDepth, type PixelArray, type DisplaySettings, validateBitmap, normalizeLayers } from './pixelFormat.js';
 import { freezeProductivity, validateProductivity, type AlphaChannel, type Layout, type ImageAction } from './productivityModel.js';
 import { liveBitmap, validateSmartFilters, validateBlendIf, type SmartFilter, type BlendIf } from './liveEffects.js';
 import { validateMask } from './maskEffects.js';
@@ -8,7 +13,7 @@ import { selectionCount, type Selection } from './selection.js';
 import { EditorHistoryService } from '@haiyue/editor-platform';
 import type { EditorDocumentAdapter, EditorDisposable } from '@haiyue/editor-plugin-sdk';
 
-export interface Bitmap { readonly width: number; readonly height: number; readonly data: Uint8ClampedArray }
+export interface Bitmap { readonly width: number; readonly height: number; readonly data: PixelArray; readonly depth?:BitDepth; readonly cmyk?:Float32Array }
 export interface ImageLayer {
   readonly id: string; readonly name: string; readonly visible: boolean; readonly locked: boolean;
   readonly opacity: number; readonly blend: BlendMode;
@@ -19,6 +24,7 @@ export interface ImageLayer {
   readonly kind: 'pixel' | 'group' | 'adjustment'; readonly bitmap: Bitmap | null; readonly children: readonly ImageLayer[];
 }
 export interface ImageState {
+  readonly colorMode?:'rgb'|'cmyk';readonly icc?:IccSettings; readonly bitDepth?:BitDepth; readonly display?:DisplaySettings;
   readonly channels?:readonly AlphaChannel[]; readonly layout?:Layout; readonly actions?:readonly ImageAction[];
   readonly id: string; readonly name: string; readonly width: number; readonly height: number;
   readonly colorManagement?:{readonly space:'srgb';readonly convertedFrom:string};
@@ -35,11 +41,12 @@ export function checkSize(width: number, height: number) {
 }
 export function allLayers(layers: readonly ImageLayer[]): ImageLayer[] { return layers.flatMap(layer => [layer, ...allLayers(layer.children)]); }
 export function findLayer(layers: readonly ImageLayer[], id: string | null): ImageLayer | undefined { return allLayers(layers).find(layer => layer.id === id); }
-export function pixelBytes(layers: readonly ImageLayer[]): number { return allLayers(layers).reduce((sum, layer) => sum + (layer.bitmap?.data.byteLength ?? 0) + (layer.mask?.data.byteLength ?? 0) + (layer.filterMask?.data.byteLength ?? 0) + (layer.content?.type==='smart'?layer.content.source.data.byteLength+(layer.content.sourcePsd?.byteLength??0):0), 0); }
+export function pixelBytes(layers: readonly ImageLayer[]): number { return allLayers(layers).reduce((sum, layer) => sum + (layer.bitmap?.data.byteLength ?? 0)+(layer.bitmap?.cmyk?.byteLength??0) + (layer.mask?.data.byteLength ?? 0) + (layer.filterMask?.data.byteLength ?? 0) + (layer.content?.type==='smart'?layer.content.source.data.byteLength+(layer.content.sourcePsd?.byteLength??0):0), 0); }
 function retainedStateBytes(...states: ImageState[]) {
   const buffers = new Set<ArrayBufferLike>();
   for (const state of states) {
-    for (const layer of allLayers(state.layers))  { if (layer.bitmap) buffers.add(layer.bitmap.data.buffer); if(layer.mask)buffers.add(layer.mask.data.buffer); if(layer.filterMask)buffers.add(layer.filterMask.data.buffer); if(layer.content?.type==='smart'){buffers.add(layer.content.source.data.buffer);if(layer.content.sourcePsd)buffers.add(layer.content.sourcePsd.buffer);} }
+    for (const layer of allLayers(state.layers))  { if (layer.bitmap){buffers.add(layer.bitmap.data.buffer);if(layer.bitmap.cmyk)buffers.add(layer.bitmap.cmyk.buffer);} if(layer.mask)buffers.add(layer.mask.data.buffer); if(layer.filterMask)buffers.add(layer.filterMask.data.buffer); if(layer.content?.type==='smart'){buffers.add(layer.content.source.data.buffer);if(layer.content.sourcePsd)buffers.add(layer.content.sourcePsd.buffer);} }
+    if(state.icc?.proofProfile)buffers.add(state.icc.proofProfile.buffer);if(state.icc?.monitorProfile)buffers.add(state.icc.monitorProfile.buffer);
     if (state.selection?.mask) buffers.add(state.selection.mask.buffer);
     for(const channel of state.channels??[])buffers.add(channel.data.buffer);
     if (state.psdOrigin) buffers.add(state.psdOrigin.resources.buffer);
@@ -62,10 +69,13 @@ function siblings(layers: readonly ImageLayer[], id: string, operation: (items: 
 }
 function freezeState(state: ImageState): ImageState {
   const freeze = (layers: readonly ImageLayer[]): readonly ImageLayer[] => Object.freeze(layers.map(layer => Object.freeze({ ...layer, ...(layer.smartFilters?{smartFilters:Object.freeze(layer.smartFilters.map(f=>Object.freeze({...f,settings:Object.freeze({...f.settings})})))}:{}),...(layer.filterMask?{filterMask:Object.freeze({...layer.filterMask})}:{}),...(layer.blendIf?{blendIf:Object.freeze({...layer.blendIf,source:Object.freeze([...layer.blendIf.source]) as typeof layer.blendIf.source,underlying:Object.freeze([...layer.blendIf.underlying]) as typeof layer.blendIf.underlying})}:{}), ...(layer.styles?{styles:Object.freeze({...layer.styles,...(layer.styles.overlay?{overlay:Object.freeze({...layer.styles.overlay})}:{}),...(layer.styles.stroke?{stroke:Object.freeze({...layer.styles.stroke})}:{}),...(layer.styles.shadow?{shadow:Object.freeze({...layer.styles.shadow})}:{})})}:{}), ...(layer.content ? {content:freezeContent(layer.content)}:{}), ...(layer.mask?{mask:Object.freeze({...layer.mask})}:{}), children: freeze(layer.children) })));
-  return Object.freeze({ ...state, ...freezeProductivity(state), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) });
+  return Object.freeze({ ...state, ...(state.icc?{icc:Object.freeze({...state.icc})}:{}),...freezeProductivity(state), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) });
 }
 export function validateState(state: ImageState) {
   checkSize(state.width, state.height);
+  if(state.colorMode&&!['rgb','cmyk'].includes(state.colorMode))throw Error('文档颜色模式无效。');if(state.colorMode==='cmyk'&&state.bitDepth===32)throw Error('CMYK 仅支持 8／16 位。');
+  if(![8,16,32].includes(state.bitDepth??8))throw new Error('文档位深无效。');if(state.display?.output&&!['auto','sdr','hdr'].includes(state.display.output))throw Error('显示输出模式无效。');
+  if(state.display&&(!Number.isFinite(state.display.exposure)||Math.abs(state.display.exposure)>20||!['clip','reinhard','aces'].includes(state.display.operator)))throw new Error('HDR 预览参数无效。');
   if(state.colorManagement&&(state.colorManagement.space!=='srgb'||typeof state.colorManagement.convertedFrom!=='string'||state.colorManagement.convertedFrom.length>160))throw new Error('文档色彩管理信息无效。');
   if (state.psdOrigin) {
     const origin = state.psdOrigin;
@@ -77,10 +87,11 @@ export function validateState(state: ImageState) {
   if (rect?.mask && (!(rect.mask instanceof Uint8Array) || rect.mask.length !== rect.width * rect.height)) throw new Error('选区蒙版无效。');
   if (!state.name.trim() || state.name.length > 160) throw new Error('文档名称长度应为 1–160 个字符。');
   const ids = new Set<string>();
-  let bytes = validateProductivity(state);
+  let bytes = validateProductivity(state);if(state.icc){const c=state.icc;if(![0,1,2,3].includes(c.intent)||![0,1,2,3].includes(c.proofIntent)||typeof c.bpc!=='boolean'||typeof c.gamutWarning!=='boolean'||c.proofEnabled!==undefined&&typeof c.proofEnabled!=='boolean'||c.proofEnabled===true&&!c.proofProfile)throw new Error('ICC 设置无效。');for(const p of [c.proofProfile,c.monitorProfile])if(p){inspectIccBytes(p);bytes+=p.byteLength;}}
   const visit = (layers: readonly ImageLayer[], depth: number) => {
     if (depth > IMAGE_LIMITS.depth) throw new Error('图层组嵌套过深。');
     for (const layer of layers) {
+      if(state.colorMode==='cmyk'&&(layer.content||layer.styles?.enabled||layer.smartFilters?.length||layer.clipping||layer.blendIf?.enabled))throw Error('CMYK 参数化内容、剪贴和效果需先转换 RGB。');
       if (ids.has(layer.id) || !layer.id || layer.id.length > 80) throw new Error('图层 ID 无效或重复。');
       ids.add(layer.id);
       if (!layer.name.trim() || layer.name.length > 160) throw new Error('图层名称长度应为 1–160 个字符。');
@@ -96,14 +107,14 @@ export function validateState(state: ImageState) {
         validateContent(layer.content);
         if(layer.content.type==='adjustment' ? layer.kind!=='adjustment'||Boolean(layer.bitmap) : layer.kind!=='pixel'||!layer.bitmap)throw new Error('图层内容与类型不一致。');
       }
-      if(layer.kind==='adjustment'&&(!layer.content||layer.content.type!=='adjustment'||layer.blend!=='normal'))throw new Error('调整图层需要正常模式及有效参数。');
+      if(layer.kind==='adjustment'&&(!layer.content||layer.content.type!=='adjustment'))throw new Error('调整图层需要正常模式及有效参数。');
       if(layer.smartFilters!==undefined){validateSmartFilters(layer.smartFilters);if(layer.content?.type!=='smart')throw new Error('智能滤镜需要智能对象。');}
       if(layer.filterMask!==undefined&&layer.content?.type!=='smart')throw new Error('滤镜蒙版需要智能对象。');
       if(layer.blendIf!==undefined)validateBlendIf(layer.blendIf);
       for(const mask of [layer.mask,layer.filterMask])if(mask!==undefined){validateMask(mask);bytes+=mask.data.byteLength;}
       if (layer.bitmap) {
         checkSize(layer.bitmap.width, layer.bitmap.height);
-        if (!(layer.bitmap.data instanceof Uint8ClampedArray) || layer.bitmap.data.length !== layer.bitmap.width * layer.bitmap.height * 4) throw new Error('图层像素数据不完整。');
+        validateBitmap(layer.bitmap);if(state.colorMode==='cmyk'){validateCmyk(layer.bitmap);bytes+=layer.bitmap.cmyk!.byteLength;}else if(layer.bitmap.cmyk)throw Error('RGB 图层不能携带原生 CMYK 通道。');if((layer.bitmap.depth??8)!==(state.bitDepth??8))throw new Error('图层与文档位深不一致。');
         bytes += layer.bitmap.data.byteLength;
       }
       visit(layer.children, depth + 1);
@@ -129,7 +140,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   private readHistoryState = () => this.current;
   private writeHistoryState = (state: ImageState) => { this.current = Object.isFrozen(state) ? state : freezeState(state); this.emit(); };
   constructor(state: ImageState, saved = false) {
-    validateState(state); this.current = freezeState(state); this.nextRevision = state.revision;
+    state=synchronizeCmyk({...state,layers:normalizeLayers(state.layers,state.bitDepth??8)});validateState(state); this.current = freezeState(state); this.nextRevision = state.revision;
     if (saved) this.saved = state.revision;
   }
   static create(name: string, width: number, height: number, white = false) {
@@ -182,10 +193,11 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   private edit(label: string, change: (before: ImageState) => ImageState, pixelId?: string, bounds?: { x: number; y: number; width: number; height: number }) {
     if (this.disposed) throw new Error('文档已关闭。');
     const before = this.current;
-    const candidate = change(before);
+    const changed = change(before);
+    const candidate = synchronizeCmyk({...changed,layers:normalizeLayers(changed.layers,changed.bitDepth??8)},before);
     const after = freezeState({ ...candidate, revision: this.nextRevision + 1 });
     validateState(after);
-    const delta = pixelId ? pixelHistory(label, before, after, pixelId, this.readHistoryState, this.writeHistoryState, bounds) : undefined;
+    const delta = pixelId&&after.colorMode!=='cmyk'&&(after.bitDepth??8)===8 ? pixelHistory(label, before, after, pixelId, this.readHistoryState, this.writeHistoryState, bounds) : undefined;
     if (delta) {
       // Recording performs budget validation before publication; redo applies the reversible tiles.
       this.history.recordApplied(delta); this.current = after; this.emit();
@@ -200,6 +212,10 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
     const owned=structuredClone(layers),profile=resources.slice();
     this.edit('转换到 sRGB',state=>({...state,layers:owned,colorManagement:{space:'srgb',convertedFrom},psdOrigin:{sourceName:state.psdOrigin?.sourceName??state.name,flattened:state.psdOrigin?.flattened??false,resources:profile}}));
   }
+  commitMode(state:ImageState){this.edit('转换文档颜色模式',()=>structuredClone(state));}
+  setDepth(bitDepth:BitDepth,allowLoss=false){if(this.state.colorMode==='cmyk'&&bitDepth===32)throw Error('CMYK 仅支持 8／16 位。');if(![8,16,32].includes(bitDepth))throw new Error('位深无效。');if(bitDepth<(this.state.bitDepth??8)&&!allowLoss)throw new Error('降低位深需要 allowLoss 确认。');if(allLayers(this.state.layers).some(l=>layerLocked(this.state.layers,l.id)))throw new Error('请先解除图层锁定。');if(allLayers(this.state.layers).some(l=>l.content?.type==='smart'&&l.content.sourcePsd))throw new Error('请先栅格化多层智能对象，再转换位深。');this.edit('转换文档位深',s=>{const crossing=(s.bitDepth===32)!==(bitDepth===32),profile=embeddedProfile(s);if(!crossing||!profile)return {...s,bitDepth};const target=s.bitDepth===32?linearSrgbProfile():srgbProfileBytes(),layers=convertIccLayers(s.layers,workingProfile(s),target,s.icc??{}),resources=concatBytes([...resourceBlocks(s.psdOrigin!.resources).filter(b=>b.id!==1039).map(b=>b.bytes),profileResource(bitDepth===32?linearSrgbProfile():srgbProfileBytes())]);return {...s,bitDepth,layers,psdOrigin:{...s.psdOrigin!,resources}};});}
+  setDisplay(display:DisplaySettings){this.edit('HDR 显示设置',s=>({...s,display:{...display}}));}
+  commitIcc(resources:Uint8Array,icc:IccSettings,layers=this.state.layers){const owned=structuredClone(layers),settings=structuredClone(icc),data=resources.slice();this.edit('ICC 色彩管理',s=>({...s,layers:owned,icc:settings,psdOrigin:{sourceName:s.psdOrigin?.sourceName??s.name,flattened:s.psdOrigin?.flattened??false,resources:data}}));}
   setProductivity(patch:Partial<Pick<ImageState,'channels'|'layout'|'actions'>>,label='生产设置') {
     const owned=structuredClone(patch);validateProductivity({...this.state,...owned});this.edit(label,state=>({...state,...owned}));
   }
@@ -224,7 +240,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
       for (let y = region.y; y < region.y + region.height; y++) {
         const start = (y * width + region.x) * 4; data.set(owned.bitmap.data.subarray(start, start + region.width * 4), start);
       }
-      owned.bitmap = { ...owned.bitmap, data };
+      let cmyk=owned.bitmap.cmyk;if(cmyk&&layer.bitmap.cmyk&&cmyk!==layer.bitmap.cmyk){const clipped=layer.bitmap.cmyk.slice();for(let y=region.y;y<region.y+region.height;y++){const start=(y*width+region.x)*4;clipped.set(cmyk.subarray(start,start+region.width*4),start);}cmyk=clipped;}owned.bitmap = { ...owned.bitmap, data,...(cmyk?{cmyk}:{}) };
     } else { region = undefined; if (bounds && owned.bitmap) owned.bitmap = { ...owned.bitmap, data: owned.bitmap.data.slice() }; }
     this.edit(label, state => ({ ...state, layers: replace(state.layers, id, () => owned) }), id, region);
   }

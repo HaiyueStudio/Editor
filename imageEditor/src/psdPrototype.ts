@@ -11,7 +11,7 @@ export interface Diagnostic { code: string; path: string; detail: string }
 export interface PsdInspection { document: Psd; diagnostics: Diagnostic[]; estimatedPixelBytes: number; resourceIds?: number[] }
 export const P0_LIMITS = Object.freeze({ fileBytes: 128 * 1024 * 1024, pixelBytes: 256 * 1024 * 1024, layers: 512, depth: 32, dimension: 16384 });
 
-export function inspectHeader(bytes: Uint8Array) {
+export function inspectHeader(bytes: Uint8Array, allowHigh = false, allowCmyk = false) {
   if (bytes.byteLength < 26) throw new PsdAdmissionError('truncated-header', 'PSD header requires 26 bytes');
   if (bytes.byteLength > P0_LIMITS.fileBytes) throw new PsdAdmissionError('file-budget', 'P0 input file limit exceeded');
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -20,8 +20,8 @@ export function inspectHeader(bytes: Uint8Array) {
   for (let i = 6; i < 12; i++) if (bytes[i] !== 0) throw new PsdAdmissionError('invalid-reserved', 'Reserved header bytes must be zero');
   const channels = v.getUint16(12), height = v.getUint32(14), width = v.getUint32(18);
   const depth = v.getUint16(22), mode = v.getUint16(24);
-  if (depth !== 8) throw new PsdAdmissionError('unsupported-depth', `P0 requires 8-bit; got ${depth}`);
-  if (mode !== 3) throw new PsdAdmissionError('unsupported-color-mode', `P0 requires RGB (3); got ${mode}`);
+  if (depth !== 8 && !(allowHigh && [16,32].includes(depth))) throw new PsdAdmissionError('unsupported-depth', `P0 requires 8-bit; got ${depth}`);
+  if (mode !== 3 && !(allowCmyk&&mode===4&&depth!==32)) throw new PsdAdmissionError('unsupported-color-mode', `P0 requires RGB (3); got ${mode}`);
   if (channels < 3 || channels > 56) throw new PsdAdmissionError('invalid-channels', `Invalid RGB channel count ${channels}`);
   if (!width || !height || width > P0_LIMITS.dimension || height > P0_LIMITS.dimension || width * height * 4 > P0_LIMITS.pixelBytes)
     throw new PsdAdmissionError('canvas-budget', 'Invalid or over-budget canvas dimensions');

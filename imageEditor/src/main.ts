@@ -1,3 +1,7 @@
+import { iccDocumentInfo,applyIccPolicy,builtinIcc,type IccPreset } from './iccWorkflow.js';
+import { CmykPanel } from './cmykPanel.js';
+import { ColorPanel } from './colorPanel.js';
+import { initializeIcc } from './iccEngine.js';
 import { SmartSourcePanel } from './smartSourcePanel.js';
 import { ProductivityPanel } from './productivityPanel.js';
 import { LiveEffectsPanel } from './liveEffectsPanel.js';
@@ -18,7 +22,7 @@ import type {} from '@haiyue/editor-app-kit';
 import { allLayers, ImageDocument, layerLocked, makeLayer, type ImageLayer } from './document.js';
 import { ImageWorkspace } from './workspace.js';
 import { CanvasView, bitmapCanvas } from './canvasView.js';
-import { createDemo, decodeImage, imageDocument } from './imageImport.js';
+import { createDemo, decodeImage, imageDocument, rasterForDocument } from './imageImport.js';
 import { deserializeProject, MAX_PROJECT_BYTES, serializeProject } from './projectFile.js';
 import { IndexedDbRecovery, RecoveryQueue } from './recovery.js';
 
@@ -43,6 +47,8 @@ let pendingPsd: PsdImportResult | undefined;
 const editing = new EditingTools(() => workspace.active, view, notice);
 const paths=new PathEditor(()=>workspace.active,view,editing,notice);
 const professional=new ProfessionalPanel(workspace,notice);
+const colorPanel=new ColorPanel(workspace,notice);
+const cmykPanel=new CmykPanel(()=>workspace.active,()=>{editing.setMaskEditing(false);editing.fill();},notice);
 const advanced = new AdvancedPanel(() => workspace.active, editing);
 const nonDestructive = new NonDestructivePanel(() => workspace.active, view, notice);
 const smartSourcePanel = new SmartSourcePanel(workspace,notice);
@@ -141,9 +147,9 @@ function render() {
   $('layer-kind').textContent = selected ? selected.kind === 'group' ? '图层组' : selected.content?.type==='smart'?'智能对象':selected.content?.type==='text'?'可编辑文字':selected.content?.type==='shape'?'可编辑形状':selected.kind==='adjustment'?'调整图层':'像素图层' : '—';
   $('layer-size').textContent = selected?.bitmap ? `${selected.bitmap.width} × ${selected.bitmap.height} px` : selected?.kind === 'group' ? `${selected.children.length} 个子图层` : '透明图层';
   $('layer-count').textContent = `${doc ? allLayers(doc.state.layers).length : 0} 个图层 · 已选 ${doc?.selectedIds.length ?? 0}`;
-  $('document-info').textContent = doc ? `${doc.state.width} × ${doc.state.height} px   /   RGB · 8 位${doc.dirty ? '   /   工程副本未保存' : ''}` : '准备就绪';
+  $('document-info').textContent = doc ? `${doc.state.width} × ${doc.state.height} px   /   ${(doc.state.colorMode??'rgb').toUpperCase()} · ${doc.state.bitDepth??8} 位 · ${iccDocumentInfo(doc.state).working?.name??(doc.state.colorMode==='cmyk'?'未标记 ICC · 近似预览':'未标记 ICC')}${doc.state.bitDepth===32?' 线性 HDR':''}${doc.dirty ? '   /   工程副本未保存' : ''}` : '准备就绪';
   $('navigator-size').textContent = doc ? `${doc.state.width} × ${doc.state.height}` : '—'; $('navigator-empty').hidden = Boolean(doc);
-  view.setDocument(doc?.state); productivity.sync(); editing.sync(); advanced.sync(); nonDestructive.sync(); paths.sync();
+  view.setDocument(doc?.state); productivity.sync(); cmykPanel.sync(); colorPanel.sync(); editing.sync(); advanced.sync(); nonDestructive.sync(); paths.sync();
   const navigator = $<HTMLCanvasElement>('navigator-canvas'), ctx = navigator.getContext('2d')!; ctx.clearRect(0, 0, 240, 130);
   if (doc) { const ratio = Math.min(220 / doc.state.width, 112 / doc.state.height); ctx.drawImage(view.canvas, (240 - doc.state.width * ratio) / 2, (130 - doc.state.height * ratio) / 2, doc.state.width * ratio, doc.state.height * ratio); }
 }
@@ -191,7 +197,7 @@ async function openFiles(files: readonly File[], asLayer: boolean) {
         context.clearRect(0,0,preview.width,preview.height); preview.hidden = !result.flattened;
         const bitmap = result.flattened?.layers[0]?.bitmap;
         if (bitmap) { const scale = Math.min(320 / bitmap.width,180 / bitmap.height); context.drawImage(bitmapCanvas(bitmap),(320-bitmap.width*scale)/2,(180-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale); }
-        pendingPsd = result; $('psd-source-name').textContent = result.sourceName;
+        pendingPsd = result; const colorSource=result.layered??result.flattened;$('psd-color-summary').textContent=colorSource?(()=>{const info=iccDocumentInfo(colorSource);return info.working?`源 ICC：${info.working.name} · ${info.reason||'默认保留原配置'}`:info.colorMode==='cmyk'?'源文档未标记 CMYK 配置；预览为近似，转换前需先指定源配置。':'源文档未嵌入 ICC；默认保留未标记状态，转换时按 sRGB（32 位按线性 sRGB）解释。';})():'';$<HTMLSelectElement>('psd-color-policy').value='preserve';$<HTMLSelectElement>('psd-color-preset').value='srgb';$<HTMLInputElement>('psd-color-file').value=''; $('psd-source-name').textContent = result.sourceName;
         $('psd-import-summary').textContent = result.layered ? '可以分层编辑，请阅读兼容范围。' : '包含未支持的特性，无法安全地分层编辑。';
         $('psd-import-details').textContent = [...result.blockers, ...result.warnings].join('\n');
         $<HTMLButtonElement>('psd-import-layers').disabled = !result.layered;
@@ -212,7 +218,7 @@ async function openFiles(files: readonly File[], asLayer: boolean) {
           if (!workspace.documents.includes(target)) throw new Error('目标文档已关闭，已取消图片导入。');
           const selected = target.selected, offset = selected ? parentOffset(target.state.layers, selected.id)! : { x: 0, y: 0 };
           if (selected?.kind === 'group') { offset.x += selected.x; offset.y += selected.y; }
-          target.addLayer({ ...makeLayer(name, bitmap), x: Math.round((target.state.width - bitmap.width) / 2) - offset.x, y: Math.round((target.state.height - bitmap.height) / 2) - offset.y });
+          target.addLayer({ ...makeLayer(name, rasterForDocument(bitmap,target.state)), x: Math.round((target.state.width - bitmap.width) / 2) - offset.x, y: Math.round((target.state.height - bitmap.height) / 2) - offset.y });
         } else workspace.add(imageDocument(name, bitmap));
       }
     }
@@ -227,7 +233,7 @@ const liveEffects=new LiveEffectsPanel(()=>workspace.active,editing);
 const filters = new FilterPanel(() => workspace.active, notice);
 const actions: Record<string, () => unknown | Promise<unknown>> = {
   productivity:()=>{editing.cancel();productivity.open();},
-  'refine-selection':()=>professional.open('refine'), 'color-management':()=>professional.open('color'), batch:()=>professional.open('batch'), 'path-new':()=>paths.start(), 'path-apply':()=>paths.apply(), 'path-cancel':()=>paths.cancel(), 'path-closed':()=>paths.toggleClosed(),
+  'refine-selection':()=>professional.open('refine'), 'color-management':()=>colorPanel.open(), batch:()=>professional.open('batch'), 'path-new':()=>paths.start(), 'path-apply':()=>paths.apply(), 'path-cancel':()=>paths.cancel(), 'path-closed':()=>paths.toggleClosed(),
   clipping: () => nonDestructive.clipping(), 'layer-styles': () => nonDestructive.openStyles(), 'smart-convert': () => nonDestructive.convert(), 'smart-replace': () => nonDestructive.chooseSource(),
   'copy-pixels': () => editing.copy(), 'paste-pixels': () => editing.paste(), 'free-transform': () => editing.startTransform(),
   'merge-layers': () => { const doc = workspace.active; if (doc) mergeLayers(doc, doc.selectedIds); },
@@ -266,7 +272,7 @@ for (const [id, submit] of [
   ['export', async () => {
     const doc = workspace.active; if (!doc) return;
     const format = $<HTMLSelectElement>('export-format').value as 'png' | 'jpeg';
-    const blob = await editing.export(format, Number($<HTMLInputElement>('export-quality').value) / 100);
+    const blob = await editing.export(format, Number($<HTMLInputElement>('export-quality').value) / 100,$<HTMLInputElement>('export-icc').checked);
     download(blob, doc.identity.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') + (format === 'png' ? '.png' : '.jpg'));
     notice('图片已导出，图层仍保留在工程中。');
   }],
@@ -282,14 +288,19 @@ function finishPsdImport(mode: 'layered' | 'flattened' | null) {
   const state = mode ? pendingPsd?.[mode] ?? null : null; pendingPsd = undefined;
   $<HTMLDialogElement>('psd-import-dialog').close(); resolve?.(state);
 }
+async function acceptPsdImport(mode:'layered'|'flattened'){
+ const pending=pendingPsd,state=pending?.[mode];if(!state)return;const policy=$<HTMLSelectElement>('psd-color-policy').value as 'preserve'|'assign'|'convert',preset=$<HTMLSelectElement>('psd-color-preset').value;
+ let profile:Uint8Array|undefined;if(policy!=='preserve'){if(preset==='file'){const file=$<HTMLInputElement>('psd-color-file').files?.[0];if(!file||file.size>4*1024*1024)throw Error('请选择 4 MiB 以内的目标 ICC。');profile=new Uint8Array(await file.arrayBuffer());}else profile=builtinIcc(preset as IccPreset);}
+ const result=await applyIccPolicy(state,policy,profile);if(pendingPsd!==pending||disposed)return;pendingPsd={...pending!,[mode]:result};finishPsdImport(mode);
+}
 for (const [id, mode] of [['psd-import-layers','layered'],['psd-import-flat','flattened'],['psd-import-cancel',null]] as const)
-  $(id).addEventListener('click', () => finishPsdImport(mode), options);
+  $(id).addEventListener('click', () => {if(mode===null)finishPsdImport(null);else void acceptPsdImport(mode).catch(error=>{$('psd-color-summary').textContent=error instanceof Error?error.message:String(error);});}, options);
 $('psd-import-dialog').addEventListener('cancel', () => finishPsdImport(null), options);
 $('psd-export-consent').addEventListener('change',()=>{$<HTMLButtonElement>('psd-export-confirm').disabled=!$<HTMLInputElement>('psd-export-consent').checked;},options);
 $('psd-export-confirm').addEventListener('click', () => { void run(async () => {
   const doc = workspace.active; if (!doc) return;
   const state = doc.state; $<HTMLDialogElement>('psd-export-dialog').close();
-  const result = await psdJobs.export(state,$<HTMLInputElement>('psd-export-consent').checked); if (disposed) return;
+  const result = await psdJobs.export(state,$<HTMLInputElement>('psd-export-consent').checked,$<HTMLInputElement>('psd-export-icc').checked); if (disposed) return;
   download(new Blob([new Uint8Array(result.bytes)], { type: 'image/vnd.adobe.photoshop' }), state.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') + '.edited.psd');
   notice(doc.revision === state.revision ? 'PSD 兼容副本已导出，图层像素和合成透明度自检通过。' : '已导出开始时的文档快照；之后的改动尚未包含在此 PSD 副本中。');
 }); }, options);
@@ -337,7 +348,7 @@ async function acquireRecoveryLease() {
   });
 }
 async function start() {
-  await workspace.start(); await acquireRecoveryLease();
+  await initializeIcc(); await workspace.start(); await acquireRecoveryLease();
   try { const count = workspace.restore(await store.load()); if (recoveryEnabled) recoveryStatus(count ? `已恢复 ${count} 个文档` : '本地恢复已就绪'); }
   catch (error) { recoveryEnabled = false; recoveryStatus('自动恢复不可用，请保存工程副本', true); notice('未覆盖原恢复数据：' + (error instanceof Error ? error.message : String(error)), true); }
   const canShortcut = () => !editing.busy && !paths.busy && !document.querySelector('dialog[open]') && !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement) && !(document.activeElement instanceof HTMLSelectElement);
@@ -349,6 +360,6 @@ async function start() {
     catch (error) { notice(String(error), true); return false; }
   });
   workspace.subscribe(changed); ready = true; $('app').setAttribute('aria-busy', 'false'); changed();
-  window.addEventListener('pagehide', event => { if (!event.persisted) { disposed = true; ready = false; for (const url of downloadUrls) URL.revokeObjectURL(url); downloadUrls.clear(); clearTimeout(recoveryTimer); psdJobs.cancel(); finishPsdImport(null); lifecycle.abort(); filters.dispose(); productivity.dispose(); liveEffects.dispose(); histogram.dispose(); advanced.dispose(); nonDestructive.dispose(); smartSourcePanel.dispose(); paths.dispose(); professional.dispose(); editing.dispose(); view.dispose(); releaseClose?.(); void recovery.dispose().finally(() => releaseLease?.()); void workspace.dispose(); } }, { once: true });
+  window.addEventListener('pagehide', event => { if (!event.persisted) { disposed = true; ready = false; for (const url of downloadUrls) URL.revokeObjectURL(url); downloadUrls.clear(); clearTimeout(recoveryTimer); psdJobs.cancel(); finishPsdImport(null); lifecycle.abort(); filters.dispose(); productivity.dispose(); liveEffects.dispose(); histogram.dispose(); advanced.dispose(); nonDestructive.dispose(); smartSourcePanel.dispose(); paths.dispose(); professional.dispose();colorPanel.dispose(); cmykPanel.dispose(); editing.dispose(); view.dispose(); releaseClose?.(); void recovery.dispose().finally(() => releaseLease?.()); void workspace.dispose(); } }, { once: true });
 }
 void start().catch(error => { $('app').setAttribute('aria-busy', 'false'); notice('启动失败：' + String(error), true); });

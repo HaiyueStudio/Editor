@@ -1,3 +1,4 @@
+import { pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { gaussianBlur, unsharpMask } from './qualityFilters.js';
 import { type Bitmap, type ImageLayer, type ImageState } from './document.js';
 import { editablePixel, parentOffset } from './pixelTools.js';
@@ -22,8 +23,8 @@ export const FILTERS = {
 export type FilterKind = keyof typeof FILTERS;
 export interface FilterSettings { kind:FilterKind; amount:number; radius?:number; threshold?:number }
 /** Sliding box blur on associated RGBA avoids dark/colored halos from hidden RGB. */
-function blur(source:Bitmap,radius:number):Uint8ClampedArray {
-  const {width:w,height:h,data}=source,n=w*h,out=new Uint8ClampedArray(data.length),a=new Float32Array(n),b=new Float32Array(n);
+function blur(source:Bitmap,radius:number):PixelArray {
+  const {width:w,height:h,data}=source,n=w*h,out=pixelArray(data.length,source),a=new Float32Array(n),b=new Float32Array(n);
   for(const channel of [3,0,1,2]) {
     for(let i=0;i<n;i++)a[i]=channel===3?data[i*4+3]!:data[i*4+channel]!*data[i*4+3]!/255;
     for(let y=0;y<h;y++){let sum=0;for(let x=-radius;x<=radius;x++)sum+=a[y*w+Math.max(0,Math.min(w-1,x))]!;
@@ -72,7 +73,7 @@ export function filterBitmap(source:Bitmap,settings:FilterSettings):Bitmap {
       if(data[i+3])for(let c=0;c<3;c++)out[i+c]=color[c]!;
     }
   }
-  return {width:w,height:h,data:out};
+  return withPixels(w,h,out,source);
 }
 export function filterLayer(state:ImageState,id:string,settings:FilterSettings):ImageLayer {
   const layer=editablePixel(state,id);if(!layer.bitmap)throw new Error('请选择含像素的图层。');

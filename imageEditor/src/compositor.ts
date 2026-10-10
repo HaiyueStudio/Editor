@@ -1,14 +1,20 @@
+import { withIccTransforms } from './iccEngine.js';
+import { compositeCmyk } from './cmyk.js';
+import { pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { blendChannel, blendIfWeight, liveBitmap, type BlendIf } from './liveEffects.js';
 import type { Bitmap, ImageState, ImageLayer } from './document.js';
 import { maskWeight, type BlendMode } from './layerFeatures.js';
 import { adjustmentBitmap, styleBitmap } from './nonDestructiveRender.js';
 export { blendChannel } from './liveEffects.js';
+let livePass:Map<ImageLayer,Bitmap|null>|undefined;
+function renderedBitmap(layer:ImageLayer){if(!livePass)return liveBitmap(layer);if(!livePass.has(layer))livePass.set(layer,liveBitmap(layer));return livePass.get(layer)!;}
 /** Encoded RGB / isolated groups. Clipped runs form one isolated base-alpha group. */
 export function compositeReference(state:ImageState,region={x:0,y:0,width:state.width,height:state.height}):Bitmap {
- const {width,height}=region,empty=():Bitmap=>({width,height,data:new Uint8ClampedArray(width*height*4)});
+ if(state.colorMode==='cmyk')return compositeCmyk(state,region);
+ const {width,height}=region,empty=():Bitmap=>withPixels(width,height,pixelArray(width*height*4,state.bitDepth??8),state.bitDepth??8);
  const blend=(out:Bitmap,source:Bitmap,opacity:number,mode:BlendMode,atop=false,left=0,top=0,mask?:ImageLayer['mask'],rule?:BlendIf)=>{
   for(let y=Math.max(0,top);y<Math.min(height,top+source.height);y++)for(let x=Math.max(0,left);x<Math.min(width,left+source.width);x++){
-   const i=(y*width+x)*4,j=((y-top)*source.width+x-left)*4,sa=Math.round(source.data[j+3]!*maskWeight(mask,x-left,y-top))/255*opacity*blendIfWeight(rule,source.data,j,out.data,i),da=out.data[i+3]!/255,a=atop?da:sa+da*(1-sa);if(!sa||!a)continue;
+   const i=(y*width+x)*4,j=((y-top)*source.width+x-left)*4,sa=(source.data instanceof Float32Array?source.data[j+3]!*maskWeight(mask,x-left,y-top):Math.round(source.data[j+3]!*maskWeight(mask,x-left,y-top)))/255*opacity*blendIfWeight(rule,source.data,j,out.data,i),da=out.data[i+3]!/255,a=atop?da:sa+da*(1-sa);if(!sa||!a)continue;
    for(let c=0;c<3;c++){const cs=source.data[j+c]!/255,cb=out.data[i+c]!/255,b=blendChannel(cb,cs,mode);out.data[i+c]=(atop?cb*(1-sa)+b*sa:((1-sa)*da*cb+(1-da)*sa*cs+sa*da*b)/a)*255;}out.data[i+3]=a*255;
   }
  };
@@ -20,7 +26,7 @@ export function compositeReference(state:ImageState,region={x:0,y:0,width:state.
  const render=(layer:ImageLayer,px:number,py:number,styles=true):Bitmap=>{
   let source=empty();const left=px+layer.x,top=py+layer.y;
   if(layer.kind==='group')draw(layer.children,source,left,top);
-  else if(layer.bitmap){const b=liveBitmap(layer)!;for(let y=Math.max(0,top);y<Math.min(height,top+b.height);y++)for(let x=Math.max(0,left);x<Math.min(width,left+b.width);x++){const i=(y*width+x)*4,s=((y-top)*b.width+x-left)*4;source.data.set(b.data.subarray(s,s+4),i);}}
+  else if(layer.bitmap){const b=renderedBitmap(layer)!;const x0=Math.max(0,left),x1=Math.min(width,left+b.width);if(x1>x0)for(let y=Math.max(0,top);y<Math.min(height,top+b.height);y++){const i=(y*width+x0)*4,s=((y-top)*b.width+x0-left)*4;source.data.set(b.data.subarray(s,s+(x1-x0)*4),i);}}
   if(layer.mask)for(let y=0;y<height;y++)for(let x=0;x<width;x++)source.data[(y*width+x)*4+3]=source.data[(y*width+x)*4+3]!*maskWeight(layer.mask,x-left,y-top);
   if(styles)source=styleBitmap(source,layer.styles);return source;
  };
@@ -30,7 +36,7 @@ export function compositeReference(state:ImageState,region={x:0,y:0,width:state.
    let last=i;while(layers[last+1]?.clipping)last++;
    if(layer.visible&&layer.opacity){
     if(layer.content?.type==='adjustment')adjust(out,layer,px,py);
-    else if(last===i&&layer.bitmap&&!layer.styles?.enabled)blend(out,liveBitmap(layer)!,layer.opacity,layer.blend,false,px+layer.x,py+layer.y,layer.mask,layer.blendIf);
+    else if(last===i&&layer.bitmap&&!layer.styles?.enabled)blend(out,renderedBitmap(layer)!,layer.opacity,layer.blend,false,px+layer.x,py+layer.y,layer.mask,layer.blendIf);
     else {let source=render(layer,px,py,false);
      for(let j=i+1;j<=last;j++){const clip=layers[j]!;if(!clip.visible||!clip.opacity)continue;if(clip.kind==='adjustment')adjust(source,clip,px,py);else blend(source,render(clip,px,py),clip.opacity,clip.blend,true,0,0,undefined,clip.blendIf);}
      source=styleBitmap(source,layer.styles);blend(out,source,layer.opacity,layer.blend,false,0,0,undefined,layer.blendIf);
@@ -51,15 +57,30 @@ export function compositeRegion(state:ImageState,rect:CompositeRect):Bitmap {
  if(![rect.x,rect.y,rect.width,rect.height].every(Number.isInteger)||rect.x<0||rect.y<0||rect.width<1||rect.height<1||rect.x+rect.width>state.width||rect.y+rect.height>state.height)throw new Error('合成区域超出画布。');
  const halo=compositeHalo(state.layers),x=Math.max(0,rect.x-halo),y=Math.max(0,rect.y-halo),right=Math.min(state.width,rect.x+rect.width+halo),bottom=Math.min(state.height,rect.y+rect.height+halo),source=compositeReference(state,{x,y,width:right-x,height:bottom-y});
  if(x===rect.x&&y===rect.y&&source.width===rect.width&&source.height===rect.height)return source;
- const data=new Uint8ClampedArray(rect.width*rect.height*4);for(let row=0;row<rect.height;row++){const at=((rect.y-y+row)*source.width+rect.x-x)*4;data.set(source.data.subarray(at,at+rect.width*4),row*rect.width*4);}return {width:rect.width,height:rect.height,data};
+ const data=pixelArray(rect.width*rect.height*4,state.bitDepth??8);for(let row=0;row<rect.height;row++){const at=((rect.y-y+row)*source.width+rect.x-x)*4;data.set(source.data.subarray(at,at+rect.width*4),row*rect.width*4);}return withPixels(rect.width,rect.height,data,state.bitDepth??8);
 }
-export function forEachCompositeTile(state:ImageState,visit:(bitmap:Bitmap,rect:CompositeRect)=>void,size=256){
+/** Conservative paint damage in document coordinates. Non-local smart filters use a full repaint. */
+export function compositeDamage(state:ImageState,id:string,local:CompositeRect):CompositeRect|undefined {
+ const hasFilters=(ls:readonly ImageLayer[]):boolean=>ls.some(l=>l.smartFilters?.some(f=>f.enabled)||hasFilters(l.children));
+ if(hasFilters(state.layers))return;
+ const locate=(ls:readonly ImageLayer[],x=0,y=0):{x:number;y:number}|undefined=>{for(const l of ls){const at={x:x+l.x,y:y+l.y};if(l.id===id)return at;const found=locate(l.children,at.x,at.y);if(found)return found;}return;};
+ const at=locate(state.layers);if(!at)return;
+ const halo=compositeHalo(state.layers),x=Math.max(0,at.x+local.x-halo),y=Math.max(0,at.y+local.y-halo),right=Math.min(state.width,at.x+local.x+local.width+halo),bottom=Math.min(state.height,at.y+local.y+local.height+halo);
+ return {x,y,width:Math.max(0,right-x),height:Math.max(0,bottom-y)};
+}
+export function forEachCompositeTile(state:ImageState,visit:(bitmap:Bitmap,rect:CompositeRect)=>void,size=256,region:CompositeRect={x:0,y:0,width:state.width,height:state.height}){
  if(!Number.isInteger(size)||size<16||size>1024)throw new Error('合成分块大小应为 16–1024。');
- // Very large effect supports favor one pass over repeated full-frame overscan.
- if(compositeHalo(state.layers)>size){visit(compositeReference(state),{x:0,y:0,width:state.width,height:state.height});return;}
- for(let y=0;y<state.height;y+=size)for(let x=0;x<state.width;x+=size){const rect={x,y,width:Math.min(size,state.width-x),height:Math.min(size,state.height-y)};visit(compositeRegion(state,rect),rect);}
+ if(![region.x,region.y,region.width,region.height].every(Number.isInteger)||region.x<0||region.y<0||region.width<0||region.height<0||region.x+region.width>state.width||region.y+region.height>state.height)throw Error('合成区域超出画布。');
+ if(!region.width||!region.height)return;
+ const previous=livePass;livePass=new Map();
+ try{withIccTransforms(()=>{
+  // Very large effect supports favor one pass over repeated full-frame overscan.
+  if(compositeHalo(state.layers)>size){visit(compositeReference(state),{x:0,y:0,width:state.width,height:state.height});return;}
+  for(let y=region.y;y<region.y+region.height;y+=size)for(let x=region.x;x<region.x+region.width;x+=size){const rect={x,y,width:Math.min(size,region.x+region.width-x),height:Math.min(size,region.y+region.height-y)};visit(compositeRegion(state,rect),rect);}
+ });}finally{livePass=previous;}
 }
 export function compositeState(state:ImageState):Bitmap {
+ if(state.colorMode==='cmyk')return compositeCmyk(state);
  if(state.width<=256&&state.height<=256)return compositeReference(state);
- const data=new Uint8ClampedArray(state.width*state.height*4);forEachCompositeTile(state,(b,r)=>{for(let y=0;y<r.height;y++)data.set(b.data.subarray(y*r.width*4,(y+1)*r.width*4),((r.y+y)*state.width+r.x)*4);});return {width:state.width,height:state.height,data};
+ const data=pixelArray(state.width*state.height*4,state.bitDepth??8);forEachCompositeTile(state,(b,r)=>{for(let y=0;y<r.height;y++)data.set(b.data.subarray(y*r.width*4,(y+1)*r.width*4),((r.y+y)*state.width+r.x)*4);});return withPixels(state.width,state.height,data,state.bitDepth??8);
 }

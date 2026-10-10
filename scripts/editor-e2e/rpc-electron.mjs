@@ -1,3 +1,5 @@
+import { builtinIcc } from '../../imageEditor/dist/iccWorkflow.js';
+import { embeddedProfile } from '../../imageEditor/dist/colorManagement.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -8,7 +10,8 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { createEditorRpcClient } from '@haiyue/editor-app-kit/node';
 import { connectCdp } from './browserDriver.mjs';
-import { ImageDocument } from '../../imageEditor/dist/document.js';
+import { cmykBitmap } from '../../imageEditor/dist/cmyk.js';
+import { ImageDocument, makeLayer } from '../../imageEditor/dist/document.js';
 import { serializeProject } from '../../imageEditor/dist/projectFile.js';
 import { importPsd } from '../../imageEditor/dist/psdAdapter.js';
 import { parseAnimation } from '@haiyue/animation-spec';
@@ -148,6 +151,26 @@ for (const item of cases.filter(item => !selected.length || selected.includes(it
       const sourceRead=await call('smart.source.read',{layerId:smartId});const sourceJson=JSON.parse((await client.download(sourceRead)).toString());sourceJson.document.layers.push({...sourceJson.document.layers[0],id:randomUUID(),name:'RPC second source layer',opacity:.5});const replacement=await client.upload(Buffer.from(JSON.stringify(sourceJson)));await call('smart.source.replace',{layerId:smartId,resourceId:replacement.resourceId,format:'project'});assert.equal((await call('document.query')).layers.find(l=>l.id===smartId).content.multilayer,true);await call('history.undo');assert.equal((await call('document.query')).layers.find(l=>l.id===smartId).content.multilayer,false);await client.release(sourceRead.resourceId);await client.release(replacement.resourceId);
       const high=Buffer.alloc(8);[32767,32768,32769,43210].forEach((v,i)=>high.writeUInt16LE(v,i*2));const highRef=await client.upload(high),highResult=await client.execute({apiVersion:'1',requestId:randomUUID(),operation:'image.color.precision',params:{resourceId:highRef.resourceId,width:1,height:1,input:'rgba16le',output:'rgba16le',source:'srgb',target:'srgb'}});assert.equal(highResult.status,'completed',JSON.stringify(highResult));assert.deepEqual(await client.download(highResult.value),high);await client.release(highRef.resourceId);await client.release(highResult.value.resourceId);
       const productionIpc=await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'production-query',method:'operations.execute',params:{apiVersion:'1',requestId:'production-query',operation:'image.document.query',documentId:${JSON.stringify(documentId)},params:{}}})`);assert.equal(productionIpc.result.status,'completed');assert.equal(productionIpc.result.value.channels[0].id,alpha.channelId);assert.equal(productionIpc.result.value.actions[0].id,recipe.id);
+      const inkLayer=makeLayer('RPC native inks',cmykBitmap(2,1,new Float32Array([0,10,20,80,0,10,20,80]),[255,255],16));
+      const inkDoc=new ImageDocument({id:randomUUID(),name:'RPC CMYK',width:2,height:1,colorMode:'cmyk',bitDepth:16,layers:[inkLayer],selectedId:inkLayer.id,revision:1});
+      const inkResource=await client.upload(Buffer.from(serializeProject(inkDoc.state)));inkDoc.dispose();
+      documentId=null;const inkOpened=await call('document.open',{resourceId:inkResource.resourceId,format:'project',name:'inks.hyimage'});documentId=inkOpened.documentId;await client.release(inkResource.resourceId);
+      await call('selection.set',{shape:'rectangle',x:0,y:0,width:1,height:1});
+      await call('cmyk.fill',{layerId:inkLayer.id,ink:[90,90,90,40],channels:[3]});
+      assert.deepEqual((await call('cmyk.sample',{x:0,y:0})).ink,[0,10,20,40]);assert.deepEqual((await call('cmyk.sample',{x:1,y:0})).ink,[0,10,20,80]);
+      const nativeIpc=await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'native-stroke',method:'operations.execute',params:{apiVersion:'1',requestId:'native-stroke',operation:'image.cmyk.stroke',documentId:${JSON.stringify(documentId)},expectedRevision:haiyueEditor.listDocuments().documents.find(d=>d.identity.id===${JSON.stringify(documentId)}).revision,params:{layerId:${JSON.stringify(inkLayer.id)},ink:[0,0,0,20],channels:[3],size:1,points:[{x:0.5,y:0.5}]}}})`);assert.equal(nativeIpc.result.status,'completed',JSON.stringify(nativeIpc));
+      assert.deepEqual((await call('cmyk.sample',{x:0,y:0})).ink,[0,10,20,20]);await call('history.undo');assert.equal((await call('cmyk.sample',{x:0,y:0})).ink[3],40);
+      const nativeCopy=await call('pixels.copy',{layerId:inkLayer.id});assert.equal(nativeCopy.format,'cmyka32fle');assert.equal((await client.download(nativeCopy)).length,20);
+      await call('pixels.paste',{resourceId:nativeCopy.resourceId,format:nativeCopy.format,width:1,height:1});await client.release(nativeCopy.resourceId);
+      const nativePsd=importPsd(new Uint8Array(await exported()),'rpc-cmyk.psd').layered;assert.equal(nativePsd.colorMode,'cmyk');assert.equal(nativePsd.layers.at(-1).bitmap.cmyk[3],40);
+      const managed=ImageDocument.create('RPC ICC workflow',2,1,true),managedRef=await client.upload(Buffer.from(serializeProject(managed.state)));managed.dispose();documentId=null;
+      const managedOpen=await call('document.open',{resourceId:managedRef.resourceId,format:'project',name:'icc.hyimage',colorPolicy:'assign',preset:'display-p3'});documentId=managedOpen.documentId;await client.release(managedRef.resourceId);
+      assert.equal((await call('icc.query')).working.name,'Display P3');const profileRead=await call('icc.read');assert.deepEqual(new Uint8Array(await client.download(profileRead)),builtinIcc('display-p3'));await client.release(profileRead.resourceId);
+      const iccIpc=await evaluate(`window.haiyueEditorIPC.request({jsonrpc:'2.0',id:'icc-convert',method:'operations.execute',params:{apiVersion:'1',requestId:'icc-convert',operation:'image.icc.convert',documentId:${JSON.stringify(documentId)},expectedRevision:haiyueEditor.listDocuments().documents.find(d=>d.identity.id===${JSON.stringify(documentId)}).revision,params:{preset:'srgb'}}})`);assert.equal(iccIpc.result.status,'completed',JSON.stringify(iccIpc));assert.equal((await call('icc.query')).working.name,'Haiyue sRGB');await call('history.undo');assert.equal((await call('icc.query')).working.name,'Display P3');
+      const proofRef=await client.upload(builtinIcc('srgb'));await call('icc.proof',{proofProfile:proofRef.resourceId,proofIntent:3});await client.release(proofRef.resourceId);await call('icc.proof',{proofEnabled:false});assert.equal((await call('icc.query')).proofEnabled,false);assert.equal((await call('icc.query')).proofIntent,3);
+      const withoutIcc=await call('document.export',{format:'psd',embedProfile:false});assert.equal(embeddedProfile(importPsd(new Uint8Array(await client.download(withoutIcc)),'untagged.psd').layered),undefined);await client.release(withoutIcc.resourceId);
+
+
 
 
 

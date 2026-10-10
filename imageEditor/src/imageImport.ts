@@ -1,3 +1,7 @@
+import { profileResource,srgbProfileBytes,embeddedProfile } from './colorManagement.js';
+import { transformBitmapIcc,linearSrgbProfile } from './iccEngine.js';
+import { convertDepth } from './pixelFormat.js';
+import type { ImageState } from './document.js';
 import { checkSize, type Bitmap, makeLayer, ImageDocument } from './document.js';
 
 export function inspectImageSize(bytes: Uint8Array) {
@@ -39,11 +43,17 @@ export async function decodeImage(file: File): Promise<Bitmap> {
     return { width: decoded.width, height: decoded.height, data };
   } finally { decoded?.close(); }
 }
+/** Canvas decode returns sRGB samples; importing into another RGB working space must convert them. */
+export function rasterForDocument(bitmap:Bitmap,state:ImageState):Bitmap {
+ if(state.colorMode==='cmyk')return bitmap;
+ const depth=state.bitDepth??8,b=convertDepth(bitmap,depth),target=embeddedProfile(state);
+ return target?transformBitmapIcc(b,depth===32?linearSrgbProfile():srgbProfileBytes(),target,{intent:state.icc?.intent??1,bpc:state.icc?.bpc??true}):b;
+}
 export function imageDocument(name: string, bitmap: Bitmap) {
   const doc = ImageDocument.create(name, bitmap.width, bitmap.height);
   // Build the initial imported state once, without an empty layer in its undo history.
   const layer = makeLayer(name, bitmap);
-  const result = new ImageDocument({ ...doc.state, layers: [layer], selectedId: layer.id, selectedIds: [layer.id] }); doc.dispose(); return result;
+  const result = new ImageDocument({ ...doc.state, psdOrigin:{sourceName:name,flattened:true,resources:profileResource(srgbProfileBytes())},layers: [layer], selectedId: layer.id, selectedIds: [layer.id] }); doc.dispose(); return result;
 }
 /** Deterministic, independently editable layers for the bundled moonrise example. */
 export function createDemo(): ImageDocument {

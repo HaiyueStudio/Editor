@@ -16,19 +16,20 @@
   ],
   "workers": [
     "web/psd-worker.js",
-    "web/filter-worker.js"
+    "web/filter-worker.js",
+    "web/icc-reference-worker.js"
   ],
   "distDirectory": "web",
   "outputDirectory": "app-dist",
   "electronRendererDirectory": "electron/app-dist",
   "budget": {
-    "maxRawBytes": 1000000,
-    "maxGzipBytes": 330000
+    "maxRawBytes": 3000000,
+    "maxGzipBytes": 1150000
   },
   "pwa": {
     "enabled": true,
     "shortName": "Haiyue Image",
-    "description": "本地分层图像编辑工作区",
+    "description": "\u672c\u5730\u5206\u5c42\u56fe\u50cf\u7f16\u8f91\u5de5\u4f5c\u533a",
     "themeColor": "#202226",
     "backgroundColor": "#202226",
     "icons": [

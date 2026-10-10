@@ -1,0 +1,6 @@
+/** Browser-reported capabilities are not measurements of panel luminance or bit depth. */
+export function displayEnvironment(){
+ const available=typeof window!=='undefined',media=(q:string)=>available&&typeof matchMedia==='function'&&matchMedia(q).matches;
+ let active=null;try{active=available?JSON.parse(document.querySelector('#image-canvas')?.getAttribute('data-hdr-status')??'null'):null;}catch{}
+ return {schemaVersion:1,capturedAt:new Date().toISOString(),webgpu:typeof navigator!=='undefined'&&!!navigator.gpu,secureContext:available&&window.isSecureContext,dynamicRange:media('(dynamic-range: high)')?'high':'standard',videoDynamicRange:media('(video-dynamic-range: high)')?'high':'standard',p3:media('(color-gamut: p3)'),rec2020:media('(color-gamut: rec2020)'),colorDepth:available?screen.colorDepth:null,screen:available?{width:screen.width,height:screen.height,availWidth:screen.availWidth,availHeight:screen.availHeight,pixelDepth:screen.pixelDepth,devicePixelRatio:window.devicePixelRatio,windowX:window.screenX,windowY:window.screenY}:null,userAgent:typeof navigator!=='undefined'?navigator.userAgent:null,active,physicalLuminanceVerified:false,physicalHdrCertification:'pending',scope:'browser-reported capability and application backend; no physical luminance measurement'};
+}

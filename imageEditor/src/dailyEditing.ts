@@ -1,37 +1,57 @@
+import { pixelColor, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { allLayers, checkSize, findLayer, ImageDocument, layerLocked, makeLayer, type Bitmap, type ImageLayer, type ImageState } from './document.js';
-import { compositeState } from './compositor.js';
+import { compositeState, compositeRegion } from './compositor.js';
 import { parentOffset, PixelStroke, replacePixel, type Color, type Point, type Rect } from './pixelTools.js';
 import { selectionWeight } from './selection.js';
+import { embeddedProfile,srgbProfileBytes } from './colorManagement.js';
+import { workingProfile,transformBitmapIcc,iccTransform,profileInfo } from './iccEngine.js';
+import { cmykBitmap } from './cmyk.js';
 
-export function sampleBitmap(state: ImageState, layerId?: string): Bitmap {
-  if (!layerId) return compositeState(state);
+export function sampleState(state: ImageState, layerId?: string): ImageState {
+  if (!layerId) return state;
   const layer = findLayer(state.layers, layerId); if (!layer || layer.kind === 'adjustment') throw new Error('请选择含图像的图层。');
   const parent = parentOffset(state.layers, layerId)!;
-  return compositeState({ ...state, layers: [{ ...layer, clipping: false, visible: true, x: layer.x + parent.x, y: layer.y + parent.y }] });
+  return { ...state, layers: [{ ...layer, clipping: false, visible: true, x: layer.x + parent.x, y: layer.y + parent.y }] };
 }
+export function sampleBitmap(state:ImageState,layerId?:string):Bitmap{return compositeState(sampleState(state,layerId));}
 export function sampleColor(state: ImageState, x: number, y: number, layerId?: string): [number, number, number, number] {
   if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= state.width || y >= state.height) throw new Error('取色坐标超出画布。');
-  const image = sampleBitmap(state, layerId), offset = (y * image.width + x) * 4;
+  const image = compositeRegion(sampleState(state, layerId),{x,y,width:1,height:1}), offset = 0;
   return Array.from(image.data.subarray(offset, offset + 4)) as [number, number, number, number];
 }
-export interface PixelCopy { bitmap: Bitmap; x: number; y: number }
+export interface PixelCopy { bitmap: Bitmap; x: number; y: number; profile?:Uint8Array }
 export function copyPixels(state: ImageState, layerId?: string): PixelCopy {
   const rect = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height }, source = sampleBitmap(state, layerId);
-  const data = new Uint8ClampedArray(rect.width * rect.height * 4); let visible = false;
+  const data = pixelArray(rect.width * rect.height * 4,source), ink=source.cmyk?new Float32Array(data.length):undefined; let visible = false;
   for (let y = 0; y < rect.height; y++) for (let x = 0; x < rect.width; x++) {
     const i = (y * rect.width + x) * 4, p = ((y + rect.y) * source.width + x + rect.x) * 4;
-    data.set(source.data.subarray(p, p + 4), i); data[i + 3] = data[i + 3]! * selectionWeight(state.selection, x + rect.x, y + rect.y); visible ||= data[i + 3]! > 0;
+    data.set(source.data.subarray(p, p + 4), i); if(ink)ink.set(source.cmyk!.subarray(p,p+4),i); data[i + 3] = data[i + 3]! * selectionWeight(state.selection, x + rect.x, y + rect.y); visible ||= data[i + 3]! > 0;
   }
   if (!visible) throw new Error('复制范围内没有可见像素。');
-  return { bitmap: { width: rect.width, height: rect.height, data }, x: rect.x, y: rect.y };
+  return { bitmap: {...withPixels(rect.width,rect.height,data,source),...(ink?{cmyk:ink}:{})}, x: rect.x, y: rect.y,profile:state.colorMode==='cmyk'?srgbProfileBytes():workingProfile(state) };
 }
 export function pastePixels(doc: ImageDocument, copy: PixelCopy, name = '粘贴像素'): string {
   checkSize(copy.bitmap.width, copy.bitmap.height);
-  const layer = { ...makeLayer(name, copy.bitmap), x: copy.x, y: copy.y }; doc.addLayer(layer, false); return layer.id;
+  let bitmap=doc.state.colorMode==='cmyk'?copy.bitmap:withPixels(copy.bitmap.width,copy.bitmap.height,copy.bitmap.data.slice(),copy.bitmap);
+  if(copy.profile&&!(doc.state.colorMode==='cmyk'&&bitmap.cmyk)){
+    const target=doc.state.colorMode==='cmyk'?embeddedProfile(doc.state):workingProfile(doc.state);
+    if(!target)throw Error('跨配置粘贴前请先指定目标 CMYK ICC。');
+    if(target.length!==copy.profile.length||target.some((v,i)=>v!==copy.profile![i])){
+      if(profileInfo(copy.profile).space!=='RGB')throw Error('RGBA 剪贴板需要 RGB 源 ICC。');
+      const settings={intent:doc.state.icc?.intent??1,bpc:doc.state.icc?.bpc??true};
+      if(doc.state.colorMode==='cmyk'){
+        const rgb=Float32Array.from({length:bitmap.width*bitmap.height*3},(_,i)=>bitmap.data[Math.floor(i/3)*4+i%3]!/255),inks=iccTransform(rgb,copy.profile,target,settings).data;
+        bitmap=cmykBitmap(bitmap.width,bitmap.height,Float32Array.from(inks,v=>Math.max(0,Math.min(100,v))),Float32Array.from({length:bitmap.width*bitmap.height},(_,i)=>bitmap.data[i*4+3]!),(doc.state.bitDepth??8) as 8|16,target);
+      }else bitmap=transformBitmapIcc(withPixels(bitmap.width,bitmap.height,Float32Array.from(bitmap.data),doc.state.bitDepth===32?32:16),copy.profile,target,settings);
+    }
+    if(doc.state.colorMode!=='cmyk'){const depth=doc.state.bitDepth??8,data=pixelArray(bitmap.data.length,depth);data.set(bitmap.data);bitmap=withPixels(bitmap.width,bitmap.height,data,depth);}
+  }
+  const layer = { ...makeLayer(name, bitmap), x: copy.x, y: copy.y }; doc.addLayer(layer, false); return layer.id;
 }
 export function gradientPixels(state: ImageState, layerId: string, start: Point, end: Point, from: Color, to: Color, kind: 'linear' | 'radial', opacity = 1): ImageLayer {
   if ([...from, ...to].some(v => !Number.isFinite(v) || v < 0 || v > 255)) throw new Error('渐变颜色无效。');
   if (![start.x, start.y, end.x, end.y].every(Number.isFinite) || !['linear', 'radial'].includes(kind)) throw new Error('渐变参数无效。');
+  from=pixelColor(from,state.bitDepth??8) as unknown as Color;to=pixelColor(to,state.bitDepth??8) as unknown as Color;
   const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy); if (length < 0.5) throw new Error('请拖出一段渐变距离。');
   const layer = new PixelStroke(state, layerId, 1, opacity, from).layer, image = layer.bitmap!, parent = parentOffset(state.layers, layerId)!;
   const bounds = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height };

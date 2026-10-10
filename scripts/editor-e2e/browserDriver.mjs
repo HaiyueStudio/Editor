@@ -25,6 +25,8 @@ export async function runEditorBrowserScenario({
   downloadDirectory,
   failureScreenshotPath,
   timeoutMs = 90_000,
+  headless = true,
+  gpuTestFlags = true,
   readinessExpression,
   scenario,
 }) {
@@ -45,13 +47,12 @@ export async function runEditorBrowserScenario({
   const url = `http://127.0.0.1:${address.port}/${route.replace(/^\/+/, '')}`;
   const angleBackend = process.env.WEBGPU_ANGLE_BACKEND ?? defaultWebGpuAngleBackend();
   const child = spawn(chrome, [
-    '--headless=new',
+    ...(headless ? ['--headless=new'] : []),
     '--no-sandbox',
     '--disable-gpu-sandbox',
-    '--enable-unsafe-webgpu',
-    `--use-angle=${angleBackend}`,
+    ...(gpuTestFlags ? ['--enable-unsafe-webgpu', `--use-angle=${angleBackend}`] : []),
     '--window-size=1440,1000',
-    '--force-device-scale-factor=1',
+    ...(headless ? ['--force-device-scale-factor=1'] : []),
     '--remote-debugging-port=0',
     `--user-data-dir=${profile}`,
     'about:blank',
@@ -173,7 +174,9 @@ export async function runEditorBrowserScenario({
         ...driver,
         url,
         chrome,
-        angleBackend,
+        angleBackend: gpuTestFlags ? angleBackend : 'browser-default',
+        headless,
+        gpuTestFlags,
         getBrowserErrors: () => browserErrors.slice(),
       });
     } catch (error) {

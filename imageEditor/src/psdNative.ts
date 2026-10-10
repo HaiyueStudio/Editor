@@ -1,3 +1,4 @@
+import { writeHighPsd } from './highDepthPsd.js';
 import { readSmartSource } from './smartSource.js';
 import { concatBytes, psdSections, rawCompositeData } from './psdResources.js';
 import { readPsd, writePsdUint8Array, type Layer, type Psd, type Color, type BezierKnot, type LayerEffectsInfo, type LinkedFile } from 'ag-psd';
@@ -52,8 +53,9 @@ export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFil
   // Each placed instance receives its own ID; duplicated sources may be independently replaced.
   const placedId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(layer.id)?layer.id:uid();
   result.placedLayer={id:placedId,type:'raster',warp:{style:'none'},width:c.source.width,height:c.source.height,transform:corners,resolution:{units:'Density',value:72}};
-  const embedded=c.sourcePsd??writePsdUint8Array({width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source},{noBackground:true,compress:true});
-  linked.push({id:placedId,name:c.name+'.psd',type:'8BPS',data:c.sourcePsd?(readSmartSource(c.sourcePsd,c.name),embedded):concatBytes([embedded.subarray(0,psdSections(embedded).composite),rawCompositeData(embedded,c.source)])});
+  const sourcePsd={width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source};
+  const embedded=c.sourcePsd??((c.source.depth??8)!==8?writeHighPsd(sourcePsd,c.source.depth as 16|32):writePsdUint8Array({width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source},{noBackground:true,compress:true}));
+  linked.push({id:placedId,name:c.name+'.psd',type:'8BPS',data:c.sourcePsd?(readSmartSource(c.sourcePsd,c.name),embedded):c.source.depth?embedded:concatBytes([embedded.subarray(0,psdSections(embedded).composite),rawCompositeData(embedded,c.source)])});
  }
  return result;
 }
@@ -90,7 +92,7 @@ export function readNativeContent(layer:Layer,psd:Psd):LayerContent|undefined {
   const embeddedState=readSmartSource(file.data,file.name),source=embeddedState.bitmap;
   const q=p.transform;if(q.length!==8||!q.every(Number.isFinite))throw new Error('智能对象变换无效。');const ax=q[2]!-q[0]!,ay=q[3]!-q[1]!,bx=q[6]!-q[0]!,by=q[7]!-q[1]!,width=Math.round(Math.hypot(ax,ay)),height=Math.round(Math.hypot(bx,by));
   if(!near(q[4]!,q[0]!+ax+bx)||!near(q[5]!,q[1]!+ay+by)||Math.abs(ax*bx+ay*by)>.02)throw new Error('智能对象透视／斜切暂不支持。');
-  result={type:'smart',sourceId:p.id,name:file.name.replace(/\.psd$/i,'').slice(0,160),source:{width:source.width,height:source.height,data:new Uint8ClampedArray(source.data)},...(embeddedState.simple?{}:{sourcePsd:file.data.slice()}),transform:{width,height,angle:Math.atan2(ay,ax)*180/Math.PI,flipX:false,flipY:ax*by-ay*bx<0}};
+  result={type:'smart',sourceId:p.id,name:file.name.replace(/\.psd$/i,'').slice(0,160),source:{...source,data:source.data.slice()},...(embeddedState.simple?{}:{sourcePsd:file.data.slice()}),transform:{width,height,angle:Math.atan2(ay,ax)*180/Math.PI,flipX:false,flipY:ax*by-ay*bx<0}};
  }
  if(result)validateContent(result);return result;
 }

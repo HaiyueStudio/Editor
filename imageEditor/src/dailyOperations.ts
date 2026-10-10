@@ -1,3 +1,6 @@
+import { CmykStroke,fillCmyk } from './cmykEditing.js';
+import { initializeIcc,profileInfo } from './iccEngine.js';
+import { sampleHex,exportPixelResource, importPixelResource } from './pixelFormat.js';
 import { validateSmartFilters, validateBlendIf, filterStackBitmap, primeFilterStack, type SmartFilter, type BlendIf } from './liveEffects.js';
 import { FILTERS } from './filters.js';
 import { BLEND_MODES } from './layerFeatures.js';
@@ -52,7 +55,7 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     return done(()=>d.setStyles(p.layerId as string,p.remove===true?undefined:p.styles as unknown as LayerStyles));
   });
   register('smart.convert',{layerId:string},['layerId'],(p,d)=>done(()=>convertSmart(d,p.layerId as string)));
-  register('smart.source',{layerId:string},['layerId'],(p,d)=>{const c=findLayer(d.state.layers,p.layerId as string)?.content;if(c?.type!=='smart')throw new Error('请选择智能对象。');const source=c.source;return ()=>({...platform.resources.put(new Uint8Array(source.data)),format:'rgba8',width:source.width,height:source.height,name:c.name});},'read');
+  register('smart.source',{layerId:string},['layerId'],(p,d)=>{const c=findLayer(d.state.layers,p.layerId as string)?.content;if(c?.type!=='smart')throw new Error('请选择智能对象。');const source=c.source;const out=exportPixelResource(source);return ()=>({...platform.resources.put(out.bytes),format:out.format,width:source.width,height:source.height,name:c.name});},'read');
   register('smart.replace',{layerId:string,resourceId:string,width:dimension,height:dimension,name:string},['layerId','resourceId','width','height','name'],(p,d)=>{
     const width=p.width as number,height=p.height as number;checkSize(width,height);const bytes=platform.resources.read(p.resourceId as string);if(bytes.length!==width*height*4)throw new Error('智能对象源 RGBA8 长度不匹配。');const source={width,height,data:new Uint8ClampedArray(bytes)};
     return done(()=>replaceSmart(d,p.layerId as string,source,p.name as string));
@@ -70,15 +73,18 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     const layer = transformedLayer(d.state, p.layerId as string, { angle: 0, dx: 0, dy: 0, ...p } as unknown as TransformValues);
     return done(() => commitTransform(d, layer, 'API: transform'));
   });
-  register('color.sample', { x: coordinate, y: coordinate, layerId: string }, ['x', 'y'], (p, d) => { const rgba = sampleColor(d.state, p.x as number, p.y as number, p.layerId as string | undefined); return () => ({ rgba, hex: '#' + rgba.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('') }); }, 'read');
+  register('color.sample', { x: coordinate, y: coordinate, layerId: string }, ['x', 'y'], (p, d) => { const rgba = sampleColor(d.state, p.x as number, p.y as number, p.layerId as string | undefined); return () => ({ rgba, hex: sampleHex(rgba,d.state) }); }, 'read');
   register('pixels.copy', { layerId: string }, [], (p, d) => {
     const copy = copyPixels(d.state, p.layerId as string | undefined);
-    return () => ({ ...platform.resources.put(new Uint8Array(copy.bitmap.data)), format: 'rgba8', width: copy.bitmap.width, height: copy.bitmap.height, x: copy.x, y: copy.y });
+    const out=exportPixelResource(copy.bitmap);return () => ({ ...platform.resources.put(out.bytes), format:out.format, width: copy.bitmap.width, height: copy.bitmap.height, x: copy.x, y: copy.y });
   }, 'read');
-  register('pixels.paste', { resourceId: string, width: dimension, height: dimension, x: coordinate, y: coordinate, name: string }, ['resourceId', 'width', 'height'], (p, d) => {
+  register('pixels.paste', { sourceProfileId:string,format:{type:'string',enum:['rgba8','rgba16le','rgba32fle','cmyka32fle']},resourceId: string, width: dimension, height: dimension, x: coordinate, y: coordinate, name: string }, ['resourceId', 'width', 'height'], async (p, d) => {
     const width = p.width as number, height = p.height as number; checkSize(width, height);
-    const bytes = platform.resources.read(p.resourceId as string); if (bytes.length !== width * height * 4) throw new Error('RGBA8 资源长度不匹配。');
-    const copy = { bitmap: { width, height, data: new Uint8ClampedArray(bytes) }, x: (p.x ?? 0) as number, y: (p.y ?? 0) as number };
+    const bytes = platform.resources.read(p.resourceId as string);
+    if(p.format==='cmyka32fle'&&d.state.colorMode!=='cmyk')throw Error('原生油墨资源请粘贴到 CMYK 文档。');
+    const profile=p.sourceProfileId?platform.resources.read(p.sourceProfileId as string):undefined;
+    if(profile){if(p.format==='cmyka32fle')throw Error('原生 CMYK 粘贴保留油墨数值；sourceProfileId 仅用于 RGBA 资源。');await initializeIcc();if(profileInfo(profile).space!=='RGB')throw Error('RGBA 剪贴板需要 RGB 源 ICC。');}
+    const copy = { bitmap: importPixelResource(bytes,width,height,(p.format??'rgba8') as string), x: (p.x ?? 0) as number, y: (p.y ?? 0) as number,...(profile?{profile}:{}) };
     return () => ({ layerId: pastePixels(d, copy, p.name as string | undefined) });
   });
   register('pixels.gradient', { layerId: string, start: point, end: point, from: color, to: color, kind: { type: 'string', enum: ['linear', 'radial'] }, opacity }, ['layerId', 'start', 'end', 'from', 'to', 'kind'], (p, d) => {
@@ -90,7 +96,8 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     const id = p.layerId as string, original = findLayer(d.state.layers, id); if (!original) throw new Error('图层不存在。');
     const state = isMask ? maskStrokeState(d.state,id,maskTarget) : d.state, tone = p.erase && isMask ? [0, 0, 0] as const : hexColor((p.color ?? '#000000') as string), erase = p.erase === true && !isMask;
     let layer;
-    if (action === 'fill') layer = fillPixels(state, id, erase ? null : tone, (p.opacity ?? 1) as number);
+    if(!isMask&&state.colorMode==='cmyk'&&erase){const settings={ink:[0,0,0,0],erase:true,opacity:(p.opacity??1) as number};if(action==='fill')layer=fillCmyk(state,id,settings);else{const path=p.points as unknown as Point[];if(!path.length)throw Error('笔画至少需要一个点。');const stroke=new CmykStroke(state,id,p.size as number,settings,{hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'});for(const point of path)stroke.point(point);layer=stroke.layer;}}
+    else if (action === 'fill') layer = fillPixels(state, id, erase ? null : tone, (p.opacity ?? 1) as number);
     else { const path = p.points as unknown as Point[]; if (!path.length) throw new Error('笔画至少需要一个点。'); const stroke = new PixelStroke(state, id, p.size as number, (p.opacity ?? 1) as number, tone, erase,{hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'}); for (const point of path) stroke.point(point); layer = stroke.layer; }
     return done(() => isMask ? d.setMask(id,maskFromStroke(original,layer,maskTarget),maskTarget) : d.replaceLayerPixels(id, layer, `API: ${action}`));
   });
@@ -144,7 +151,8 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
   });
   register('layer.import', { resourceId: string, name: string, x: coordinate, y: coordinate }, ['resourceId', 'name'], async (p, d) => {
     const bytes = platform.resources.read(p.resourceId as string), bitmap = await (await import('./imageImport.js')).decodeImage(new File([bytes.slice().buffer], p.name as string));
-    const layer = { ...makeLayer(p.name as string, bitmap), x: (p.x ?? 0) as number, y: (p.y ?? 0) as number };
+    const converted=(await import('./imageImport.js')).rasterForDocument(bitmap,d.state);
+    const layer = { ...makeLayer(p.name as string, converted), x: (p.x ?? 0) as number, y: (p.y ?? 0) as number };
     return () => { d.addLayer(layer, false); return { layerId: layer.id }; };
   });
   return { async dispose() { await Promise.all(owned.map(item => item.dispose())); } };

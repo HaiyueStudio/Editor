@@ -1,9 +1,10 @@
+import { validateBitmap } from './pixelFormat.js';
 import { effectiveMaskWeight } from './maskEffects.js';
 import { validateResampling, type Resampling } from './resamplingTypes.js';
 import type { Bitmap } from './document.js';
 export const BLEND_MODES = { normal:'正常', multiply:'正片叠底', screen:'滤色', overlay:'叠加', darken:'变暗', lighten:'变亮', 'hard-light':'强光', difference:'差值', exclusion:'排除' } as const;
 export type BlendMode = keyof typeof BLEND_MODES;
-export interface LayerMask { width:number; height:number; x:number; y:number; data:Uint8Array; disabled:boolean; defaultColor:number; density?:number; feather?:number }
+export interface LayerMask { width:number; height:number; x:number; y:number; data:Uint8Array|Float32Array; precision?:'float32'; disabled:boolean; defaultColor:number; density?:number; feather?:number }
 export interface TextContent { type:'text'; text:string; size:number; family:'sans-serif'|'serif'|'monospace'; bold:boolean; italic:boolean; align:'left'|'center'|'right'; color:string; fontName?:string; runs?:readonly TextRun[]; wrapWidth?:number }
 export interface TextRun { start:number; end:number; size?:number; family?:TextContent['family']; fontName?:string; bold?:boolean; italic?:boolean; color?:string; underline?:boolean }
 export interface PathNode { x:number;y:number;inX:number;inY:number;outX:number;outY:number }
@@ -35,10 +36,10 @@ export function validateContent(content:LayerContent) {
  if(content.type==='path') {
   if(![content.width,content.height].every(n=>Number.isInteger(n)&&n>=1&&n<=8192)||content.width*content.height>16777216||typeof content.closed!=='boolean'||content.fill!==null&&!color(content.fill)||!color(content.stroke)||!Number.isInteger(content.strokeWidth)||content.strokeWidth<0||content.strokeWidth>512||!['nonzero','evenodd'].includes(content.fillRule)||!Array.isArray(content.nodes)||content.nodes.length<2||content.nodes.length>256||content.nodes.some(n=>![n.x,n.y,n.inX,n.inY,n.outX,n.outY].every(v=>Number.isFinite(v)&&Math.abs(v)<=32768)))throw new Error('贝塞尔路径参数无效。');
  }else if(content.type==='smart') {
-  const b=content.source,t=content.transform;
+  const b=content.source,t=content.transform; if(b)validateBitmap(b);
   if(content.sourcePsd!==undefined&&(!(content.sourcePsd instanceof Uint8Array)||content.sourcePsd.length<26||content.sourcePsd.length>32*1024*1024||new DataView(content.sourcePsd.buffer,content.sourcePsd.byteOffset).getUint32(0)!==0x38425053))throw new Error('多层智能源 PSD 无效或超过 32 MiB。');
   if(t?.resampling!==undefined)validateResampling(t.resampling);
-  if(!/^[a-f0-9-]{36}$/i.test(content.sourceId)||typeof content.name!=='string'||!content.name.length||content.name.length>160||!b||![b.width,b.height,t?.width,t?.height].every(n=>Number.isInteger(n)&&n>=1&&n<=8192)||b.width*b.height>16777216||t.width*t.height>16777216||!(b.data instanceof Uint8ClampedArray)||b.data.length!==b.width*b.height*4||!Number.isFinite(t.angle)||Math.abs(t.angle)>360||typeof t.flipX!=='boolean'||typeof t.flipY!=='boolean')throw new Error('智能对象源或变换参数无效。');
+  if(!/^[a-f0-9-]{36}$/i.test(content.sourceId)||typeof content.name!=='string'||!content.name.length||content.name.length>160||!b||![b.width,b.height,t?.width,t?.height].every(n=>Number.isInteger(n)&&n>=1&&n<=8192)||b.width*b.height>16777216||t.width*t.height>16777216||!(b.data instanceof Uint8ClampedArray||b.data instanceof Float32Array)||b.data.length!==b.width*b.height*4||!Number.isFinite(t.angle)||Math.abs(t.angle)>360||typeof t.flipX!=='boolean'||typeof t.flipY!=='boolean')throw new Error('智能对象源或变换参数无效。');
  }else if(content.type==='text') {
   if(content.wrapWidth!==undefined&&(!Number.isInteger(content.wrapWidth)||content.wrapWidth<16||content.wrapWidth>8192))throw new Error('文字换行宽度应为 16–8192。');
   if(content.runs){if(!Array.isArray(content.runs)||content.runs.length>128)throw new Error('富文本片段数量无效。');let previous=0;for(const run of content.runs){if(!Number.isInteger(run.start)||!Number.isInteger(run.end)||run.start<previous||run.start>=run.end||run.end>content.text.length||run.underline!==undefined&&typeof run.underline!=='boolean'||[run.start,run.end].some(i=>i>0&&i<content.text.length&&/[\uD800-\uDBFF]/.test(content.text[i-1]!)&&/[\uDC00-\uDFFF]/.test(content.text[i]!)))throw new Error('富文本范围无效，不能重叠或拆开代理对。');validateContent({...content,...run,text:'a',runs:undefined} as TextContent);previous=run.end;}}

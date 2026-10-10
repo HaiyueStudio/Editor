@@ -15,6 +15,7 @@ export function blendIfWeight(rule:BlendIf|undefined,source:ArrayLike<number>,si
  const alpha=back[bi+3]!/255;return rangeWeight(channel(source,si),rule.source)*(1-alpha+alpha*rangeWeight(channel(back,bi),rule.underlying));
 }
 const cache=new WeakMap<Bitmap,{key:string;output:Bitmap}>();
+export function invalidateFilterStack(source:Bitmap){cache.delete(source);}
 export function primeFilterStack(source:Bitmap,filters:readonly SmartFilter[],output:Bitmap){cache.set(source,{key:JSON.stringify(filters),output});}
 /** Index zero runs first. Opacity interpolates the input and blended filter result in associated RGBA. */
 export function filterStackBitmap(source:Bitmap,filters:readonly SmartFilter[]):Bitmap {

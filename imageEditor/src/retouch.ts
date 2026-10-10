@@ -12,6 +12,6 @@ export function retouchSampler(state:ImageState,targetId:string,sourceId:string,
  const correction=(gx:number,gy:number)=>{const key=gx+':'+gy;let value=means.get(key);if(!value){const x=gx*step,y=gy*step,a=mean(source.bitmap,x+offset.x-sx,y+offset.y-sy),b=mean(target.bitmap,x-tx,y-ty);value=a&&b?b.map((v,c)=>v-a[c]!):[0,0,0];if(means.size>=4096)means.delete(means.keys().next().value!);means.set(key,value);}return value;};
  return (x,y)=>{const p=sample(source.bitmap,x+offset.x-sx,y+offset.y-sy);if(!p||!p[3]||kind==='clone')return p;
   const gx=Math.floor(x/step),gy=Math.floor(y/step),fx=x/step-gx,fy=y/step-gy,a=correction(gx,gy),b=correction(gx+1,gy),c=correction(gx,gy+1),d=correction(gx+1,gy+1);
-  return [0,1,2].map(i=>Math.max(0,Math.min(255,p[i]!+(a[i]!*(1-fx)+b[i]!*fx)*(1-fy)+(c[i]!*(1-fx)+d[i]!*fx)*fy))).concat(p[3]) as unknown as PixelSample;
+  return [0,1,2].map(i=>Math.max((state.bitDepth??8)===32?-255*65504:0,Math.min((state.bitDepth??8)===32?255*65504:255,p[i]!+(a[i]!*(1-fx)+b[i]!*fx)*(1-fy)+(c[i]!*(1-fx)+d[i]!*fx)*fy))).concat(p[3]) as unknown as PixelSample;
  };
 }
