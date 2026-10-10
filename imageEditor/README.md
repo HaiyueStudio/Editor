@@ -182,3 +182,7 @@ Windows/Linux 实机、公开发行签名及公证尚未验收。P3 Worker 复�
 ## Fish PSD
 
 支持 Adobe `Fish.psd` 的 8 层 RGB 16 位编辑，保留蒙版显示设置、效果面板状态及图案预设；覆盖编辑／撤销、PSD 导出、工程与磁盘恢复。见 [Fish PSD 验收](docs/fish-psd.md)。
+
+## 旧版矢量智能对象 PSD
+
+支持 `Smart Objects.psd` 的 7 个图层、5 个共享 PDF 矢量智能对象，修正旧版蒙版坐标，提供带蒙版变换、原始源导出、单实例替换及撤销／恢复。当前预览使用原像素缓存，内部矢量路径需在外部编辑。见 [能力、API 与验收](docs/smart-objects-psd.md)。

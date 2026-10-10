@@ -16,6 +16,7 @@ export function psdImportReport(psd:Psd,layered:ImageState|null,hasPreview:boole
  if(psd.userMask)notes.push('保留蒙版叠加显示颜色及透明度，不影响图像像素。');
  if(psd.globalLayerMaskInfo?.kind===128)notes.push('保留全局蒙版显示颜色设置，不将其误作额外像素蒙版。');
  const layers=allLayers(layered.layers),names=(ls:readonly {name?:string}[])=>ls.slice(0,6).map(l=>l.name??'未命名').join('、')+(ls.length>6?` 等 ${ls.length} 层`:'');
+ const pdfs=layers.filter(l=>l.content?.type==='smart'&&l.content.sourcePdf);if(pdfs.length)warnings.push(`矢量智能源：${names(pdfs)}。原始 PDF／Illustrator 源保留，可导出；当前预览及缩放使用原像素缓存，内部矢量路径需在矢量工具中编辑。`);
  const textDiagnostics=inspectTextLayers(psd,layered);if(textDiagnostics.length){notes.push(`${textDiagnostics.length} 个文字层保留原像素缓存；仅在修改该层文字时重新排版。`);warnings.push(...textDiagnostics.filter(d=>d.issues.length).map(textDiagnosticMessage));}
  const effects=layers.filter(l=>l.styles?.enabled&&(l.styles.shadow||l.styles.stroke||l.styles.innerGlow));if(effects.length)warnings.push(`图层样式：${names(effects)}。投影模糊、描边或内发光使用近似渲染，可能与原软件不同。`);
  const hsl=layers.filter(l=>l.content?.type==='adjustment'&&l.content.filter==='hue-saturation');if(hsl.length)warnings.push(`色相／饱和度：${names(hsl)}。支持原生参数和着色；当前 HSL 合成尚未完成 Photoshop 像素对齐。`);

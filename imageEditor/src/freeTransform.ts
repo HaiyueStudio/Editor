@@ -10,7 +10,7 @@ export function transformedLayer(state: ImageState, id: string, value: Transform
   const layer = find(state.layers);
   if (!layer?.bitmap || layer.kind !== 'pixel' || layerLocked(state.layers, id,'position')) throw new Error('请选择未锁定的像素图层。');
   if(layer.filterMask)throw new Error('变换前请移除滤镜蒙版，或先栅格化智能对象以保留滤镜外观。');
-  if (layer.content?.type !== 'smart' && layer.content || layer.mask) throw new Error('请先栅格化文字／形状，或应用图层蒙版后变换。');
+  if (layer.content?.type !== 'smart' && (layer.content || layer.mask)) throw new Error('请先栅格化文字／形状，或应用图层蒙版后变换。');
   if (![value.dx, value.dy].every(n => Number.isInteger(n) && Math.abs(n) <= 32768)) throw new Error('移动距离无效。');
   if(layer.content?.type==='smart')return smartTransform(state,layer,value.width,value.height,value.angle,value.dx,value.dy,value.flipX,value.flipY,value.resampling);
   const bitmap = transformBitmap(layer.bitmap, value.width, value.height, value.angle, value.flipX ?? false, value.flipY ?? false,value.resampling);

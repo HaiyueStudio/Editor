@@ -18,15 +18,22 @@ export function readSmartSource(bytes:Uint8Array,name:string){
  return {state,bitmap:simple?only!.bitmap!:compositeState(state),simple};
 }
 export function openSmartSource(content:SmartContent):ImageState {
+ if(content.sourcePdf)throw Error('此智能源是 PDF／Illustrator 矢量文件；请导出原始源文件，在矢量工具中编辑，或明确替换为 PSD／图像。');
  if(content.sourcePsd)return readSmartSource(content.sourcePsd,content.name).state;
  const layer=makeLayer(content.name,{...content.source,data:content.source.data.slice()});return {id:uid(),name:content.name,width:content.source.width,height:content.source.height,...(content.source.depth?{bitDepth:content.source.depth}:{}),layers:[layer],selectedId:layer.id,revision:1};
 }
 export function prepareSmartSource(content:SmartContent,state:ImageState):SmartContent {
  validateState(state);if(allLayers(state.layers).some(l=>l.content?.type==='smart'))throw new Error('多层智能源暂不允许嵌套智能对象。');
  const bytes=exportPsd(state).bytes,{bitmap}=readSmartSource(bytes,state.name);
- return {...content,sourceId:uid(),name:state.name,source:bitmap,sourcePsd:bytes};
+ return {...content,sourceId:uid(),name:state.name,source:bitmap,sourcePsd:bytes,sourcePdf:undefined};
 }
 export function applySmartSource(doc:ImageDocument,id:string,content:SmartContent){
  if(findLayer(doc.state.layers,id)?.content?.type!=='smart')throw new Error('请选择智能对象。');
  doc.setContent(id,content,smartBitmap(content));
+}
+
+export function originalSmartSource(content:SmartContent){
+ const bytes=content.sourcePdf?.data??content.sourcePsd;if(!bytes)throw Error('此智能对象没有原始 PDF／PSD 文件，请读取工程源。');
+ const format=content.sourcePdf?'pdf':new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint16(4)===2?'psb':'psd';
+ return {bytes:bytes.slice(),format,name:content.name};
 }

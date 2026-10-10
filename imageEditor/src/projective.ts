@@ -21,3 +21,13 @@ export function projectiveBitmap(source:Bitmap,width:number,height:number,quad:r
   const i=(y*width+x)*4;if(alpha){data[i]=r/alpha;data[i+1]=g/alpha;data[i+2]=b/alpha;data[i+3]=alpha;}
  }return withPixels(width,height,data,source);
 }
+
+/** Map a source unit-square point through a convex destination quad. */
+export function mapQuadPoint(q:readonly number[],u:number,v:number):[number,number] {
+ const dx1=q[2]!-q[4]!,dx2=q[6]!-q[4]!,dy1=q[3]!-q[5]!,dy2=q[7]!-q[5]!,sx=q[0]!-q[2]!+q[4]!-q[6]!,sy=q[1]!-q[3]!+q[5]!-q[7]!,den=dx1*dy2-dx2*dy1;
+ const g=(sx*dy2-dx2*sy)/den,h=(dx1*sy-sx*dy1)/den,z=g*u+h*v+1;
+ return [((q[2]!-q[0]!+g*q[2]!)*u+(q[6]!-q[0]!+h*q[6]!)*v+q[0]!)/z,((q[3]!-q[1]!+g*q[3]!)*u+(q[7]!-q[1]!+h*q[7]!)*v+q[1]!)/z];
+}
+export function quadCoordinates(q:readonly number[],x:number,y:number):[number,number] {
+ const m=inverseMap(q),z=m[6]!*x+m[7]!*y+1;return [(m[0]!*x+m[1]!*y+m[2]!)/z,(m[3]!*x+m[4]!*y+m[5]!)/z];
+}

@@ -26,7 +26,7 @@
 | Vanishing Point.psd | 1 个背景层、导出重开通过 | 已修复空文档问题；此样本没有可编辑消失点结构，不能据此宣称支持消失点工具 |
 | Fish.psd | 8 层 RGB 16 位编辑、导出重开通过 | 保留 `LMsk`、效果面板状态和图案预设；原生图层像素逐值一致，见 [Fish 验收](fish-psd.md) |
 | Layer Comps.psd | 17 层可编辑、4 个复合可切换 | 已补齐本样本导入与往返；投影／HSL 渲染仍有近似，详见 [图层复合验收](layer-comps-psd.md) |
-| Smart Objects.psd | 分层仍阻塞 | 旧式智能对象、`lmgm`、全局蒙版／资源结构 |
+| Smart Objects.psd | 7 层、5 个共享矢量智能对象可导入并原生导出 | 保留内嵌 PDF；支持蒙版和实例变换，预览仍用缓存，见 [智能对象验收](smart-objects-psd.md) |
 | input02.psd | 分层仍阻塞 | 填充不透明度、线性加深、滤镜效果、复杂矢量和超限智能源 |
 
 ## Photopea 验证方式与结果

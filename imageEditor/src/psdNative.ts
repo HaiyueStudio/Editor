@@ -1,3 +1,5 @@
+import { readPdfSmart } from './pdfSmart.js';
+import { mapQuadPoint } from './projective.js';
 import { readHueSaturation, writeHueSaturation } from './hueSaturation.js';
 import {readEditableText,writeEditableText} from './psdText.js';
 import { writeHighPsd } from './highDepthPsd.js';
@@ -58,6 +60,12 @@ export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFil
  }else{
   const t=c.transform,angle=t.angle*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle),cx=x+layer.bitmap!.width/2,cy=y+layer.bitmap!.height/2;
   const corners=[[-.5,-.5],[.5,-.5],[.5,.5],[-.5,.5]].flatMap(([a,b])=>{const dx=a!*t.width*(t.flipX?-1:1),dy=b!*t.height*(t.flipY?-1:1);return [cx+dx*cos-dy*sin,cy+dx*sin+dy*cos];});
+  if(c.sourcePdf){
+   const pdf=c.sourcePdf,q=t.quad?t.quad.map((v,i)=>v+(i%2?y:x)):corners,mapped=Array.from({length:4},(_,i)=>mapQuadPoint(q,pdf.quad[i*2]!/c.source.width,pdf.quad[i*2+1]!/c.source.height)).flat();
+   result.placedLayer={id:c.sourceId,type:'vector',pageNumber:pdf.pageNumber,totalPages:pdf.totalPages,transform:mapped,width:pdf.bounds[2]!-pdf.bounds[0]!,height:pdf.bounds[3]!-pdf.bounds[1]!,warp:{style:'none',value:0,perspective:0,perspectiveOther:0,rotate:'horizontal',uOrder:4,vOrder:4,bounds:{left:units(pdf.bounds[0]!),top:units(pdf.bounds[1]!),right:units(pdf.bounds[2]!),bottom:units(pdf.bounds[3]!)}}};
+   const existing=linked.find(f=>f.id===c.sourceId);if(existing){if(!existing.data||existing.data.length!==pdf.data.length||existing.data.some((v,i)=>v!==pdf.data[i]))throw Error('共享智能源 ID 对应了不同文件。');}else linked.push({id:c.sourceId,name:c.name,type:'PDF',data:pdf.data});
+   return result;
+  }
   // Each placed instance receives its own ID; duplicated sources may be independently replaced.
   const placedId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(layer.id)?layer.id:uid();
   result.placedLayer={id:placedId,type:'raster',warp:{style:'none'},width:c.source.width,height:c.source.height,transform:corners,resolution:{units:'Density',value:72}};
@@ -70,6 +78,8 @@ export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFil
  return result;
 }
 export function readNativeContent(layer:Layer,psd:Psd):LayerContent|undefined {
+ if(layer.placedLayer?.type==='vector'&&layer.imageData&&!(layer.imageData.data instanceof Uint8ClampedArray))throw Error('矢量智能对象像素缓存当前需要 RGB 8 位。');
+ if(layer.placedLayer?.type==='vector')return readPdfSmart(layer,psd,layer.imageData?{...layer.imageData,data:new Uint8ClampedArray(layer.imageData.data)}:null);
  let result:LayerContent|undefined;
  const present=[layer.text,layer.vectorMask||layer.vectorFill||layer.vectorStroke,layer.adjustment,layer.placedLayer].filter(Boolean);if(present.length>1)throw new Error('同一层包含多种原生内容，暂不能编辑。');
  if(layer.adjustment){const a=layer.adjustment;
