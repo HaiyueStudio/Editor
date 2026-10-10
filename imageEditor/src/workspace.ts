@@ -1,3 +1,6 @@
+import { diskPager, diskRefs } from './diskPager.js';
+import type { EditorOperationContext, EditorOperationDefinition, EditorJsonValue } from '@haiyue/editor-plugin-sdk';
+import { findLayer } from './document.js';
 import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import { BrowserEditorShell } from '@haiyue/editor-shell';
 import { defineEditorPlugin, defineEditorProduct, EDITOR_PLUGIN_API_VERSION } from '@haiyue/editor-plugin-sdk';
@@ -20,6 +23,20 @@ export class ImageWorkspace {
   private items = new Map<string, ImageDocument>();
   private subscriptions = new Map<string, () => void>();
   private listeners = new Set<() => void>();
+  registerOperation<P extends EditorJsonValue,T,R extends EditorJsonValue>(definition:EditorOperationDefinition<P,T,R>){
+    return this.platform.operations.register({...definition,
+      prepare:async(params:P,context:EditorOperationContext)=>{const doc=this.documents.find(d=>d.identity.id===context.document?.id),id=params&&typeof params==='object'&&!Array.isArray(params)&&typeof (params as Record<string,EditorJsonValue>).layerId==='string'?(params as Record<string,EditorJsonValue>).layerId as string:undefined;
+        const metadata=/^image\.(document\.(query|rename)|histogram\.query|history\.|storage\.|layers\.(select|align|move)|layer\.(update|create|opacity|reorder|import)|selection\.(all|clear|invert|rectangle|ellipse|polygon|modify)|content\.create|icc\.query)/.test(definition.descriptor.id)||(definition.descriptor.id==='image.document.export'&&(params as Record<string,EditorJsonValue>)?.format!=='psd');
+        const ids=params&&typeof params==='object'&&!Array.isArray(params)?(params as Record<string,EditorJsonValue>).layerIds:undefined;
+        const sourceId=params&&typeof params==='object'&&!Array.isArray(params)?(params as Record<string,EditorJsonValue>).sourceLayerId:undefined;
+        const scope=id&&doc?[findLayer(doc.state.layers,id),...(typeof sourceId==='string'?[findLayer(doc.state.layers,sourceId)]:[])]:Array.isArray(ids)&&doc?ids.map(id=>findLayer(doc.state.layers,String(id))):doc?.state;
+        const release=await diskPager.lease(metadata?[]:diskRefs(scope),context.signal);
+        try{return {value:await definition.prepare(params,context),release};}catch(error){release();throw error;}
+      },
+      commit:(prepared,context)=>{try{return definition.commit(prepared.value,context);}finally{prepared.release();}},
+      rollback:async(prepared,context,error)=>{try{await definition.rollback?.(prepared?.value,context,error);}finally{prepared?.release();}},
+    });
+  }
   async start() {
     await this.platform.start(product);
     if (!this.operationBindings) this.operationBindings = (await import('./operations.js')).registerImageOperations(this);

@@ -1,6 +1,7 @@
+import { isPaged, PAGE_SIZE } from './pagedPixels.js';
 import type {Bitmap,ImageLayer,ImageState} from './document.js';
 import {compositeDamage,type CompositeRect} from './compositor.js';
-const visualKeys=['id','kind','x','y','visible','opacity','blend','mask','clipping','styles','smartFilters','filterMask','blendIf','content'] as const;
+const visualKeys=['id','kind','x','y','visible','opacity','blend','passThrough','mask','clipping','styles','smartFilters','filterMask','blendIf','content'] as const;
 // History freezes metadata into fresh objects. Compare their values, while treating pixel/mask buffers as immutable identities.
 function sameMetadata(a:unknown,b:unknown):boolean {
  if(a===b)return true;
@@ -28,6 +29,15 @@ export function documentDamage(before:ImageState,after:ImageState):CompositeRect
 }
 function bitmapDamage(a:Bitmap,b:Bitmap):CompositeRect|undefined {
  if(a.width!==b.width||a.height!==b.height||a.depth!==b.depth||!!a.cmyk!==!!b.cmyk)return;
+ if(isPaged(a)&&isPaged(b)){
+  const ap=a.pages!,bp=b.pages!;if(ap===bp)return {x:0,y:0,width:0,height:0};
+  const baseA=ap.kind==='overlay'?ap.base:ap,baseB=bp.kind==='overlay'?bp.base:bp;if(baseA!==baseB)return;
+  const aa=new Map(ap.kind==='overlay'?ap.tiles.map(t=>[t.index,t.bytes]):[]),bb=new Map(bp.kind==='overlay'?bp.tiles.map(t=>[t.index,t.bytes]):[]),columns=Math.ceil(a.width/PAGE_SIZE);
+  let left=a.width,top=a.height,right=0,bottom=0;
+  for(const index of new Set([...aa.keys(),...bb.keys()]))if(aa.get(index)!==bb.get(index)){const x=index%columns*PAGE_SIZE,y=Math.floor(index/columns)*PAGE_SIZE;left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,Math.min(a.width,x+PAGE_SIZE));bottom=Math.max(bottom,Math.min(a.height,y+PAGE_SIZE));}
+  return right>left?{x:left,y:top,width:right-left,height:bottom-top}:{x:0,y:0,width:0,height:0};
+ }
+ if(isPaged(a)||isPaged(b))return;
  const width=a.width;let left=width,right=0,top=a.height,bottom=0;
  const packed=a.data instanceof Uint8ClampedArray&&b.data instanceof Uint8ClampedArray&&a.data.byteOffset%4===0&&b.data.byteOffset%4===0,
  aa=packed?new Uint32Array(a.data.buffer,a.data.byteOffset,a.width*a.height):undefined,bb=packed?new Uint32Array(b.data.buffer,b.data.byteOffset,b.width*b.height):undefined;

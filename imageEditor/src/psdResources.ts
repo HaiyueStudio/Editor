@@ -86,3 +86,11 @@ export function rawCompositeData(encoded:Uint8Array,image:{width:number;height:n
  for(let c=0;c<channels;c++)for(let i=0;i<n;i++){const a=image.data[i*4+3]!,value=image.data[i*4+c]!;raw[2+c*n+i]=c<3&&a>0&&a<255?Math.round(value*a/255+255-a):value;}
  return raw;
 }
+
+/** Keep unreferenced pattern presets that the codec does not expose in its object model. */
+export function preservePatternBlocks(encoded:Uint8Array,original:Uint8Array):Uint8Array {
+ const source=psdSections(original),v=new DataView(original.buffer,original.byteOffset,original.byteLength);let p=source.layers.data;
+ if(p+4>source.layers.end)return encoded;p+=4+v.getUint32(p);if(p+4>source.layers.end)return encoded;p+=4+v.getUint32(p);
+ const keep:Uint8Array[]=[];while(p+12<=source.layers.end){while(p<source.layers.end&&original[p]===0)p++;if(p+12>source.layers.end)break;const wide=v.getUint32(p)===0x38423634,header=wide?16:12;if(p+header>source.layers.end)throw Error('PSD 原生预设块截断。');const length=wide?Number(v.getBigUint64(p+8)):v.getUint32(p+8),end=p+header+length+length%2;if(!Number.isSafeInteger(end)||end>source.layers.end)throw Error('PSD 原生预设块长度无效。');const key=String.fromCharCode(...original.subarray(p+4,p+8));if(['Patt','Pat2','Pat3'].includes(key))keep.push(original.subarray(p,end));p=end;}
+ if(!keep.length)return encoded;const s=psdSections(encoded),body=concatBytes([encoded.subarray(s.layers.data,s.layers.end),...keep]),size=new Uint8Array(4);new DataView(size.buffer).setUint32(0,body.length);return concatBytes([encoded.subarray(0,s.layers.start),size,body,encoded.subarray(s.composite)]);
+}

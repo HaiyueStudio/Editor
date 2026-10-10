@@ -27,6 +27,7 @@ export async function runEditorBrowserScenario({
   timeoutMs = 90_000,
   headless = true,
   gpuTestFlags = true,
+  crossOriginIsolated = true,
   readinessExpression,
   scenario,
 }) {
@@ -35,7 +36,7 @@ export async function runEditorBrowserScenario({
     throw new Error(`Editor browser E2E requires Chrome. Set CHROME_PATH (looked for ${chrome}).`);
   }
 
-  const server = createStaticServer(root);
+  const server = createStaticServer(root, crossOriginIsolated);
   await new Promise((resolveListen, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolveListen);
@@ -482,7 +483,7 @@ function modifierBits(modifiers = []) {
   return bits;
 }
 
-function createStaticServer(root) {
+function createStaticServer(root, isolated) {
   const normalizedRoot = resolve(root);
   return createServer((request, response) => {
     try {
@@ -496,8 +497,7 @@ function createStaticServer(root) {
       response.writeHead(200, {
         'content-type': contentType(path),
         'cache-control': 'no-store',
-        'cross-origin-opener-policy': 'same-origin',
-        'cross-origin-embedder-policy': 'require-corp',
+        ...(isolated ? { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' } : {}),
       });
       response.end(readFileSync(path));
     } catch {

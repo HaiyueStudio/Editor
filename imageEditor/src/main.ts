@@ -1,3 +1,8 @@
+import { textDiagnosticMessage } from './textDiagnostics.js';
+import { spillState, serializeDiskProject, deserializeDiskProject } from './diskImage.js';
+import { withDiskPages } from './diskPager.js';
+import { hasDiskPixels } from './pagedPixels.js';
+import { HeaderMenus } from './headerMenus.js';
 import { initializeEditorUI } from './editorUI.js';
 import { isControlFocused } from './uiFocus.js';
 import { iccDocumentInfo,applyIccPolicy,builtinIcc,type IccPreset } from './iccWorkflow.js';
@@ -23,7 +28,7 @@ import { EditingTools } from './editingTools.js';
 import type {} from '@haiyue/editor-app-kit';
 import { allLayers, ImageDocument, layerLocked, makeLayer, type ImageLayer } from './document.js';
 import { ImageWorkspace } from './workspace.js';
-import { CanvasView, bitmapCanvas } from './canvasView.js';
+import { CanvasView, bitmapCanvas, bitmapThumbnail, paintThumbnail } from './canvasView.js';
 import { createDemo, decodeImage, imageDocument, rasterForDocument } from './imageImport.js';
 import { deserializeProject, MAX_PROJECT_BYTES, serializeProject } from './projectFile.js';
 import { IndexedDbRecovery, RecoveryQueue } from './recovery.js';
@@ -44,6 +49,8 @@ let pendingClose: ImageDocument | undefined;
 let sessionSignature = '';
 const view = new CanvasView($('viewport'), $('artboard'), $('image-canvas'), value => { zoom = value; $('zoom-label').textContent = `${Math.round(value * 100)}%`; });
 
+$('viewport').addEventListener('image-painted',()=>{const doc=workspace.active;if(!doc)return;const canvas=$<HTMLCanvasElement>('navigator-canvas'),ctx=canvas.getContext('2d')!,ratio=Math.min(220/doc.state.width,112/doc.state.height);ctx.clearRect(0,0,240,130);ctx.drawImage(view.displayCanvas,(240-doc.state.width*ratio)/2,(130-doc.state.height*ratio)/2,doc.state.width*ratio,doc.state.height*ratio);});
+$('viewport').addEventListener('image-render-error',event=>notice((event as CustomEvent).detail,true));
 const psdJobs = new PsdJobs((busy, label) => { $('psd-progress').hidden = !busy; $('psd-progress-label').textContent = label; });
 let choosePsd: ((state: import('./document.js').ImageState | null) => void) | undefined;
 let pendingPsd: PsdImportResult | undefined;
@@ -57,14 +64,14 @@ const nonDestructive = new NonDestructivePanel(() => workspace.active, view, not
 const smartSourcePanel = new SmartSourcePanel(workspace,notice);
 
 function notice(message: string, error = false) { $('notice-text').textContent = message; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
-async function run(action: () => unknown | Promise<unknown>) { try { await action(); } catch (error) { notice(error instanceof Error ? error.message : String(error), true); } }
+async function run(action: () => unknown | Promise<unknown>,scope:unknown=workspace.active?.selected) { try { await withDiskPages(scope,action); } catch (error) { notice(error instanceof Error ? error.message : String(error), true); } }
 function recoveryStatus(message: string, error = false) { $('recovery-status').textContent = message; $('recovery-status').title = message; $('recovery-status').classList.toggle('error', error); $('recovery-retry').hidden = !error || !recoveryEnabled; }
 async function flushRecovery() {
   if (recoveryTimer) clearTimeout(recoveryTimer); recoveryTimer = undefined;
   if (!ready || !recoveryEnabled || disposed) return;
   const generation = ++recoveryGeneration;
   try {
-    const session = workspace.session(); await recovery.write(session);
+    const session = workspace.session();if(session.version===2)for(const item of session.documents)if(hasDiskPixels(item.state))await spillState(item.state);await recovery.write(session);
     if (generation === recoveryGeneration && !disposed) recoveryStatus(workspace.documents.length ? '恢复副本已存到此浏览器' : '本地恢复已就绪');
   } catch (error) {
     recoveryStatus('自动恢复保存失败，请下载工程副本', true);
@@ -73,7 +80,7 @@ async function flushRecovery() {
 }
 function changed() {
   if (disposed) return;
-  if (!renderPending) { renderPending = true; queueMicrotask(() => { renderPending = false; if (!disposed) void run(render); }); }
+  if (!renderPending) { renderPending = true; queueMicrotask(() => { renderPending = false; if (!disposed) void run(render,[]); }); }
   const signature = JSON.stringify([workspace.active?.identity.id, ...workspace.documents.map(doc => [doc.identity.id, doc.revision, doc.savedRevision, doc.state.selectedId, doc.selectedIds])]);
   if (signature === sessionSignature) return; sessionSignature = signature;
   if (ready && recoveryEnabled) {
@@ -134,10 +141,11 @@ function render() {
       if (layer.kind === 'group') thumb.append(icon('folder'));
       else if (layer.bitmap) {
         const canvas = document.createElement('canvas'); canvas.width = 62; canvas.height = 62; const ratio = Math.min(62 / layer.bitmap.width, 62 / layer.bitmap.height);
-        canvas.getContext('2d')!.drawImage(bitmapCanvas(layer.bitmap), (62 - layer.bitmap.width * ratio) / 2, (62 - layer.bitmap.height * ratio) / 2, layer.bitmap.width * ratio, layer.bitmap.height * ratio); thumb.append(canvas);
+        canvas.dataset.thumbnail='loading';void paintThumbnail(canvas,layer.bitmap).then(()=>{canvas.dataset.thumbnail='ready';}).catch(error=>{canvas.dataset.thumbnail='error';canvas.title=String(error);});thumb.append(canvas);
       }
       const title = document.createElement('span'); title.className = 'layer-title'; title.textContent = (layer.clipping?'↳ ':'') + layer.name + (layer.content?.type==='smart'?' ◈':'') + (layer.styles?.enabled?' · fx':''); title.title = layer.name;
-      const lock = button(`${layer.locked ? '解锁' : '锁定'} ${layer.name}`, 'lock', () => { void run(() => doc?.updateLayer(layer.id, { locked: !layer.locked })); }); lock.className = 'layer-lock' + (layer.locked ? ' locked' : ''); lock.setAttribute('aria-pressed', String(layer.locked));
+      const partial=Object.values(layer.locks??{}).some(Boolean);
+      const lock = button(`${layer.locked ? '解锁' : '锁定'} ${layer.name}`, 'lock', () => { void run(() => doc?.updateLayer(layer.id, { locked: !layer.locked })); }); lock.className = 'layer-lock' + (layer.locked ? ' locked' : ''); lock.setAttribute('aria-pressed', String(layer.locked));if(partial){lock.classList.add('partial');lock.title='部分锁定：'+[layer.locks?.transparency?'透明像素':'',layer.locks?.pixels?'像素编辑':'',layer.locks?.position?'位置':'',layer.locks?.artboards?'画板自动嵌套':''].filter(Boolean).join('、')+'；在图层面板调整';}
       row.append(eye, thumb, title, lock); list.append(row); drawRows(layer.children, depth + 1);
     }
   };
@@ -146,15 +154,17 @@ function render() {
   const locked = !selected || Boolean(doc && layerLocked(doc.state.layers, selected.id));
   property('layer-name', selected?.name ?? '', locked); property('opacity', String(Math.round((selected?.opacity ?? 1) * 100)), locked);
   property('blend-mode', selected?.blend ?? 'normal', locked);
-  property('layer-x', String(selected?.x ?? 0), locked || selected?.kind === 'group'); property('layer-y', String(selected?.y ?? 0), locked || selected?.kind === 'group');
+  const positionLocked=!selected||!!doc&&layerLocked(doc.state.layers,selected.id,'position');
+  for(const key of ['all','transparency','pixels','position'] as const){const input=$<HTMLInputElement>('lock-'+key);input.checked=key==='all'?!!selected?.locked:!!selected?.locks?.[key];input.disabled=!selected||key!=='all'&&!!selected.locked;}
+  property('layer-x', String(selected?.x ?? 0), positionLocked || selected?.kind === 'group'); property('layer-y', String(selected?.y ?? 0), positionLocked || selected?.kind === 'group');
   $('layer-kind').textContent = selected ? selected.kind === 'group' ? '图层组' : selected.content?.type==='smart'?'智能对象':selected.content?.type==='text'?'可编辑文字':selected.content?.type==='shape'?'可编辑形状':selected.kind==='adjustment'?'调整图层':'像素图层' : '—';
   $('layer-size').textContent = selected?.bitmap ? `${selected.bitmap.width} × ${selected.bitmap.height} px` : selected?.kind === 'group' ? `${selected.children.length} 个子图层` : '透明图层';
   $('layer-count').textContent = `${doc ? allLayers(doc.state.layers).length : 0} 个图层 · 已选 ${doc?.selectedIds.length ?? 0}`;
   $('document-info').textContent = doc ? `${doc.state.width} × ${doc.state.height} px   /   ${(doc.state.colorMode??'rgb').toUpperCase()} · ${doc.state.bitDepth??8} 位 · ${iccDocumentInfo(doc.state).working?.name??(doc.state.colorMode==='cmyk'?'未标记 ICC · 近似预览':'未标记 ICC')}${doc.state.bitDepth===32?' 线性 HDR':''}${doc.dirty ? '   /   工程副本未保存' : ''}` : '准备就绪';
   $('navigator-size').textContent = doc ? `${doc.state.width} × ${doc.state.height}` : '—'; $('navigator-empty').hidden = Boolean(doc);
-  view.setDocument(doc?.state); productivity.sync(); cmykPanel.sync(); colorPanel.sync(); editing.sync(); advanced.sync(); nonDestructive.sync(); paths.sync();
+  view.setDocument(doc?.state); productivity.sync(); cmykPanel.sync(); colorPanel.sync(); editing.sync(); headerMenus.update(Boolean(doc), Boolean(doc?.state.selection)); advanced.sync(); nonDestructive.sync(); paths.sync();
   const navigator = $<HTMLCanvasElement>('navigator-canvas'), ctx = navigator.getContext('2d')!; ctx.clearRect(0, 0, 240, 130);
-  if (doc) { const ratio = Math.min(220 / doc.state.width, 112 / doc.state.height); ctx.drawImage(view.canvas, (240 - doc.state.width * ratio) / 2, (130 - doc.state.height * ratio) / 2, doc.state.width * ratio, doc.state.height * ratio); }
+  if (doc) { const ratio = Math.min(220 / doc.state.width, 112 / doc.state.height); ctx.drawImage(view.displayCanvas, (240 - doc.state.width * ratio) / 2, (130 - doc.state.height * ratio) / 2, doc.state.width * ratio, doc.state.height * ratio); }
 }
 
 const downloadUrls = new Set<string>();
@@ -165,7 +175,7 @@ function download(content: Blob, name: string) {
 async function save(doc = workspace.active) {
   if (!doc) return false;
   editing.cancel();
-  const revision = doc.revision, source = serializeProject(doc.state);
+  const revision = doc.revision, source = await serializeDiskProject(doc.state);
   const blob = new Blob([source], { type: 'application/json' }), name = doc.identity.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') + '.hyimage';
   const picker = (window as unknown as { showSaveFilePicker?: (options: unknown) => Promise<{ createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }> }> }).showSaveFilePicker;
   if (picker) {
@@ -194,26 +204,28 @@ async function openFiles(files: readonly File[], asLayer: boolean) {
       if (/\.(psd|psb)$/i.test(file.name)) {
         if (asLayer) throw new Error('PSD 请使用“打开”，以保留文档图层。');
         if (file.size > 128 * 1024 * 1024) throw new Error('PSD 文件超过 128 MiB 限制。');
-        const result = await psdJobs.import(new Uint8Array(await file.arrayBuffer()), file.name);
+        const result = await psdJobs.import(new Uint8Array(await file.arrayBuffer()), file.name, true);
         if (disposed) return;
         const preview = $<HTMLCanvasElement>('psd-import-preview'), context = preview.getContext('2d')!;
         context.clearRect(0,0,preview.width,preview.height); preview.hidden = !result.flattened;
         const bitmap = result.flattened?.layers[0]?.bitmap;
         if (bitmap) { const scale = Math.min(320 / bitmap.width,180 / bitmap.height); context.drawImage(bitmapCanvas(bitmap),(320-bitmap.width*scale)/2,(180-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale); }
         pendingPsd = result; const colorSource=result.layered??result.flattened;$('psd-color-summary').textContent=colorSource?(()=>{const info=iccDocumentInfo(colorSource);return info.working?`源 ICC：${info.working.name} · ${info.reason||'默认保留原配置'}`:info.colorMode==='cmyk'?'源文档未标记 CMYK 配置；预览为近似，转换前需先指定源配置。':'源文档未嵌入 ICC；默认保留未标记状态，转换时按 sRGB（32 位按线性 sRGB）解释。';})():'';$<HTMLSelectElement>('psd-color-policy').value='preserve';$<HTMLSelectElement>('psd-color-preset').value='srgb';$<HTMLInputElement>('psd-color-file').value=''; $('psd-source-name').textContent = result.sourceName;
-        $('psd-import-summary').textContent = result.layered ? '可以分层编辑，请阅读兼容范围。' : '包含未支持的特性，无法安全地分层编辑。';
-        $('psd-import-details').textContent = [...result.blockers, ...result.warnings].join('\n');
+        $('psd-import-summary').textContent = result.layered ? (result.warnings.length?`可以分层编辑，有 ${result.warnings.length} 项内容需留意。`:'可以分层编辑，未发现已知兼容问题。') : result.memory.compositeOnly ? (result.flattened ? '分层解码超出内存预算，可打开合并图副本。' : '分层解码超出内存预算，原件也没有可用的合并图。') : '包含未支持的特性，无法安全地分层编辑。';
+        const textIssues=result.textDiagnostics.filter(d=>d.issues.length),textMessages=new Set(textIssues.map(textDiagnosticMessage)),otherWarnings=result.warnings.filter(w=>!textMessages.has(w));
+        $('psd-import-details').textContent=[...(result.blockers.length?['无法分层编辑：',...result.blockers]:[]),...(otherWarnings.length?['编辑／导出时需留意：',...otherWarnings]:[])].join('\n');$('psd-import-details').hidden=!result.blockers.length&&!otherWarnings.length;
+        const textDetails=$<HTMLDetailsElement>('psd-text-details');textDetails.hidden=!textIssues.length;textDetails.open=false;$('psd-text-summary').textContent=`文字检查：${result.textDiagnostics.length} 层，${textIssues.length} 层有具体限制（修改文字时生效）`;$('psd-text-issues').textContent=textIssues.map(textDiagnosticMessage).join('\n\n');$('psd-import-notes').textContent=result.notes.join('\n');
         $<HTMLButtonElement>('psd-import-layers').disabled = !result.layered;
         $<HTMLButtonElement>('psd-import-flat').disabled = !result.flattened;
         const choice = new Promise<import('./document.js').ImageState | null>(resolve => { choosePsd = resolve; });
         $<HTMLDialogElement>('psd-import-dialog').showModal();
         const state = await choice; if (disposed) return;
         if (!state) { notice('已取消 PSD 导入，当前文档未改变。'); return; }
-        workspace.add(new ImageDocument(state));
+        if(result.memory.paged)await spillState(state);workspace.add(new ImageDocument(state));
       } else if (/\.hyimage$/i.test(file.name)) {
         if (asLayer) throw new Error('工程文件请使用“打开”。');
         if (file.size > MAX_PROJECT_BYTES) throw new Error('工程文件过大。');
-        const state = deserializeProject(await file.text(), true); if (disposed) return; workspace.add(new ImageDocument(state, true));
+        const state = await deserializeDiskProject(await file.text(), true); if (disposed) return; workspace.add(new ImageDocument(state, true));
       } else {
         const bitmap = await decodeImage(file); if (disposed) return;
         const name = file.name.replace(/\.[^.]+$/, '').slice(0, 160) || '导入图片';
@@ -239,14 +251,14 @@ const actions: Record<string, () => unknown | Promise<unknown>> = {
   'refine-selection':()=>professional.open('refine'), 'color-management':()=>colorPanel.open(), batch:()=>professional.open('batch'), 'path-new':()=>paths.start(), 'path-apply':()=>paths.apply(), 'path-cancel':()=>paths.cancel(), 'path-closed':()=>paths.toggleClosed(),
   clipping: () => nonDestructive.clipping(), 'layer-styles': () => nonDestructive.openStyles(), 'smart-convert': () => nonDestructive.convert(), 'smart-replace': () => nonDestructive.chooseSource(),
   'copy-pixels': () => editing.copy(), 'paste-pixels': () => editing.paste(), 'free-transform': () => editing.startTransform(),
-  'merge-layers': () => { const doc = workspace.active; if (doc) mergeLayers(doc, doc.selectedIds); },
+  'merge-layers': async () => { const doc = workspace.active; if (doc) await withDiskPages(doc.state,()=>mergeLayers(doc, doc.selectedIds)); },
   'align-layers': () => { const doc = workspace.active; if (doc) alignLayers(doc, doc.selectedIds, $<HTMLSelectElement>('align-kind').value as Alignment, $<HTMLSelectElement>('align-target').value as 'selection' | 'canvas'); },
   'retry-recovery': flushRecovery,
   'smart-filters':()=>liveEffects.open('filters'),'mask-properties':()=>liveEffects.open('mask'),'blend-if':()=>liveEffects.open('blend'),
   histogram:()=>histogram.open(),
   filters: () => filters.open(), 'invert-selection':()=>editing.invert(), 'select-color':()=>editing.selectColor(), feather:()=>editing.modify('feather'), 'expand-selection':()=>editing.modify('expand'), 'contract-selection':()=>editing.modify('contract'),
   'export-psd': () => { editing.cancel(); const warnings=workspace.active?[...psdExportWarnings(workspace.active.state),...psdMetadataWarnings(workspace.active.state)]:[]; $('psd-export-losses').textContent=warnings.join('\n');$('psd-export-consent-row').hidden=!warnings.length;$<HTMLInputElement>('psd-export-consent').checked=false;$<HTMLButtonElement>('psd-export-confirm').disabled=Boolean(warnings.length);$<HTMLDialogElement>('psd-export-dialog').showModal(); },
-  'select-all': () => editing.selectAll(), deselect: () => editing.deselect(), fill: () => editing.fill(), clear: () => editing.fill(true), crop: () => editing.crop(),
+  'select-all': () => editing.selectAll(), deselect: () => editing.deselect(), fill: () => editing.fill(), clear: () => editing.fill(true), crop: () => withDiskPages(workspace.active?.state,()=>editing.crop()),
   transform: () => {
     editing.cancel(); const layer = workspace.active?.selected; if (!layer?.bitmap) throw new Error('请选择含像素的图层。');
     $<HTMLInputElement>('transform-width').value = String(layer.bitmap.width); $<HTMLInputElement>('transform-height').value = String(layer.bitmap.height);
@@ -264,9 +276,10 @@ const actions: Record<string, () => unknown | Promise<unknown>> = {
   duplicate: () => workspace.active?.duplicateSelected(), delete: () => workspace.active?.deleteSelected(), 'delete-selection': () => workspace.active?.state.selection ? editing.fill(true) : workspace.active?.deleteSelected(), up: () => workspace.active?.reorder(1), down: () => workspace.active?.reorder(-1),
   'rename-document': () => { if (workspace.active) { $<HTMLInputElement>('document-name').value = workspace.active.identity.name; $<HTMLDialogElement>('rename-dialog').showModal(); } },
 };
+const headerMenus = new HeaderMenus(action => { editing.cancel(); void run(actions[action]!); }, lifecycle.signal);
 document.addEventListener('click', event => {
   const action = (event.target as Element).closest<HTMLButtonElement>('[data-action]');
-  if (action && !action.hasAttribute('disabled')) { action.closest('details')?.removeAttribute('open'); editing.cancel(); void run(actions[action.dataset.action!.replace(/^menu-/,'')]!); }
+  if (action && !action.hasAttribute('disabled')) { editing.cancel(); void run(actions[action.dataset.action!.replace(/^menu-/,'')]!); }
   if ((event.target as Element).closest('[data-close-dialog]')) (event.target as Element).closest('dialog')?.close();
 }, options);
 for (const [id, submit] of [
@@ -328,8 +341,9 @@ for (const [id, asLayer] of [['open-input', false], ['import-input', true]] as c
 }, options);
 for (const [id, patch] of [ ['layer-name', (value: string) => ({ name: value.trim() })], ['opacity', (value: string) => ({ opacity: Number(value) / 100 })],
   ['blend-mode', (value: string) => ({ blend: value as ImageLayer['blend'] })], ['layer-x', (value: string) => ({ x: Number(value) })], ['layer-y', (value: string) => ({ y: Number(value) })] ] as const) {
-  $(id).addEventListener('change', event => { void run(() => selectedChange(patch((event.target as HTMLInputElement).value))).finally(changed); }, options);
+  $(id).addEventListener('change', event => { void run(() => selectedChange(patch((event.target as HTMLInputElement).value)),[]).finally(changed); }, options);
 }
+for(const key of ['all','transparency','pixels','position'] as const){$('lock-'+key).addEventListener('change',event=>{const checked=(event.target as HTMLInputElement).checked;void run(()=>{const doc=workspace.active,layer=doc?.selected;if(layer)doc!.updateLayer(layer.id,key==='all'?{locked:checked}:{locks:{...layer.locks,[key]:checked}});},[]).finally(changed);},options);}
 let dragDepth = 0;
 window.addEventListener('dragover', event => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }, options);
 $('viewport').addEventListener('dragenter', event => { if (event.dataTransfer?.types.includes('Files')) { event.preventDefault(); dragDepth++; $('drop-overlay').hidden = false; } }, options);

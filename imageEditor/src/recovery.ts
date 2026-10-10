@@ -1,4 +1,4 @@
-import { RecoveryCodec, decodeRecovery, type BinarySession, type StoredSession } from './recoveryCodec.js';
+import { RecoveryCodec, decodeRecovery, type BinarySession, type PagedStoredSession, type StoredSession } from './recoveryCodec.js';
 export interface LegacySession { version: 1; activeId: string | null; documents: { project: string; dirty: boolean }[] }
 export type RecoverySession = LegacySession | BinarySession;
 export interface RecoveryStore { load(): Promise<unknown>; save(session: RecoverySession): Promise<void>; close(): void }
@@ -26,13 +26,14 @@ export class IndexedDbRecovery implements RecoveryStore {
     const db = await this.db();
     const entries = await new Promise<Map<string, unknown>>((resolve, reject) => {
       const tx = db.transaction('recovery', 'readonly'), store = tx.objectStore('recovery'), entries = new Map<string, unknown>();
-      const cursor = store.openCursor(); cursor.onsuccess = () => { const row = cursor.result; if (row) { entries.set(String(row.key), row.value); row.continue(); } };
+      const session=store.get('session');session.onsuccess=()=>entries.set('session',session.result);
+      const cursor=store.openCursor(IDBKeyRange.bound('chunk:','chunk:\uffff'));cursor.onsuccess=()=>{const row=cursor.result;if(row){entries.set(String(row.key),row.value);row.continue();}};
       tx.oncomplete = () => resolve(entries);
       tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('无法读取恢复副本。'));
     });
     this.keys = new Set([...entries.keys()].filter(key => key.startsWith('chunk:')));
     const value = entries.get('session');
-    return [3,4,5,6,7,8,9,10,11,12,13].includes((value as StoredSession)?.version) ? decodeRecovery(value as StoredSession, entries) : value;
+    return [3,4,5,6,7,8,9,10,11,12,13,14].includes((value as StoredSession)?.version) ? decodeRecovery(value as StoredSession | PagedStoredSession, entries) : value;
   }
   async save(session: RecoverySession): Promise<void> {
     const db = await this.db();

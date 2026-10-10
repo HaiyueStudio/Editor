@@ -1,0 +1,14 @@
+import { hydratePixels } from './pagedPixels.js';
+const LIMIT=128*1024*1024;
+export interface PixelArchive {tree:unknown;buffers:Uint8Array[]}
+/** Binary views share one bounded backing range; unrelated bytes from pooled buffers are never serialized. */
+export function encodePixelArchive(value:unknown):PixelArchive {
+ const ranges=new Map<ArrayBufferLike,{start:number;end:number;index:number}>();let nodes=0;
+ const scan=(v:unknown,depth=0)=>{if(++nodes>200000||depth>80)throw Error('分块工程结构过大。');if(ArrayBuffer.isView(v)){const old=ranges.get(v.buffer);if(old){old.start=Math.min(old.start,v.byteOffset);old.end=Math.max(old.end,v.byteOffset+v.byteLength);}else ranges.set(v.buffer,{start:v.byteOffset,end:v.byteOffset+v.byteLength,index:ranges.size});return;}if(v&&typeof v==='object')for(const child of Object.values(v))scan(child,depth+1);};scan(value);
+ let bytes=0;const buffers=[...ranges].map(([buffer,r])=>{bytes+=r.end-r.start;if(bytes>LIMIT)throw Error('分块工程压缩存储超过 128 MiB。');return new Uint8Array(buffer,r.start,r.end-r.start);});
+ const encode=(v:unknown):unknown=>{if(ArrayBuffer.isView(v)){const r=ranges.get(v.buffer)!;if(!(v instanceof Uint8Array||v instanceof Uint8ClampedArray||v instanceof Float32Array||v instanceof Uint16Array))throw Error('不支持的像素缓冲类型。');return {$pixelBuffer:r.index,type:v.constructor.name,offset:v.byteOffset-r.start,length:v.byteLength};}if(Array.isArray(v))return v.map(encode);if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).filter(([,x])=>x!==undefined).map(([k,x])=>[k,encode(x)]));return v;};return {tree:encode(value),buffers};
+}
+export function decodePixelArchive<T>(tree:unknown,buffers:readonly Uint8Array[]):T {
+ if(buffers.length>200000||buffers.reduce((n,b)=>n+b.byteLength,0)>LIMIT)throw Error('分块工程缓冲超过预算。');let nodes=0;
+ const decode=(v:unknown,depth=0):unknown=>{if(++nodes>200000||depth>80)throw Error('分块工程结构过大。');if(Array.isArray(v))return v.map(x=>decode(x,depth+1));if(v&&typeof v==='object'){const o=v as Record<string,unknown>;if(Object.hasOwn(o,'$pixelBuffer')){const index=o.$pixelBuffer as number,offset=o.offset as number,length=o.length as number,b=buffers[index];if(![index,offset,length].every(Number.isSafeInteger)||!b||offset<0||length<0||offset+length>b.byteLength)throw Error('分块工程二进制引用无效。');const ctor=o.type==='Uint8Array'?Uint8Array:o.type==='Uint8ClampedArray'?Uint8ClampedArray:o.type==='Float32Array'?Float32Array:o.type==='Uint16Array'?Uint16Array:undefined;if(!ctor||offset%ctor.BYTES_PER_ELEMENT||length%ctor.BYTES_PER_ELEMENT)throw Error('分块工程像素对齐无效。');return new ctor(b.buffer as ArrayBuffer,b.byteOffset+offset,length/ctor.BYTES_PER_ELEMENT);}return Object.fromEntries(Object.entries(o).map(([k,x])=>[k,decode(x,depth+1)]));}return v;};return hydratePixels(decode(tree) as T);
+}

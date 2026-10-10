@@ -1,3 +1,7 @@
+import { effectiveLocks } from './layerLocks.js';
+import { archiveBytes, diskPager } from './diskPager.js';
+import { storageInfo, spillState, serializeDiskProject, deserializeDiskProject } from './diskImage.js';
+import { pagedState, pagedPixelStats, clearPagedPixelCache } from './pagedPixels.js';
 import { applyIccPolicy,builtinIcc,ICC_PRESETS,iccDocumentInfo,type IccPreset } from './iccWorkflow.js';
 import { initializeIcc } from './iccEngine.js';
 import { embeddedProfile } from './colorManagement.js';
@@ -31,40 +35,42 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
   };
   function register<T>(id: string, input: EditorOperationSchema, access: 'read' | 'write',
     prepare: (params: Params, context: EditorOperationContext) => T | Promise<T>, commit: (value: T) => EditorJsonValue) {
-    owned.push(platform.operations.register({ ownerId: 'image.operations',
+    owned.push(workspace.registerOperation({ ownerId: 'image.operations',
       descriptor: { id: `image.${id}`, version: 1, title: id, target: 'document', documentKinds: ['haiyue.image'], access, input, output: { type: 'json' } },
       prepare, commit,
       // Document commits use runAtomic and return bounded, fixed JSON; all failures restore there.
       rollback() {},
     }));
   }
-  owned.push(platform.operations.register({ ownerId: 'image.operations',
+  owned.push(workspace.registerOperation({ ownerId: 'image.operations',
     descriptor: { id: 'image.document.open', version: 1, title: 'Open image project or PSD', target: 'workspace', access: 'write',
       input: { type: 'object', properties: { colorPolicy:{type:'string',enum:['preserve','assign','convert']},profileId:string,preset:{type:'string',enum:[...ICC_PRESETS]},resourceId: string, name: string, format: { type: 'string', enum: ['project', 'psd', 'png', 'jpeg'] } }, required: ['resourceId', 'name', 'format'] }, output: { type: 'json' } },
     async prepare(params: Params,context) {
       const bytes = platform.resources.read(params.resourceId as string);
-      let state;
-      let warnings: string[] = [];
+      let state,spill=false;
+      let warnings: string[] = [];let textDiagnostics:EditorJsonValue[]=[];
       if (params.format === 'psd') {
         const { importPsd } = await import('./psdAdapter.js');
-        const result = importPsd(bytes, params.name as string);
+        const {checkImportTextFonts}=await import('./textFonts.js');
+        const result = await checkImportTextFonts(importPsd(bytes, params.name as string));
         if (!result.layered || result.blockers.length) throw new Error(result.blockers.join(' ') || 'PSD cannot be opened losslessly.');
-        state = result.layered; warnings = result.warnings;
+        state = result.layered; warnings = result.warnings;textDiagnostics=JSON.parse(JSON.stringify(result.textDiagnostics));spill=result.memory.paged===true;
       } else if (params.format === 'png' || params.format === 'jpeg') {
         const { decodeImage, imageDocument } = await import('./imageImport.js');
         const imported = imageDocument(params.name as string, await decodeImage(new File([bytes.slice().buffer], params.name as string))); state = imported.state; imported.dispose();
-      } else state = deserializeProject(new TextDecoder('utf-8', { fatal: true }).decode(bytes), true);
+      } else state = await deserializeDiskProject(new TextDecoder('utf-8', { fatal: true }).decode(bytes), true,context.signal);
       if(params.profileId&&params.preset)throw Error('profileId 与 preset 只能选一个。');
       const target=params.profileId?platform.resources.read(params.profileId as string):params.preset?builtinIcc(params.preset as IccPreset):undefined;
       if(target||embeddedProfile(state))await initializeIcc();context.signal.throwIfAborted();
       state=await applyIccPolicy(state,(params.colorPolicy??'preserve') as 'preserve'|'assign'|'convert',target,undefined,context.signal);
       if(!embeddedProfile(state))warnings.push(state.colorMode==='cmyk'?'未指定 CMYK ICC；预览为近似，RGB 工具编辑前需指定配置。':`未嵌入 ICC；按 ${state.bitDepth===32?'线性 sRGB':'sRGB'} 解释像素。`);
-      return { document: new ImageDocument(state, true), warnings, previousActiveId: null as string | null };
+      if(spill&&typeof indexedDB!=='undefined')await spillState(state,context.signal);
+      return { document: new ImageDocument(state, true), warnings,textDiagnostics, previousActiveId: null as string | null };
     },
     commit(prepared) {
       prepared.previousActiveId = workspace.active?.identity.id ?? null;
       workspace.add(prepared.document);
-      return { documentId: prepared.document.identity.id, revision: prepared.document.revision, warnings: prepared.warnings };
+      return { documentId: prepared.document.identity.id, revision: prepared.document.revision, warnings: prepared.warnings,textDiagnostics:prepared.textDiagnostics };
     },
     async rollback(prepared) {
       if (!prepared) return;
@@ -75,7 +81,7 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
       } else document.dispose();
     },
   }));
-  owned.push(platform.operations.register({ ownerId: 'image.operations',
+  owned.push(workspace.registerOperation({ ownerId: 'image.operations',
     descriptor: { id: 'image.document.create', version: 1, title: 'New image document', target: 'workspace', access: 'write', input: { type: 'object', properties: { name: string, width: { type: 'integer', minimum: 1, maximum: 8192 }, height: { type: 'integer', minimum: 1, maximum: 8192 }, white: { type: 'boolean' },bitDepth:{type:'integer',minimum:8,maximum:32} }, required: ['name', 'width', 'height'] }, output: { type: 'json' } },
     prepare(p: Params) { const document=ImageDocument.create(p.name as string,p.width as number,p.height as number,p.white===true);if(p.bitDepth)document.setDepth(p.bitDepth as 8|16|32);return { document, previousActiveId: workspace.active?.identity.id }; },
     commit(p) { workspace.add(p.document); return { documentId: p.document.identity.id, revision: p.document.revision }; },
@@ -86,11 +92,13 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
     selectedId: document.state.selectedId, selectedIds: [...document.selectedIds], canUndo: document.history.canUndo, canRedo: document.history.canRedo,
     selection: document.state.selection ? { x: document.state.selection.x, y: document.state.selection.y, width: document.state.selection.width, height: document.state.selection.height, pixels: selectionCount(document.state.selection) } : null,
     channels:(document.state.channels??[]).map(c=>({id:c.id,name:c.name,width:document.state.width,height:document.state.height})),layout:document.state.layout?JSON.parse(JSON.stringify(document.state.layout)):null,actions:JSON.parse(JSON.stringify(document.state.actions??[])),
-    colorProfile:iccDocumentInfo(document.state),icc:document.state.icc?{intent:document.state.icc.intent,bpc:document.state.icc.bpc,proofIntent:document.state.icc.proofIntent,gamutWarning:document.state.icc.gamutWarning,proofEnabled:iccDocumentInfo(document.state).proofEnabled,customMonitor:!!document.state.icc.monitorProfile}:null,colorMode:document.state.colorMode??'rgb',bitDepth:document.state.bitDepth??8,display:{exposure:document.state.display?.exposure??0,operator:document.state.display?.operator??'clip',output:document.state.display?.output??'sdr'}, layers: allLayers(document.state.layers).map(layer => ({ id: layer.id, name: layer.name, opacity: layer.opacity, visible: layer.visible, locked: layer.locked, parentId: allLayers(document.state.layers).find(parent => parent.children.some(child => child.id === layer.id))?.id ?? null, width: layer.bitmap?.width ?? null, height: layer.bitmap?.height ?? null, clipping: layer.clipping ?? false,smartFilters:layer.smartFilters?JSON.parse(JSON.stringify(layer.smartFilters)):null,blendIf:layer.blendIf?JSON.parse(JSON.stringify(layer.blendIf)):null,filterMask:layer.filterMask?{width:layer.filterMask.width,height:layer.filterMask.height,x:layer.filterMask.x,y:layer.filterMask.y,disabled:layer.filterMask.disabled,defaultColor:layer.filterMask.defaultColor,density:layer.filterMask.density??1,feather:layer.filterMask.feather??0}:null, styles: layer.styles ? JSON.parse(JSON.stringify(layer.styles)) : null, content: layer.content?.type==='smart' ? {type:'smart',name:layer.content.name,sourceId:layer.content.sourceId,sourceWidth:layer.content.source.width,sourceHeight:layer.content.source.height,multilayer:Boolean(layer.content.sourcePsd),sourceBytes:layer.content.sourcePsd?.byteLength??0,transform:{...layer.content.transform}} : layer.content ? JSON.parse(JSON.stringify(layer.content)) : null, mask: layer.mask ? { width: layer.mask.width, height: layer.mask.height, x: layer.mask.x, y: layer.mask.y, disabled: layer.mask.disabled, defaultColor: layer.mask.defaultColor,density:layer.mask.density??1,feather:layer.mask.feather??0 } : null, kind: layer.kind, x: layer.x, y: layer.y, blend: layer.blend })),
+    storage:{...storageInfo(document.state),sourcePsdBytes:archiveBytes(document.state),cache:pagedPixelStats()},colorProfile:iccDocumentInfo(document.state),icc:document.state.icc?{intent:document.state.icc.intent,bpc:document.state.icc.bpc,proofIntent:document.state.icc.proofIntent,gamutWarning:document.state.icc.gamutWarning,proofEnabled:iccDocumentInfo(document.state).proofEnabled,customMonitor:!!document.state.icc.monitorProfile}:null,colorMode:document.state.colorMode??'rgb',bitDepth:document.state.bitDepth??8,display:{exposure:document.state.display?.exposure??0,operator:document.state.display?.operator??'clip',output:document.state.display?.output??'sdr'}, layers: allLayers(document.state.layers).map(layer => ({ id: layer.id, name: layer.name, opacity: layer.opacity, visible: layer.visible, locked: layer.locked, locks: {...layer.locks}, effectiveLocks: {...effectiveLocks(document.state.layers,layer.id)}, parentId: allLayers(document.state.layers).find(parent => parent.children.some(child => child.id === layer.id))?.id ?? null, width: layer.bitmap?.width ?? null, height: layer.bitmap?.height ?? null, clipping: layer.clipping ?? false,smartFilters:layer.smartFilters?JSON.parse(JSON.stringify(layer.smartFilters)):null,blendIf:layer.blendIf?JSON.parse(JSON.stringify(layer.blendIf)):null,filterMask:layer.filterMask?{width:layer.filterMask.width,height:layer.filterMask.height,x:layer.filterMask.x,y:layer.filterMask.y,disabled:layer.filterMask.disabled,defaultColor:layer.filterMask.defaultColor,density:layer.filterMask.density??1,feather:layer.filterMask.feather??0}:null, styles: layer.styles ? JSON.parse(JSON.stringify(layer.styles)) : null, content: layer.content?.type==='smart' ? {type:'smart',name:layer.content.name,sourceId:layer.content.sourceId,sourceWidth:layer.content.source.width,sourceHeight:layer.content.source.height,multilayer:Boolean(layer.content.sourcePsd),sourceBytes:layer.content.sourcePsd?.byteLength??0,transform:{...layer.content.transform}} : layer.content ? JSON.parse(JSON.stringify(layer.content)) : null, mask: layer.mask ? { width: layer.mask.width, height: layer.mask.height, x: layer.mask.x, y: layer.mask.y, disabled: layer.mask.disabled, defaultColor: layer.mask.defaultColor,density:layer.mask.density??1,feather:layer.mask.feather??0 } : null, kind: layer.kind, x: layer.x, y: layer.y, passThrough:layer.passThrough??false,blend: layer.blend })),
   }));
   register('layer.opacity', { type: 'object', properties: { layerId: string, opacity: { type: 'number', minimum: 0, maximum: 1 } }, required: ['layerId', 'opacity'] }, 'write',
     (params, context) => ({ document: doc(context), layerId: params.layerId as string, opacity: params.opacity as number }),
     ({ document, layerId, opacity }) => document.runAtomic(() => { const revision = document.revision; document.updateLayer(layerId, { opacity }); return { applied: document.revision !== revision }; }));
+  register('storage.trim',empty,'write',()=>null,()=>{diskPager.clear();clearPagedPixelCache();return {...diskPager.stats()};});
+  register('storage.spill',empty,'write',async(_,context)=>{const d=doc(context);return await spillState(d.state,context.signal);},stats=>({...stats}));
   register('history.undo', empty, 'write', (_, context) => doc(context), document => document.runAtomic(() => ({ applied: document.history.undo() })));
   register('history.redo', empty, 'write', (_, context) => doc(context), document => document.runAtomic(() => ({ applied: document.history.redo() })));
   register('document.rename', { type: 'object', properties: { name: string }, required: ['name'] }, 'write',
@@ -100,7 +108,7 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
     (params, context) => ({ document: doc(context), layer: makeLayer(params.name as string, null, params.kind as 'pixel' | 'group') }),
     ({ document, layer }) => document.runAtomic(() => { document.addLayer(layer, false); return { layerId: layer.id }; }));
   register('layer.update', { type: 'object', properties: { layerId: string, patch: { type: 'object', properties: {
-    name: string, visible: { type: 'boolean' }, locked: { type: 'boolean' }, opacity: { type: 'number', minimum: 0, maximum: 1 },
+    passThrough:{type:'boolean'},name: string, visible: { type: 'boolean' }, locked: { type: 'boolean' }, locks: {type:'object',properties:{transparency:{type:'boolean'},pixels:{type:'boolean'},position:{type:'boolean'},artboards:{type:'boolean'}}}, opacity: { type: 'number', minimum: 0, maximum: 1 },
     blend: { type: 'string', enum: Object.keys(BLEND_MODES) }, x: { type: 'integer', minimum: -32768, maximum: 32768 }, y: { type: 'integer', minimum: -32768, maximum: 32768 },
   } } }, required: ['layerId', 'patch'] }, 'write',
     (params, context) => ({ document: doc(context), id: params.layerId as string, patch: params.patch as Partial<ImageLayer> }),
@@ -127,7 +135,7 @@ export function registerImageOperations(workspace: ImageWorkspace): EditorDispos
       const snapshot = structuredClone(doc(context).state);
       const bytes = params.format === 'psd'
         ? (await import('./psdAdapter.js')).exportPsd(snapshot, params.allowRasterize === true,params.embedProfile!==false).bytes
-        : params.format === 'png' || params.format === 'jpeg' ? await (await import('./rasterExport.js')).exportRaster(snapshot, params.format, (params.quality ?? 0.92) as number,params.embedProfile!==false) : new TextEncoder().encode(serializeProject(snapshot));
+        : params.format === 'png' || params.format === 'jpeg' ? await (await import('./rasterExport.js')).exportRaster(snapshot, params.format, (params.quality ?? 0.92) as number,params.embedProfile!==false) : new TextEncoder().encode(await serializeDiskProject(snapshot,context.signal));
       return { bytes, format: params.format as string };
     }, ({ bytes, format }) => ({ ...platform.resources.put(bytes), format }));
   owned.push(registerColorDomainOperations(workspace),registerIccOperations(workspace), registerDepthOperations(workspace),registerFoundationOperations(workspace), registerDailyOperations(workspace), registerProfessionalOperations(workspace), registerProductivityOperations(workspace));

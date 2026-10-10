@@ -37,14 +37,15 @@ function spread(alpha:Float32Array,width:number,height:number,radius:number,maxi
  };return pass(pass(alpha,true),false);
 }
 /** Common styles are live parameters. Shadow uses a bounded separable blur; stroke uses square dilation. */
-export function styleBitmap(source:Bitmap,styles:LayerStyles|undefined):Bitmap {
+export function styleBitmap(source:Bitmap,styles:LayerStyles|undefined,origin={x:0,y:0}):Bitmap {
  if(!styles?.enabled)return source;
+ if(!styles.shadow&&!styles.stroke&&!styles.innerGlow){if(!styles.overlay)return source;const overlay=styles.overlay,color=rgb(overlay.color,source),data=source.data.slice();for(let i=0;i<data.length;i+=4)if(data[i+3])for(let c=0;c<3;c++)data[i+c]=data[i+c]!*(1-overlay.opacity)+color[c]!*overlay.opacity;return withPixels(source.width,source.height,data,source);}
  const {width,height}=source,alpha=Float32Array.from({length:width*height},(_,i)=>source.data[i*4+3]!/255),data=pixelArray(source.data.length,source);
  const put=(i:number,color:readonly number[],a:number)=>{if(!a)return;const b=data[i+3]!/255,o=a+b*(1-a);for(let c=0;c<3;c++)data[i+c]=(color[c]!*a+data[i+c]!*b*(1-a))/o;data[i+3]=o*255;};
- if(styles.shadow){const s=styles.shadow,color=rgb(s.color,source),blurred=spread(alpha,width,height,s.blur,false);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const sx=x-s.dx,sy=y-s.dy;if(sx>=0&&sy>=0&&sx<width&&sy<height)put((y*width+x)*4,color,blurred[sy*width+sx]!*s.opacity);}}
+ if(styles.shadow){const s=styles.shadow,color=rgb(s.color,source),blurred=spread(alpha,width,height,s.blur,false);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const sx=x-s.dx,sy=y-s.dy,ix=Math.floor(sx),iy=Math.floor(sy),fx=sx-ix,fy=sy-iy;const at=(px:number,py:number)=>px>=0&&py>=0&&px<width&&py<height?blurred[py*width+px]!:0;const a=at(ix,iy)*(1-fx)*(1-fy)+at(ix+1,iy)*fx*(1-fy)+at(ix,iy+1)*(1-fx)*fy+at(ix+1,iy+1)*fx*fy;if(a)put((y*width+x)*4,color,a*s.opacity);}}
  if(styles.stroke){const s=styles.stroke,color=rgb(s.color,source),dilated=spread(alpha,width,height,s.size,true);for(let i=0;i<alpha.length;i++)put(i*4,color,Math.max(0,dilated[i]!-alpha[i]!)*s.opacity);}
- const overlay=styles.overlay,color=overlay?rgb(overlay.color,source):null;
- for(let p=0;p<alpha.length;p++){const i=p*4,base=[source.data[i]!,source.data[i+1]!,source.data[i+2]!];if(color&&overlay)for(let c=0;c<3;c++)base[c]=base[c]!*(1-overlay.opacity)+color[c]!*overlay.opacity;put(i,base,alpha[p]!);}
+ const overlay=styles.overlay,color=overlay?rgb(overlay.color,source):null,g=styles.innerGlow,glowColor=g?rgb(g.color,source):null,glowAlpha=g&&g.size?spread(alpha,width,height,Math.ceil(g.size),false):undefined;
+ for(let p=0;p<alpha.length;p++){const i=p*4,base=[source.data[i]!,source.data[i+1]!,source.data[i+2]!];if(color&&overlay)for(let c=0;c<3;c++)base[c]=base[c]!*(1-overlay.opacity)+color[c]!*overlay.opacity;if(g&&glowColor){const edge=glowAlpha?Math.max(0,1-glowAlpha[p]!):0,coverage=g.source==='center'?1-edge:edge;const x=p%width+origin.x,y=Math.floor(p/width)+origin.y,seed=Math.imul(x+1,374761393)^Math.imul(y+1,668265263),random=((Math.imul(seed^(seed>>>13),1274126177)>>>0)/4294967296),weight=Math.max(0,Math.min(1,coverage/Math.max(.01,g.range*2)+g.choke/100))*g.opacity*(1-g.noise*random);for(let c=0;c<3;c++){const v=g.blend==='screen'?255-(255-base[c]!)*(255-glowColor[c]!)/255:glowColor[c]!;base[c]=base[c]!*(1-weight)+v*weight;}}put(i,base,alpha[p]!);}
  return withPixels(width,height,data,source);
 }
 

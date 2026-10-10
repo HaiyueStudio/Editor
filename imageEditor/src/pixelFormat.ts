@@ -1,3 +1,4 @@
+import { isPaged, hydrateBitmap, validatePages } from './pagedPixels.js';
 import { validateMask } from './maskEffects.js';
 import type { LayerMask } from './layerFeatures.js';
 import type { Bitmap, ImageLayer, ImageState } from './document.js';
@@ -11,6 +12,7 @@ export const pixelArray=(length:number,source?:Bitmap|BitDepth):PixelArray=>(typ
 export const withPixels=(width:number,height:number,data:PixelArray,source?:Bitmap|BitDepth):Bitmap=>{const depth=typeof source==='number'?source:depthOf(source);return {width,height,data,...(depth!==8?{depth}: {})};};
 export function pixelColor(rgb:readonly number[],depth:BitDepth){return rgb.map(v=>depth===32?decodeSrgb(v/255)*255:v);}
 export function validateBitmap(b:Bitmap){
+ if(isPaged(b)){validatePages(b);return;}
  const depth=depthOf(b);if(![8,16,32].includes(depth)||b.data.length!==b.width*b.height*4||!(depth===8?b.data instanceof Uint8ClampedArray:b.data instanceof Float32Array))throw new Error('像素数据不完整或格式与位深不一致。');
  if(depth!==8)for(let i=0;i<b.data.length;i++){const n=b.data[i]!;if(!Number.isFinite(n)||Math.abs(n)>255*65504||(i%4===3&&(n<0||n>255))||(depth===16&&(n<0||n>255)))throw new Error('高位深像素值无效。');}
 }
@@ -21,8 +23,8 @@ export function convertDepth(b:Bitmap,depth:BitDepth):Bitmap {
  return {...withPixels(b.width,b.height,data,depth),...(b.cmyk?{cmyk:Float32Array.from(b.cmyk,v=>Math.round(v/100*(depth===8?255:65535))/(depth===8?255:65535)*100)}:{})};
 }
 const bounded=new WeakMap<Bitmap,Bitmap>();
-function bound16(b:Bitmap):Bitmap {if(depthOf(b)!==16)return b;const cached=bounded.get(b);if(cached)return cached;if(b.data.some(n=>!Number.isFinite(n)))throw Error('高位深像素值无效。');let out=b;for(let i=0;i<b.data.length;i++){const n=b.data[i]!;if(!Number.isFinite(n))throw Error('高位深像素值无效。');if(n<0||n>255){const data=b.data.slice();for(let j=0;j<data.length;j++)data[j]=Math.max(0,Math.min(255,data[j]!));out={...b,data};break;}}bounded.set(b,out);return out;}
-export function normalizeLayers(layers:readonly ImageLayer[],depth:BitDepth):readonly ImageLayer[]{let changed=false;const next=layers.map(l=>{const mask=l.mask?normalizeMask(l.mask,depth):undefined,filterMask=l.filterMask?normalizeMask(l.filterMask,depth):undefined;const bitmap=l.bitmap?bound16(convertDepth(l.bitmap,depth)):null,c=l.content,source=c?.type==='smart'?bound16(convertDepth(c.source,depth)):undefined,content=c?.type==='smart'&&source!==c.source?{...c,source:source!}:c,children=normalizeLayers(l.children,depth);if(mask===l.mask&&filterMask===l.filterMask&&bitmap===l.bitmap&&content===c&&children===l.children)return l;changed=true;return {...l,...(mask?{mask}:{}),...(filterMask?{filterMask}:{}),bitmap,...(content?{content}:{}),children};});return changed?next:layers;}
+function bound16(b:Bitmap):Bitmap {if(depthOf(b)!==16||b.pages?.kind==='disk')return b;const cached=bounded.get(b);if(cached)return cached;if(b.data.some(n=>!Number.isFinite(n)))throw Error('高位深像素值无效。');let out=b;for(let i=0;i<b.data.length;i++){const n=b.data[i]!;if(!Number.isFinite(n))throw Error('高位深像素值无效。');if(n<0||n>255){const data=b.data.slice();for(let j=0;j<data.length;j++)data[j]=Math.max(0,Math.min(255,data[j]!));out={...b,data};break;}}bounded.set(b,out);return out;}
+export function normalizeLayers(layers:readonly ImageLayer[],depth:BitDepth):readonly ImageLayer[]{let changed=false;const next=layers.map(l=>{const mask=l.mask?normalizeMask(l.mask,depth):undefined,filterMask=l.filterMask?normalizeMask(l.filterMask,depth):undefined;const bitmap=l.bitmap?bound16(convertDepth(hydrateBitmap(l.bitmap),depth)):null,c=l.content,source=c?.type==='smart'?bound16(convertDepth(c.source,depth)):undefined,content=c?.type==='smart'&&source!==c.source?{...c,source:source!}:c,children=normalizeLayers(l.children,depth);if(mask===l.mask&&filterMask===l.filterMask&&bitmap===l.bitmap&&content===c&&children===l.children)return l;changed=true;return {...l,...(mask?{mask}:{}),...(filterMask?{filterMask}:{}),bitmap,...(content?{content}:{}),children};});return changed?next:layers;}
 export function displayBitmap(b:Bitmap,settings:DisplaySettings={exposure:0,operator:'clip'}):Bitmap {
  if(depthOf(b)===8)return b;const data=new Uint8ClampedArray(b.data.length),gain=2**settings.exposure;
  for(let i=0;i<data.length;i++){let n=b.data[i]!/255;if(i%4!==3&&depthOf(b)===32){n=Math.max(0,n*gain);if(settings.operator==='reinhard')n=n/(1+n);else if(settings.operator==='aces')n=(n*(2.51*n+.03))/(n*(2.43*n+.59)+.14);n=encodeSrgb(n);}data[i]=n*255;}return {width:b.width,height:b.height,data};

@@ -1,3 +1,4 @@
+import { isLayerLocked } from './layerLocks.js';
 import { IMAGE_LIMITS, pixelBytes, checkSize, type ImageState, type ImageLayer, type Bitmap } from './document.js';
 import { cmykBitmap } from './cmyk.js';
 import { embeddedProfile } from './colorManagement.js';
@@ -12,19 +13,20 @@ export class CmykStroke {
  get changedBounds(){return this.coverage.changedBounds;}
  takeDirty(){const r=this.dirty;this.dirty=undefined;return r;}
  constructor(private state:ImageState,id:string,size:number,private settings:InkPaint,dynamics:BrushDynamics={}){
+  if(isLayerLocked(state.layers,id,'transparency'))this.settings=settings={...settings,preserveAlpha:true};
   validate(settings);if(state.colorMode!=='cmyk')throw Error('需要 CMYK 文档。');const layer=editablePixel(state,id),b=layer.bitmap;
   const parent=parentOffset(state.layers,id)!,bounds=state.selection??{x:0,y:0,width:state.width,height:state.height},left=Math.min(layer.x,bounds.x-parent.x),top=Math.min(layer.y,bounds.y-parent.y),width=Math.max(layer.x+(b?.width??0),bounds.x+bounds.width-parent.x)-left,height=Math.max(layer.y+(b?.height??0),bounds.y+bounds.height-parent.y)-top;
   checkSize(width,height);if(width*height*32>128*1024*1024||pixelBytes(state.layers)-(b?b.data.byteLength+(b.cmyk?.byteLength??0):0)+width*height*((state.bitDepth??8)===8?20:32)>IMAGE_LIMITS.bytes)throw Error('CMYK 绘图超出像素预算，请缩小选区。');
   // Transparent coverage uses existing selection, pressure and event-independent accumulation.
   const empty=b?{width:b.width,height:b.height,depth:16 as const,data:new Float32Array(b.data.length)}:null;
-  this.coverage=new PixelStroke({...state,bitDepth:16,layers:replacePixel(state.layers,id,{...layer,bitmap:empty})},id,size,settings.opacity??1,[255,255,255],false,dynamics);
+  this.coverage=new PixelStroke({...state,bitDepth:16,layers:replacePixel(state.layers,id,{...layer,bitmap:empty})},id,size,settings.opacity??1,[255,255,255],false,{...dynamics,coverageOnly:true});
   const shape=this.coverage.layer,mask=shape.bitmap!,n=mask.width*mask.height;
   if(n*32>128*1024*1024||pixelBytes(state.layers)-(b?b.data.byteLength+(b.cmyk?.byteLength??0):0)+n*((state.bitDepth??8)===8?20:32)>IMAGE_LIMITS.bytes)throw Error('CMYK 绘图超出像素预算，请缩小选区。');
   const data=pixelArray(n*4,state.bitDepth??8),ink=new Float32Array(n*4);
   if(b)for(let y=0;y<b.height;y++){const at=((y+layer.y-shape.y)*mask.width+layer.x-shape.x)*4;data.set(b.data.subarray(y*b.width*4,(y+1)*b.width*4),at);ink.set(b.cmyk!.subarray(y*b.width*4,(y+1)*b.width*4),at);}
   this.original={width:mask.width,height:mask.height,depth:(state.bitDepth??8),data,cmyk:ink};this.layer={...shape,bitmap:{...this.original,data:data.slice(),cmyk:ink.slice()}};this.profile=embeddedProfile(state);
  }
- private paint(i:number,weight:number){if(!weight)return;const src=this.original,b=this.layer.bitmap!,old=src.data[i+3]!/255,alpha=this.settings.erase?old*(1-weight):this.settings.preserveAlpha?old:weight+old*(1-weight);
+ private paint(i:number,weight:number){if(!weight)return;const src=this.original,b=this.layer.bitmap!,old=src.data[i+3]!/255;if(this.settings.preserveAlpha&&(!old||this.settings.erase))return;const alpha=this.settings.erase?old*(1-weight):this.settings.preserveAlpha?old:weight+old*(1-weight);
   if(!this.settings.erase)for(const c of this.settings.channels??[0,1,2,3])b.cmyk![i+c]=this.settings.preserveAlpha?src.cmyk![i+c]!*(1-weight)+this.settings.ink[c]!*weight:alpha?(this.settings.ink[c]!*weight+src.cmyk![i+c]!*old*(1-weight))/alpha:src.cmyk![i+c]!;
   b.data[i+3]=alpha*255;for(let c=0;c<4;c++)if(b.cmyk![i+c]!==src.cmyk![i+c]||b.data[i+3]!==src.data[i+3])this.changed=true;
  }

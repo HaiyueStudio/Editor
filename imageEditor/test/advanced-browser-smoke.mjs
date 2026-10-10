@@ -5,7 +5,7 @@ const doc=ImageDocument.create('选区与滤镜验收',96,64),data=new Uint8Clam
 const report=await runEditorBrowserScenario({root,route:'imageEditor/app-dist/index.html',downloadDirectory:downloads,failureScreenshotPath:resolve(out,'failure.png'),timeoutMs:30000,readinessExpression:'document.querySelector("#app")?.getAttribute("aria-busy")==="false"',scenario:async driver=>{
  const {evaluate,click,replaceText,waitFor,nextPaint,setFileInputFiles,cdp}=driver,checks=[];
  const e=s=>`document.querySelector(${JSON.stringify(s)})`,act=a=>click(e(`[data-action="${a}"]`)),tool=t=>click(e(`[data-tool="${t}"]`));
- const menu=async a=>{await click(e('.selection-menu summary'));await act('menu-'+a);await nextPaint();};
+ const menu=async a=>{await click(e('#selection-menu [slot=trigger]'));await click(`${e('#selection-menu')}.shadowRoot.querySelector('[data-action="menu-${a}"]')`);await nextPaint();};
  const set=async(s,v,event='change')=>{await evaluate(`document.querySelector(${JSON.stringify(s)}).value=${JSON.stringify(v)};document.querySelector(${JSON.stringify(s)}).dispatchEvent(new Event(${JSON.stringify(event)},{bubbles:true}))`);await nextPaint();};
  const pixel=(x,y)=>evaluate(`Array.from(document.querySelector('#image-canvas').getContext('2d').getImageData(${x},${y},1,1).data)`);
  const pointer=async(type,x,y)=>{const r=JSON.parse(await evaluate('JSON.stringify(document.querySelector("#image-canvas").getBoundingClientRect())'));await cdp.call('Input.dispatchMouseEvent',{type,x:r.x+x*r.width/96,y:r.y+y*r.height/64,button:'left',buttons:type==='mouseReleased'?0:1,clickCount:1});};

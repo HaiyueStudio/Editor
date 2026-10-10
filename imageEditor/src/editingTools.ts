@@ -1,3 +1,5 @@
+import { withDiskPages } from './diskPager.js';
+import { hasDiskPixels } from './pagedPixels.js';
 import { isControlFocused } from './uiFocus.js';
 import { compositeDamage } from './compositor.js';
 import { exportRaster } from './rasterExport.js';
@@ -12,7 +14,7 @@ import { copyPixels, pastePixels, sampleColor as pickColor, gradientPixels, sele
 import { FreeTransform, transformedLayer, commitTransform } from './freeTransform.js';
 import { maskStrokeState, maskFromStroke } from './maskTools.js';
 import { combineSelection, invertSelection, ellipseSelection, polygonSelection, colorSelection, modifySelection, selectionCount, type Selection, type SelectionMode } from './selection.js';
-import { ImageDocument, makeLayer, checkSize, layerLocked, type ImageState, type ImageLayer } from './document.js';
+import { ImageDocument, makeLayer, checkSize, layerLocked, findLayer, type ImageState, type ImageLayer } from './document.js';
 import { CanvasView, paintDocument, bitmapCanvas, refreshBitmap } from './canvasView.js';
 import { PixelStroke, fillPixels, hexColor, parentOffset, replacePixel, selectionRect, transformBitmap, type Point, type Rect } from './pixelTools.js';
 
@@ -44,16 +46,19 @@ export class EditingTools {
     this.freeTransform = new FreeTransform(active, view, notify);
     const signal = this.abort.signal, viewport = view.viewport;
     view.canPan = event => event.button === 1 || event.button === 0 && (this.tool === 'hand' || this.space);
-    viewport.addEventListener('pointerdown', event => this.guard(() => this.begin(event)), { signal });
+    viewport.addEventListener('pointerdown', event => {
+      if(hasDiskPixels(this.active()?.state)&&event.button===0&&!(event.target as HTMLElement).closest('button, hy-button')){viewport.focus({preventScroll:true});viewport.setPointerCapture(event.pointerId);}
+      this.guard(() => this.begin(event));
+    }, { signal });
     viewport.addEventListener('pointermove', event => this.guard(() => this.update(event)), { signal });
     viewport.addEventListener('pointerup', event => this.guard(() => this.finish(event)), { signal });
     viewport.addEventListener('pointercancel', event => {
-      if (this.gesture?.pointer === event.pointerId) this.cancel();
+      this.guard(() => { if (this.gesture?.pointer === event.pointerId) this.cancel(); });
     }, { signal });
     viewport.addEventListener('lostpointercapture', event => {
       // Descendants can release implicit touch capture, and a completed pointer
       // can release capture after another gesture has started. Neither cancels it.
-      if (event.target === viewport && this.gesture?.pointer === event.pointerId && !viewport.hasPointerCapture(event.pointerId)) this.cancel();
+      this.guard(() => { if (event.target === viewport && this.gesture?.pointer === event.pointerId && !viewport.hasPointerCapture(event.pointerId)) this.cancel(); });
     }, { signal });
     window.addEventListener('blur', () => { this.space = false; this.cancel(); }, { signal });
     document.addEventListener('keydown', event => {
@@ -81,7 +86,10 @@ export class EditingTools {
     this.setTool('hand');
   }
   private isInput() { return Boolean(document.querySelector('dialog[open]')) || isControlFocused(); }
-  private guard(action: () => void) { try { action(); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
+  private diskInput:Promise<void>=Promise.resolve();
+  private guard(action: () => void) {const doc=this.active();if(doc&&hasDiskPixels(doc.state)){
+    const state=doc.state;this.diskInput=this.diskInput.then(async()=>{if(this.active()!==doc||doc.state!==state)return;await withDiskPages(this.tool==='crop'||this.tool==='eyedropper'?state:[doc.selected,...((this.tool==='clone'||this.tool==='heal')&&this.retouchSource?.docId===doc.identity.id?[findLayer(state.layers,this.retouchSource.layerId)]:[])],()=>{if(this.active()===doc&&doc.state===state)action();},this.abort.signal);}).catch(error=>{this.cancel();this.notify(error instanceof Error?error.message:String(error),true);});return;
+  }try { action(); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
   get busy() { return Boolean(this.gesture || this.polygon || this.freeTransform.busy); }
   get color() { return hexColor($<HTMLInputElement>('paint-color').value); }
   get opacity() { return Number($<HTMLInputElement>('paint-opacity').value) / 100; }
@@ -141,10 +149,10 @@ export class EditingTools {
       gesture.stroke.point({...point,pressure:this.pressure(event)});
     } else if (this.tool === 'move') {
       if (!doc.selected) throw new Error('请先选择图层。');
-      if (selectedRoots(doc.state, doc.selectedIds).some(layer => layerLocked(doc.state.layers, layer.id))) throw new Error('图层或上级图层组已锁定。');
+      if (selectedRoots(doc.state, doc.selectedIds).some(layer => layerLocked(doc.state.layers, layer.id,'position'))) throw new Error('图层或上级图层组已锁定。');
       gesture.layer = doc.selected;
     }
-    this.gesture = gesture; this.view.viewport.focus({ preventScroll: true }); this.view.viewport.setPointerCapture(event.pointerId); event.preventDefault(); this.preview();
+    this.gesture = gesture; this.view.viewport.focus({ preventScroll: true }); try{this.view.viewport.setPointerCapture(event.pointerId);}catch{/* Pointer may have ended while its working set loaded; queued events still finish it. */}event.preventDefault();this.preview();
   }
   private update(event: PointerEvent) {
     const gesture = this.gesture; if (!gesture || gesture.pointer !== event.pointerId) return;
@@ -165,7 +173,7 @@ export class EditingTools {
       if (g.layer) { let layers = g.before.layers; for (const layer of selectedRoots(g.before, g.before.selectedIds ?? [g.layer.id])) layers = replacePixel(layers, layer.id, { ...layer, x: layer.x + (g.delta?.x ?? 0), y: layer.y + (g.delta?.y ?? 0) }); this.view.preview({ ...g.before, layers }); return; }
       const dirty=g.stroke?.takeDirty();if(g.stroke){if(!dirty)return;refreshBitmap(g.stroke.layer.bitmap!,dirty);}
       const layer = g.stroke ? g.maskLayer?{...g.maskLayer,[g.maskTarget==='filter'?'filterMask':'mask']:maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget)}:g.stroke.layer : undefined;
-      if (layer) {const state={ ...g.before, layers: replacePixel(g.before.layers, layer.id, layer) };this.view.preview(state,!g.maskLayer&&dirty?compositeDamage(state,layer.id,dirty):undefined);}
+      if (layer) {const state={ ...g.before, layers: replacePixel(g.before.layers, layer.id, layer) };this.view.preview(state,!g.maskLayer&&dirty?compositeDamage(state,layer.id,dirty):undefined,true);}
       else if(g.points)this.showPath(g.points);
       else this.showRect(g.rect ?? null);
     });

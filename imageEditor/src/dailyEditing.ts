@@ -59,6 +59,7 @@ export function gradientPixels(state: ImageState, layerId: string, start: Point,
     const weight = selectionWeight(state.selection, x, y) * opacity; if (!weight) continue;
     const t = Math.max(0, Math.min(1, kind === 'radial' ? Math.hypot(x + 0.5 - start.x, y + 0.5 - start.y) / length : ((x + 0.5 - start.x) * dx + (y + 0.5 - start.y) * dy) / (length * length)));
     const i = ((y - layer.y - parent.y) * image.width + x - layer.x - parent.x) * 4, alpha = image.data[i + 3]! / 255, out = weight + alpha * (1 - weight);
+    if(layerLocked(state.layers,layerId,'transparency')){if(!alpha)continue;for(let c=0;c<3;c++)image.data[i+c]=(from[c]!*(1-t)+to[c]!*t)*weight+image.data[i+c]!*(1-weight);continue;}
     for (let c = 0; c < 3; c++) image.data[i + c] = ((from[c]! * (1 - t) + to[c]! * t) * weight + image.data[i + c]! * alpha * (1 - weight)) / out;
     image.data[i + 3] = out * 255;
   }

@@ -25,3 +25,5 @@ export function documentHistogram(state:ImageState,layerId?:string,selection=fal
  forEachCompositeTile(sampleState(state,layerId),(b,r)=>accumulate(out,b,mask,r.x,r.y),256,mask??undefined);
  return finish(out);
 }
+/** Disk documents accumulate each tile and release its lease before the next one. */
+export async function documentHistogramAsync(state:ImageState,layerId?:string,selection=false,signal?:AbortSignal):Promise<Histogram>{const {forEachCompositeTileAsync}=await import('./diskCompositor.js'),out=accumulator(),mask=selection?state.selection:null;await forEachCompositeTileAsync(sampleState(state,layerId),(b,r)=>accumulate(out,b,mask,r.x,r.y),signal,128,mask??undefined);return finish(out);}

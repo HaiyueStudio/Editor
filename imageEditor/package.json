@@ -66,7 +66,8 @@
     "iccdev": "2.3.23",
     "lcms-wasm": "1.0.5",
     "pako": "2.1.0",
-    "@haiyue/ui": ">=0.1.2 <0.2.0"
+    "@haiyue/ui": ">=0.1.2 <0.2.0",
+    "@haiyue/engine": ">=0.1.0 <0.2.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.3",

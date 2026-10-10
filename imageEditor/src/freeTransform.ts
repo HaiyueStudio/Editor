@@ -8,7 +8,7 @@ export interface TransformValues { width: number; height: number; angle: number;
 export function transformedLayer(state: ImageState, id: string, value: TransformValues): ImageLayer {
   const find = (layers: readonly ImageLayer[]): ImageLayer | undefined => { for (const layer of layers) { if (layer.id === id) return layer; const child = find(layer.children); if (child) return child; } };
   const layer = find(state.layers);
-  if (!layer?.bitmap || layer.kind !== 'pixel' || layerLocked(state.layers, id)) throw new Error('请选择未锁定的像素图层。');
+  if (!layer?.bitmap || layer.kind !== 'pixel' || layerLocked(state.layers, id,'position')) throw new Error('请选择未锁定的像素图层。');
   if(layer.filterMask)throw new Error('变换前请移除滤镜蒙版，或先栅格化智能对象以保留滤镜外观。');
   if (layer.content?.type !== 'smart' && layer.content || layer.mask) throw new Error('请先栅格化文字／形状，或应用图层蒙版后变换。');
   if (![value.dx, value.dy].every(n => Number.isInteger(n) && Math.abs(n) <= 32768)) throw new Error('移动距离无效。');
@@ -17,8 +17,8 @@ export function transformedLayer(state: ImageState, id: string, value: Transform
   return { ...layer, bitmap, x: Math.round(layer.x + (layer.bitmap.width - bitmap.width) / 2 + value.dx), y: Math.round(layer.y + (layer.bitmap.height - bitmap.height) / 2 + value.dy) };
 }
 export function commitTransform(doc:ImageDocument,layer:ImageLayer,label='自由变换',revision=doc.revision) {
- if(layer.content?.type==='smart')doc.commitLayers(label,replacePixel(doc.state.layers,layer.id,layer),[layer.id],doc.selectedIds,revision);
- else doc.replaceLayerPixels(layer.id,layer,label,revision);
+ if(layer.content?.type==='smart')doc.commitLayers(label,replacePixel(doc.state.layers,layer.id,layer),[layer.id],doc.selectedIds,revision,'transform');
+ else doc.replaceLayerPixels(layer.id,layer,label,revision,undefined,'transform');
 }
 /** One immutable source for every preview, and one history entry on explicit confirmation. */
 export class FreeTransform {

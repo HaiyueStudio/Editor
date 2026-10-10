@@ -1,3 +1,5 @@
+import { pagedState } from './pagedPixels.js';
+import { encodePixelArchive, decodePixelArchive } from './pixelArchive.js';
 import { maskBytes,decodeMaskBytes,depthOf, pixelBytesView, pixelsFromBytes, withPixels, type BitDepth } from './pixelFormat.js';
 import { hasProductivity } from './productivityModel.js';
 import { secondBatchLayer } from './liveEffects.js';
@@ -13,6 +15,7 @@ type StoredContent = Exclude<LayerContent, SmartContent> | (Omit<SmartContent,'s
 type StoredLayer = Omit<ImageLayer, 'bitmap' | 'children' | 'mask' | 'filterMask' | 'content'> & { content?:StoredContent; bitmap: { width: number; height: number; depth?:BitDepth; cmyk?:Ref; data: Ref } | null; children: StoredLayer[]; mask?: Omit<NonNullable<ImageLayer['mask']>,'data'> & {data:Ref}; filterMask?:Omit<NonNullable<ImageLayer['filterMask']>,'data'> & {data:Ref} };
 type StoredIcc=Omit<NonNullable<ImageState['icc']>,'proofProfile'|'monitorProfile'> & {proofProfile?:Ref;monitorProfile?:Ref};
 type StoredState = Omit<ImageState, 'layers' | 'selection' | 'psdOrigin' | 'channels' | 'icc'> & { icc?:StoredIcc; channels?:{id:string;name:string;data:Ref}[]; layers: StoredLayer[]; selection?: { x: number; y: number; width: number; height: number; mask?: Ref } | null; psdOrigin?: { sourceName: string; flattened: boolean; resources: Ref } };
+export interface PagedStoredSession { version:14; archive:{tree:unknown;buffers:Ref[]} }
 export interface StoredSession { version: 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13; activeId: string | null; documents: { state: StoredState; dirty: boolean }[] }
 export const chunkKey = (hash: string) => 'chunk:' + hash;
 const hash = async (data: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>)), n => n.toString(16).padStart(2, '0')).join('');
@@ -20,6 +23,8 @@ const hash = async (data: Uint8Array) => Array.from(new Uint8Array(await crypto.
 /** Immutable document buffers are fingerprinted once; chunks are independently deduplicated. */
 export class RecoveryCodec {
   private refs = new WeakMap<object, Ref>();
+  private archiveViews = new WeakMap<ArrayBufferLike, Map<string, Uint8Array>>();
+  private stableView(view:Uint8Array){let ranges=this.archiveViews.get(view.buffer);if(!ranges){ranges=new Map();this.archiveViews.set(view.buffer,ranges);}const key=`${view.byteOffset}:${view.byteLength}`;let stable=ranges.get(key);if(!stable){stable=view;ranges.set(key,stable);}return stable;}
   async encode(session: BinarySession, existing: ReadonlySet<string>) {
     const chunks = new Map<string, Uint8Array>(), used = new Set<string>();
     const encode = async (data: Uint8Array | Uint8ClampedArray): Promise<Ref> => {
@@ -40,6 +45,7 @@ export class RecoveryCodec {
       }
       return ref;
     };
+    if(session.documents.some(d=>pagedState(d.state))){const archive=encodePixelArchive(session),refs:Ref[]=[];for(const buffer of archive.buffers)refs.push(await encode(this.stableView(buffer)));return {session:{version:14,archive:{tree:archive.tree,buffers:refs}} as PagedStoredSession,chunks,used};}
     const layer = async (item: ImageLayer): Promise<StoredLayer> => { const {mask,filterMask,content,...base}=item; return ({ ...base, ...(content?{content:content.type==='smart'?{...content,sourcePsd:content.sourcePsd?await encode(content.sourcePsd):undefined,source:{...content.source,data:await encode(pixelBytesView(content.source))}}:content}:{}), ...(item.mask?{mask:{...item.mask,data:await encode(maskBytes(item.mask.data))}}:{}),...(filterMask?{filterMask:{...filterMask,data:await encode(maskBytes(filterMask.data))}}:{}),
       bitmap: item.bitmap ? { width: item.bitmap.width, height: item.bitmap.height, ...(item.bitmap.depth?{depth:item.bitmap.depth}:{}), data: await encode(pixelBytesView(item.bitmap)),...(item.bitmap.cmyk?{cmyk:await encode(maskBytes(item.bitmap.cmyk))}:{}) } : null,
       children: await Promise.all(item.children.map(layer)) }); };
@@ -55,7 +61,8 @@ export class RecoveryCodec {
     return { session: { version: session.documents.some(d=>d.state.icc?.proofEnabled!==undefined)?13:session.documents.some(d=>d.state.colorMode)?12:session.documents.some(d=>d.state.bitDepth!==undefined||d.state.display||d.state.icc)?11:session.documents.some(d=>allLayers(d.state.layers).some(l=>l.content?.type==='smart'&&l.content.sourcePsd))?10:session.documents.some(d=>hasProductivity(d.state))?9:session.documents.some(d=>allLayers(d.state.layers).some(secondBatchLayer))?8:session.documents.some(d=>allLayers(d.state.layers).some(l=>qualityContent(l.content)))?7:session.documents.some(d=>d.state.colorManagement||allLayers(d.state.layers).some(l=>l.content?.type==='path'||l.content?.type==='text'&&(l.content.runs?.length||l.content.wrapWidth)))?6:session.documents.some(d=>allLayers(d.state.layers).some(l=>l.clipping!==undefined||l.styles||l.content?.type==='smart'||l.content?.type==='adjustment'&&['levels','curves'].includes(l.content.filter)))?5:session.documents.some(d=>allLayers(d.state.layers).some(l=>l.content||l.mask||!['normal','multiply','screen'].includes(l.blend)))?4:3, activeId: session.activeId, documents } as StoredSession, chunks, used };
   }
 }
-export async function decodeRecovery(value: StoredSession, chunks: ReadonlyMap<string, unknown>): Promise<BinarySession> {
+export async function decodeRecovery(value: StoredSession | PagedStoredSession, chunks: ReadonlyMap<string, unknown>): Promise<BinarySession> {
+  if(value?.version===14){const buffers:Uint8Array[]=[];let total=0;if(!value.archive||!Array.isArray(value.archive.buffers))throw Error('分块恢复目录无效。');for(const ref of value.archive.buffers){if(!Number.isSafeInteger(ref.bytes)||ref.bytes<0||(total+=ref.bytes)>IMAGE_LIMITS.bytes||!Array.isArray(ref.chunks)||ref.chunks.length!==Math.ceil(ref.bytes/RECOVERY_CHUNK_BYTES))throw Error('分块恢复预算无效。');const buffer=new Uint8Array(ref.bytes);for(let i=0;i<ref.chunks.length;i++){const key=ref.chunks[i]!,part=chunks.get(key);if(!(part instanceof Uint8Array)||part.length!==Math.min(RECOVERY_CHUNK_BYTES,ref.bytes-i*RECOVERY_CHUNK_BYTES)||chunkKey(await hash(part))!==key)throw Error('分块恢复缺失或校验失败。');buffer.set(part,i*RECOVERY_CHUNK_BYTES);}buffers.push(buffer);}const session=decodePixelArchive<BinarySession>(value.archive.tree,buffers);if(session.version!==2||!Array.isArray(session.documents)||session.documents.length>IMAGE_LIMITS.documents)throw Error('分块恢复会话无效。');for(const d of session.documents){if(typeof d.dirty!=='boolean')throw Error('恢复文档状态无效。');validateState(d.state);}return session;}
   if(!value||![3,4,5,6,7,8,9,10,11,12,13].includes(value.version))throw new Error('恢复格式版本无效。');
   if (!Array.isArray(value.documents) || value.documents.length > IMAGE_LIMITS.documents) throw new Error('恢复文档数量无效。');
   const verified = new Set<string>();

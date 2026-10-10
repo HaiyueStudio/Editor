@@ -1,3 +1,4 @@
+import { pixelStorageBytes } from './pagedPixels.js';
 import { mapCmykGeometry } from './cmykGeometry.js';
 import { pixelColor, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { resizeBitmap, rotateBitmap, validateResampling, type Resampling } from './resampling.js';
@@ -6,7 +7,7 @@ import { IMAGE_LIMITS, pixelBytes, checkSize, findLayer, layerLocked, type Bitma
 
 export interface Point { x: number; y: number }
 export interface BrushPoint extends Point { pressure?:number }
-export interface BrushDynamics { hardness?:number; pressure?:'none'|'size'|'opacity'|'both'; sample?:(x:number,y:number)=>readonly [number,number,number,number]|undefined }
+export interface BrushDynamics { coverageOnly?:boolean; hardness?:number; pressure?:'none'|'size'|'opacity'|'both'; sample?:(x:number,y:number)=>readonly [number,number,number,number]|undefined }
 /** Sparse 128px tiles: a small mark on a large canvas needs only touched coverage tiles. */
 class StrokeCoverage {
  private tiles=new Map<number,Uint8Array>();
@@ -32,7 +33,7 @@ export function editablePixel(state: ImageState, id: string): ImageLayer {
   const layer = findLayer(state.layers, id);
   if (!layer || layer.kind !== 'pixel') throw new Error('请先选择一个像素图层。');
   if(layer.content)throw new Error('请先栅格化文字或形状图层，再进行像素编辑。');
-  if (layerLocked(state.layers, id)) throw new Error('图层或上级图层组已锁定。');
+  if (layerLocked(state.layers, id,'pixels')) throw new Error('图层或上级图层组已锁定。');
   return layer;
 }
 export function replacePixel(layers: readonly ImageLayer[], id: string, value: ImageLayer): readonly ImageLayer[] {
@@ -46,6 +47,7 @@ export function hexColor(hex: string): Color {
 export class PixelStroke {
   readonly layer: ImageLayer;
   private readonly original: PixelArray;
+  private readonly alphaLocked:boolean;
   private readonly coverage: StrokeCoverage;
   get coverageBytes(){return this.coverage.bytes;}
   private readonly bounds: Rect;
@@ -61,6 +63,7 @@ export class PixelStroke {
     if(!Number.isFinite(dynamics.hardness??1)||(dynamics.hardness??1)<0||(dynamics.hardness??1)>1||!['none','size','opacity','both'].includes(dynamics.pressure??'none'))throw new Error('画笔硬度或笔压模式无效。');
     this.color=pixelColor(color,state.bitDepth??8) as unknown as Color;
     const layer = editablePixel(state, id), parent = parentOffset(state.layers, id)!;
+    this.alphaLocked=!dynamics.coverageOnly&&layerLocked(state.layers,id,'transparency');
     this.selection = state.selection;
     this.bounds = state.selection ?? { x: 0, y: 0, width: state.width, height: state.height };
     // Include existing off-canvas pixels; painting must never flatten or discard them.
@@ -68,7 +71,7 @@ export class PixelStroke {
     const right = Math.max(layer.x + (layer.bitmap?.width ?? 0), this.bounds.x + this.bounds.width - parent.x);
     const bottom = Math.max(layer.y + (layer.bitmap?.height ?? 0), this.bounds.y + this.bounds.height - parent.y);
     const width = right - left, height = bottom - top; checkSize(width, height);
-    if (pixelBytes(state.layers) - (layer.bitmap?.data.byteLength ?? 0) + width * height * ((state.bitDepth??8)===8?4:16) > IMAGE_LIMITS.bytes) throw new Error('绘图超出文档像素预算，请缩小选区。');
+    if (pixelBytes(state.layers) - (layer.bitmap?pixelStorageBytes(layer.bitmap):0) + width * height * ((state.bitDepth??8)===8?4:16) > IMAGE_LIMITS.bytes) throw new Error('绘图超出文档像素预算，请缩小选区。');
     const data = pixelArray(width * height * 4,state.bitDepth??8);
     if (layer.bitmap) for (let y = 0; y < layer.bitmap.height; y++) {
       const offset = ((y + layer.y - top) * width + layer.x - left) * 4;
@@ -109,7 +112,8 @@ export class PixelStroke {
       if(this.dynamics.sample&&!sample||!this.coverage.increase(localX,localY,coverage))continue;
       const i=p*4,sourceAlpha=coverage/255*this.opacity*(sample?sample[3]/255:1),oldAlpha=this.original[i+3]!/255,tone=sample??this.color;
       if(!sourceAlpha)continue;
-      if (this.erase) bitmap.data[i + 3] = oldAlpha * (1 - sourceAlpha) * 255;
+      if(this.alphaLocked){if(!oldAlpha||this.erase)continue;for(let c=0;c<3;c++)bitmap.data[i+c]=tone[c]!*sourceAlpha+this.original[i+c]!*(1-sourceAlpha);}
+      else if (this.erase) bitmap.data[i + 3] = oldAlpha * (1 - sourceAlpha) * 255;
       else {
         const alpha = sourceAlpha + oldAlpha * (1 - sourceAlpha);
         for (let c = 0; c < 3; c++) bitmap.data[i + c] = (tone[c]! * sourceAlpha + this.original[i + c]! * oldAlpha * (1 - sourceAlpha)) / alpha;
@@ -127,7 +131,8 @@ export function fillPixels(state: ImageState, id: string, color: Color | null, o
   for (let y = bounds.y; y < bounds.y + bounds.height; y++) for (let x = bounds.x; x < bounds.x + bounds.width; x++) {
     const i = ((y - layer.y - offset.y) * bitmap.width + x - layer.x - offset.x) * 4;
     const strength = opacity * selectionWeight(state.selection,x,y); if (!strength) continue;
-    if (color === null) bitmap.data[i + 3] = bitmap.data[i + 3]! * (1-strength);
+    if(layerLocked(state.layers,id,'transparency')){if(!bitmap.data[i+3]||color===null)continue;for(let c=0;c<3;c++)bitmap.data[i+c]=color[c]!*strength+bitmap.data[i+c]!*(1-strength);}
+    else if (color === null) bitmap.data[i + 3] = bitmap.data[i + 3]! * (1-strength);
     else {
       const alpha = bitmap.data[i + 3]! / 255, out = strength + alpha * (1 - strength);
       for (let c = 0; c < 3; c++) bitmap.data[i + c] = (color[c]! * strength + bitmap.data[i + c]! * alpha * (1 - strength)) / out;

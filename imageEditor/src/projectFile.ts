@@ -1,3 +1,6 @@
+import { diskRefs } from './diskPager.js';
+import { pagedState } from './pagedPixels.js';
+import { encodePixelArchive, decodePixelArchive } from './pixelArchive.js';
 import { maskBytes,decodeMaskBytes,depthOf, pixelBytesView, pixelsFromBytes, withPixels, type BitDepth } from './pixelFormat.js';
 import { hasProductivity } from './productivityModel.js';
 import { secondBatchLayer } from './liveEffects.js';
@@ -11,9 +14,11 @@ function encode(data: Uint8ClampedArray | Uint8Array): string {
   for (let i = 0; i < data.length; i += 24576) chunks.push(btoa(String.fromCharCode(...data.subarray(i, i + 24576))));
   return chunks.join('');
 }
-export function serializeProject(state: ImageState): string {
+export function serializeProject(state: ImageState, localReferences=false): string {
+  if(!localReferences&&diskRefs(state).length)throw Error('磁盘文档请使用异步工程导出接口。');
+  if(pagedState(state)){if(!localReferences&&diskRefs(state).length)throw Error('工程文件缺少便携磁盘页，请使用完整工程包。');validateState(state);const archive=encodePixelArchive(state);return JSON.stringify({format:'haiyue-image',version:allLayers(state.layers).some(l=>l.locks)?14:13,archive:{tree:archive.tree,buffers:archive.buffers.map(encode)}});}
   const layer = (item: ImageLayer): unknown => ({ ...item, ...(item.content?.type==='smart'?{content:{...item.content,...(item.content.sourcePsd?{sourcePsd:encode(item.content.sourcePsd)}:{}),source:{width:item.content.source.width,height:item.content.source.height,depth:depthOf(item.content.source),rgba:encode(pixelBytesView(item.content.source))}}}:{}), ...(item.mask?{mask:{...item.mask,data:encode(maskBytes(item.mask.data))}}:{}),...(item.filterMask?{filterMask:{...item.filterMask,data:encode(maskBytes(item.filterMask.data))}}:{}), bitmap: item.bitmap ? { width: item.bitmap.width, height: item.bitmap.height, depth:depthOf(item.bitmap),rgba: encode(pixelBytesView(item.bitmap)), ...(item.bitmap.cmyk?{cmyk:encode(maskBytes(item.bitmap.cmyk))}:{}) } : null, children: item.children.map(layer) });
-  return JSON.stringify({ format: 'haiyue-image', version: state.icc?.proofEnabled!==undefined?12:state.colorMode?11:state.bitDepth!==undefined||state.display||state.icc?10:allLayers(state.layers).some(l=>l.content?.type==='smart'&&l.content.sourcePsd)?9:hasProductivity(state)?8:allLayers(state.layers).some(secondBatchLayer)?7:allLayers(state.layers).some(l=>qualityContent(l.content))?6:state.colorManagement||allLayers(state.layers).some(l=>l.content?.type==='path'||l.content?.type==='text'&&(l.content.runs?.length||l.content.wrapWidth))?5:allLayers(state.layers).some(l=>l.clipping!==undefined||l.styles||l.content?.type==='smart'||l.content?.type==='adjustment'&&['levels','curves'].includes(l.content.filter))?4:allLayers(state.layers).some(l=>l.content||l.mask||!['normal','multiply','screen'].includes(l.blend)) ? 3 : state.selection?.mask ? 2 : 1, document: { ...state,...(state.icc?{icc:{...state.icc,...(state.icc.proofProfile?{proofProfile:encode(state.icc.proofProfile)}:{}),...(state.icc.monitorProfile?{monitorProfile:encode(state.icc.monitorProfile)}:{})}}:{}), ...(state.channels?{channels:state.channels.map(c=>({...c,data:encode(c.data)}))}:{}), selection: state.selection ? { ...state.selection, mask: state.selection.mask ? encode(state.selection.mask) : undefined } : null, layers: state.layers.map(layer), psdOrigin: state.psdOrigin ? { ...state.psdOrigin, resources: encode(state.psdOrigin.resources) } : undefined } });
+  return JSON.stringify({ format: 'haiyue-image', version: allLayers(state.layers).some(l=>l.locks)?14:state.icc?.proofEnabled!==undefined?12:state.colorMode?11:state.bitDepth!==undefined||state.display||state.icc?10:allLayers(state.layers).some(l=>l.content?.type==='smart'&&l.content.sourcePsd)?9:hasProductivity(state)?8:allLayers(state.layers).some(secondBatchLayer)?7:allLayers(state.layers).some(l=>qualityContent(l.content))?6:state.colorManagement||allLayers(state.layers).some(l=>l.content?.type==='path'||l.content?.type==='text'&&(l.content.runs?.length||l.content.wrapWidth))?5:allLayers(state.layers).some(l=>l.clipping!==undefined||l.styles||l.content?.type==='smart'||l.content?.type==='adjustment'&&['levels','curves'].includes(l.content.filter))?4:allLayers(state.layers).some(l=>l.content||l.mask||!['normal','multiply','screen'].includes(l.blend)) ? 3 : state.selection?.mask ? 2 : 1, document: { ...state,paging:state.paging?.enabled?state.paging:undefined,...(state.icc?{icc:{...state.icc,...(state.icc.proofProfile?{proofProfile:encode(state.icc.proofProfile)}:{}),...(state.icc.monitorProfile?{monitorProfile:encode(state.icc.monitorProfile)}:{})}}:{}), ...(state.channels?{channels:state.channels.map(c=>({...c,data:encode(c.data)}))}:{}), selection: state.selection ? { ...state.selection, mask: state.selection.mask ? encode(state.selection.mask) : undefined } : null, layers: state.layers.map(layer), psdOrigin: state.psdOrigin ? { ...state.psdOrigin, resources: encode(state.psdOrigin.resources) } : undefined } });
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('工程数据结构无效。');
@@ -22,10 +27,11 @@ function object(value: unknown): Record<string, unknown> {
 function text(value: unknown) { if (typeof value !== 'string') throw new Error('工程文本字段无效。'); return value; }
 function number(value: unknown) { if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('工程数值无效。'); return value; }
 function bool(value: unknown) { if (typeof value !== 'boolean') throw new Error('工程开关字段无效。'); return value; }
-export function deserializeProject(source: string, newIdentity = false): ImageState {
+export function deserializeProject(source: string, newIdentity = false, localReferences=false): ImageState {
   if (source.length > MAX_TEXT) throw new Error('工程文件过大。');
   const payload = object(JSON.parse(source));
-  if (payload.format !== 'haiyue-image' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(payload.version as number)) throw new Error('不支持的图像工程版本。');
+  if (payload.format !== 'haiyue-image' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(payload.version as number)) throw new Error('不支持的图像工程版本。');
+  if(payload.version===13||payload.version===14&&payload.archive){const archive=object(payload.archive);if(!Array.isArray(archive.buffers))throw Error('分块工程缓冲目录无效。');let total=0;const buffers=archive.buffers.map(v=>{const encoded=text(v);total+=encoded.length;if(total>MAX_TEXT||!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))throw Error('分块工程编码超限或无效。');return Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));});const state=decodePixelArchive<ImageState>(archive.tree,buffers);if(!localReferences&&diskRefs(state).length)throw Error('工程文件缺少便携磁盘页，请使用完整工程包。');validateState(state);return newIdentity?{...state,id:uid()}:state;}
   const doc = object(payload.document);
   const width = number(doc.width), height = number(doc.height); checkSize(width, height);
   const depth=(doc.bitDepth??8) as BitDepth;if(![8,16,32].includes(depth)||(doc.bitDepth!==undefined||doc.display||doc.icc)&&Number(payload.version)<10)throw new Error('高位深文档需要工程版本 10。');
@@ -66,10 +72,10 @@ export function deserializeProject(source: string, newIdentity = false): ImageSt
     for(const key of ['mask','filterMask'] as const)if(item[key]!==undefined){
       if(Number(payload.version)<3)throw new Error('图层蒙版需要工程版本 3。');const mask=object(item[key]),w=number(mask.width),h=number(mask.height);checkSize(w,h);const float=mask.precision==='float32',length=w*h*(float?4:1);if(float&&Number(payload.version)<10)throw Error('浮点蒙版需要工程版本 10。');bytes+=length;if(bytes>IMAGE_LIMITS.bytes)throw new Error('工程像素总量超出限制。');
       const encoded=text(mask.data);if(encoded.length!==Math.ceil(length/3)*4||!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))throw new Error('蒙版编码无效。');const raw=atob(encoded);if(raw.length!==length)throw new Error('蒙版数据不完整。');
-      extra={...extra,[key]:{...(mask.density!==undefined?{density:number(mask.density)}:{}),...(mask.feather!==undefined?{feather:number(mask.feather)}:{}),width:w,height:h,x:number(mask.x),y:number(mask.y),disabled:bool(mask.disabled),defaultColor:number(mask.defaultColor),...(float?{precision:'float32'}:{}),data:decodeMaskBytes(Uint8Array.from(raw,c=>c.charCodeAt(0)),float)}};
+      extra={...extra,[key]:{...(mask.vector!==undefined?{vector:object(mask.vector)}:{}),...(mask.density!==undefined?{density:number(mask.density)}:{}),...(mask.feather!==undefined?{feather:number(mask.feather)}:{}),width:w,height:h,x:number(mask.x),y:number(mask.y),disabled:bool(mask.disabled),defaultColor:number(mask.defaultColor),...(float?{precision:'float32'}:{}),data:decodeMaskBytes(Uint8Array.from(raw,c=>c.charCodeAt(0)),float)}};
     }
     if(secondBatchLayer(extra as ImageLayer)&&Number(payload.version)<7)throw new Error('非破坏性效果需要工程版本 7。');
-    return { ...extra, id: text(item.id), name: text(item.name), kind: text(item.kind) as ImageLayer['kind'], visible: bool(item.visible), locked: bool(item.locked),
+    return { ...extra,...(item.locks!==undefined?{locks:object(item.locks)}:{}), id: text(item.id), name: text(item.name), kind: text(item.kind) as ImageLayer['kind'], visible: bool(item.visible), locked: bool(item.locked),
       opacity: number(item.opacity), blend: text(item.blend) as ImageLayer['blend'], x: number(item.x), y: number(item.y), bitmap,
       children: item.children.map(child => decodeLayer(child, nesting + 1)) };
   };
@@ -103,6 +109,6 @@ export function deserializeProject(source: string, newIdentity = false): ImageSt
   }
   if(doc.colorManagement!==undefined){if(Number(payload.version)<5)throw new Error('色彩管理需要工程版本 5。');Object.assign(state,{colorManagement:object(doc.colorManagement)});}
   if(doc.icc){const c=object(doc.icc),icc={...c};if(c.proofEnabled!==undefined&&Number(payload.version)<12)throw Error('打样开关需要工程版本 12。');for(const key of ['proofProfile','monitorProfile'])if(c[key]!==undefined){const e=text(c[key]);if(e.length>Math.ceil(4*1024*1024/3)*4||!/^[A-Za-z0-9+/]*={0,2}$/.test(e))throw new Error('ICC 编码无效。');icc[key]=Uint8Array.from(atob(e),c=>c.charCodeAt(0));}Object.assign(state,{icc});}
-  validateState(state); return state;
+  if(!localReferences&&diskRefs(state).length)throw Error('工程文件缺少便携磁盘页，请使用完整工程包。');validateState(state); return state;
 }
 export const MAX_PROJECT_BYTES = MAX_TEXT;

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-10",
+  "description": "Official Adobe examples, not an exhaustive PSD conformance suite; binaries are downloaded to ignored artifacts only.",
+  "sources": [
+    {
+      "id": "adobe-sdk",
+      "page": "https://github.com/adobe/adobe-photoshop-api-sdk",
+      "revision": "0df921e63735490b4d7a5b186ac00107a38e59c5",
+      "license": "MIT (repository)"
+    },
+    {
+      "id": "adobe-samples",
+      "page": "https://helpx.adobe.com/photoshop/kb/downloadable-plugins-and-content.html",
+      "download": "https://download.adobe.com/pub/adobe/photoshop/win/13.x/Win_Samples_E.zip",
+      "sha256": "9b7aa95e92826d452252524586e029e130849255f4011eb92e30cd21abaf5d01",
+      "license": "Adobe sample distribution; not redistributed in this repository"
+    }
+  ],
+  "files": [
+    {
+      "name": "Fish.psd",
+      "bytes": 2072400,
+      "sha256": "53c9deb4000acfd12baa09bc654af7b7ecd3bdc0a97ffa3b40107f608989a25b",
+      "source": "adobe-samples",
+      "entry": "en_US/Samples/Fish.psd"
+    },
+    {
+      "name": "HDR.psd",
+      "bytes": 8022816,
+      "sha256": "443a4c25bd40a65999610b93189b739191e61e2851f3750d2d84e7a124ba81e0",
+      "source": "adobe-samples",
+      "entry": "en_US/Samples/Merge to HDR/Result/HDR.psd"
+    },
+    {
+      "name": "Layer Comps.psd",
+      "bytes": 2689431,
+      "sha256": "32ae096f868f4fb3f48fb32ff5aff3a0cbaeb733955e663cc43638b619c6fb01",
+      "source": "adobe-samples",
+      "entry": "en_US/Samples/Layer Comps.psd"
+    },
+    {
+      "name": "Smart Objects.psd",
+      "bytes": 1419665,
+      "sha256": "062bd6c1c651d2570cf2a2f45500bf2e4e387035cc1f995ac485a079099b4bdf",
+      "source": "adobe-samples",
+      "entry": "en_US/Samples/Smart Objects.psd"
+    },
+    {
+      "name": "Vanishing Point.psd",
+      "bytes": 3196596,
+      "sha256": "d7eb2b5e34dc3de46b2d5b28f755f88909ecc1aeb7c6a28bad33293d4cf3a348",
+      "source": "adobe-samples",
+      "entry": "en_US/Samples/Vanishing Point.psd"
+    },
+    {
+      "name": "input01.psd",
+      "bytes": 647902,
+      "sha256": "5b3fca9ab31def1a9e9a1749a2c22c16c477c30e008692abe83b5b5033892883",
+      "source": "adobe-sdk",
+      "download": "https://raw.githubusercontent.com/adobe/adobe-photoshop-api-sdk/0df921e63735490b4d7a5b186ac00107a38e59c5/testfiles/input/input01.psd"
+    },
+    {
+      "name": "input02.psd",
+      "bytes": 29942765,
+      "sha256": "2bb9bf66f95ce8ab4097e4a5c8af33e0516215f3fa0f20c722cad8cbd465011d",
+      "source": "adobe-sdk",
+      "download": "https://raw.githubusercontent.com/adobe/adobe-photoshop-api-sdk/0df921e63735490b4d7a5b186ac00107a38e59c5/testfiles/input/input02.psd"
+    }
+  ]
+}

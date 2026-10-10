@@ -1,4 +1,4 @@
-import { readPsd, type Layer } from 'ag-psd';
+import { readPsd, writePsdUint8Array, type Layer } from 'ag-psd';
 import { importPsd, exportPsd } from './psdAdapter.js';
 import { allLayers, checkSize, findLayer, ImageDocument, makeLayer, uid, validateState, type ImageState } from './document.js';
 import { compositeState } from './compositor.js';
@@ -10,7 +10,9 @@ export function readSmartSource(bytes:Uint8Array,name:string){
  const raw=readPsd(bytes,{useRawData:true,skipThumbnail:true,skipLinkedFilesData:true,totalMemoryLimit:64*1024*1024});checkSize(raw.width,raw.height);
  let count=0,total=raw.width*raw.height*(raw.bitsPerChannel===8?4:16);
  const visit=(layers:Layer[],depth:number)=>{if(depth>16)throw new Error('智能源嵌套过深。');for(const l of layers){if(++count>128||l.placedLayer)throw new Error('智能源最多 128 层，暂不允许嵌套智能对象。');for(const r of [l,l.mask,l.realMask])if(r){const w=(r.right??0)-(r.left??0),h=(r.bottom??0)-(r.top??0);if(w<0||h<0)throw new Error('智能源范围无效。');if(w&&h)checkSize(w,h);total+=w*h*(raw.bitsPerChannel===8?4:16);if(total>64*1024*1024)throw new Error('智能源解码超过 64 MiB。');}visit(l.children??[],depth+1);}};visit(raw.children??[],0);
- const result=importPsd(bytes,name);if(!result.layered)throw new Error('智能源无法无损编辑：'+result.blockers.join('；'));
+ const isPsb=new DataView(bytes.buffer,bytes.byteOffset).getUint16(4)===2;
+ const normalized=isPsb?writePsdUint8Array(readPsd(bytes,{useImageData:true,skipThumbnail:true,totalMemoryLimit:64*1024*1024}),{noBackground:true,compress:false}):bytes;
+ const result=importPsd(normalized,name);if(!result.layered)throw new Error('智能源无法无损编辑：'+result.blockers.join('；'));
  const state=result.layered,only=state.layers.length===1?state.layers[0]:undefined;
  const simple=Boolean(only?.bitmap&&!only.content&&!only.mask&&!only.styles&&!only.blendIf&&!only.clipping&&only.kind==='pixel'&&only.visible&&only.opacity===1&&only.blend==='normal'&&only.x===0&&only.y===0&&only.bitmap.width===state.width&&only.bitmap.height===state.height);
  return {state,bitmap:simple?only!.bitmap!:compositeState(state),simple};

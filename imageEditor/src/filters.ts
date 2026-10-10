@@ -1,3 +1,4 @@
+import { isLayerLocked, preserveLayerAlpha } from './layerLocks.js';
 import { pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { gaussianBlur, unsharpMask } from './qualityFilters.js';
 import { type Bitmap, type ImageLayer, type ImageState } from './document.js';
@@ -86,5 +87,5 @@ export function filterLayer(state:ImageState,id:string,settings:FilterSettings):
     for(let c=0;c<3;c++)filtered.data[i+c]=alpha?(source[i+c]!*a*(1-weight)+filtered.data[i+c]!*b*weight)/alpha:source[i+c]!;
     filtered.data[i+3]=alpha*255;
   }
-  return {...layer,bitmap:filtered};
+  const result={...layer,bitmap:filtered};return isLayerLocked(state.layers,id,'transparency')?preserveLayerAlpha(layer,result):result;
 }
