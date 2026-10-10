@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { runEditorBrowserScenario } from '../../scripts/editor-e2e/browserDriver.mjs';
+const root=resolve(import.meta.dirname,'../..'), output=resolve(root,'imageEditor/artifacts/ui-components');mkdirSync(output,{recursive:true});
+const result=await runEditorBrowserScenario({root,route:'imageEditor/app-dist/index.html',downloadDirectory:output,failureScreenshotPath:resolve(output,'failure.png'),readinessExpression:'document.querySelector("#app")?.getAttribute("aria-busy")==="false"',scenario:async driver=>{
+ const {evaluate,click,replaceText,nextPaint,cdp,waitFor}=driver,checks=[];
+ const e=s=>`document.querySelector(${JSON.stringify(s)})`, act=a=>click(e(`[data-action="${a}"]`));
+ const key=async key=>{await cdp.call('Input.dispatchKeyEvent',{type:'rawKeyDown',key,code:key,windowsVirtualKeyCode:({ArrowDown:40,ArrowLeft:37,Tab:9,Enter:13,Home:36,End:35}[key]??0)});await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',key});await nextPaint();};
+ const rect=s=>evaluate(`(()=>{const r=(${s}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`);
+ const bar=`${e('#workspace-split')}.shadowRoot.querySelector('[role=separator]')`;
+ const drag=async(x,y,toX,toY)=>{for(const [type,px,py] of [['mousePressed',x,y],['mouseMoved',toX,toY],['mouseReleased',toX,toY]]){await cdp.call('Input.dispatchMouseEvent',{type,x:px,y:py,button:'left',buttons:type==='mouseReleased'?0:1,clickCount:1});await nextPaint();}};
+ assert.deepEqual(await evaluate(`["hy-button","hy-input","hy-select","hy-checkbox","hy-split"].map(tag=>!!customElements.get(tag))`),[true,true,true,true,true]);
+ assert.equal(await evaluate(`${e('[data-action=undo]')}.shadowRoot.querySelector('button').disabled`),true);
+ await act('undo');assert.equal(await evaluate('haiyueEditor.listDocuments().documents.length'),0);
+ await click(e('.header-actions [data-action=new]'));await replaceText(e('#new-name'),'组件与分隔条验收');await replaceText(e('#new-width'),'400');await replaceText(e('#new-height'),'300');
+ await click(e('#new-form button[type=submit]'));await nextPaint();assert.equal(await evaluate(`${e('#new-dialog')}.open`),false);
+ checks.push('shared component registration, disabled actions and native form submission');
+ const before=await rect(e('#viewport'));let r=await rect(bar);await drag(r.x+3,r.y+100,r.x-110,r.y+100);
+ const after=await rect(e('#viewport'));assert(after.width<before.width-90);assert.equal(after.height,before.height);
+ const ratio=await evaluate(`${e('#workspace-split')}.ratio`);assert((await rect(e('.sidebar'))).width>380);
+ await click(bar);await key('ArrowLeft');assert((await evaluate(`${e('#workspace-split')}.ratio`))<ratio);
+ await key('Home');assert((await rect(e('#viewport'))).width>=239);await key('End');assert((await rect(e('.sidebar'))).width>=239);
+ r=await rect(bar);await drag(r.x+3,r.y+100,r.x-90,r.y+100);
+ const savedRatio=await evaluate(`${e('#workspace-split')}.ratio`);
+ await waitFor(()=>evaluate(`Number(localStorage.getItem('haiyue.image-editor.workspace-split.v1'))===${savedRatio}`),'layout saved');
+ checks.push('pointer resize, keyboard arrows/Home/End and minimum pane sizes');
+ await replaceText(e('#opacity'),'65');await nextPaint();assert.equal(await evaluate(`${e('#opacity')}.value`),'65');
+ await act('undo');await nextPaint();assert.equal(await evaluate(`${e('#opacity')}.value`),'100');
+ await act('redo');await nextPaint();assert.equal(await evaluate(`${e('#opacity')}.value`),'65');
+ const blend=`${e('#blend-mode')}.shadowRoot.querySelector('select')`;
+ // Select's native popup is OS-owned; drive its change event to validate the shadow boundary.
+ await evaluate(`${blend}.value='multiply';${blend}.dispatchEvent(new Event('change',{bubbles:true}))`);await nextPaint();
+ const blendValue=await evaluate(`${e('#blend-mode')}.value`);assert.notEqual(blendValue,'normal');
+ await act('undo');await nextPaint();assert.equal(await evaluate(`${e('#blend-mode')}.value`),'normal');
+ await click(e('[data-tool=brush]'));await evaluate(`${e('#brush-size')}.scrollIntoView({block:'nearest',inline:'nearest'})`);await replaceText(e('#brush-size'),'32');
+ assert.equal(await evaluate(`${e('#brush-size')}.value`),'32');
+ await evaluate(`${e('#clone-aligned')}.scrollIntoView({block:'nearest',inline:'nearest'})`);await click(e('#clone-aligned'));assert.equal(await evaluate(`${e('#clone-aligned')}.checked`),false);
+ await click(e('#clone-aligned'));assert.equal(await evaluate(`${e('#clone-aligned')}.checked`),true);
+ // Typing a tool shortcut into a custom input must not change the current tool.
+ await click(e('#brush-size'));await key('v');assert.equal(await evaluate(`${e('#viewport')}.dataset.tool`),'brush');
+ await act('fit');await nextPaint();
+ const canvas=await rect(e('#image-canvas')),viewport=await rect(e('#viewport'));
+ assert(canvas.x>=viewport.x-1&&canvas.x+canvas.width<=viewport.x+viewport.width+1);
+ checks.push('custom input/select commit once with undo/redo, checkbox and shadow focus guards');
+ // Store recovery before reload, then verify the split preference and live controls again.
+ await waitFor(()=>evaluate(`${e('#recovery-status')}.textContent.includes('已存到')`),'recovery saved');
+ const origin=await evaluate('performance.timeOrigin'),stop=cdp.on('Page.javascriptDialogOpening',()=>void cdp.call('Page.handleJavaScriptDialog',{accept:true}));await cdp.call('Page.reload',{});await waitFor(()=>evaluate(`performance.timeOrigin!==${origin} && ${e('#app')}?.getAttribute('aria-busy')==='false' && !!${e('#workspace-split')}?.shadowRoot`),'reload ready');stop();await nextPaint();
+ assert.equal(await evaluate(`${e('#workspace-split')}.ratio`),savedRatio);
+ assert.equal(await evaluate(`${e('#opacity')}.value`),'65');checks.push('reload restores panel ratio and editable document');
+ await cdp.call('Emulation.setDeviceMetricsOverride',{width:818,height:904,deviceScaleFactor:1,mobile:false});await nextPaint();
+ assert((await rect(e('#viewport'))).width>=239);assert((await rect(e('.sidebar'))).width>=239);
+ assert.equal(await evaluate(`${e('#workspace-split')}.scrollWidth>${e('#workspace-split')}.clientWidth`),false);
+ const save=await rect(e('.app-header [data-action=save]')),remove=await rect(e('.layer-actions [data-action=delete]'));assert(save.x+save.width<=818&&remove.x+remove.width<=818,'commands stay inside the narrow window');
+ const actions=await rect(e('.layer-actions')),properties=await rect(e('.advanced-properties'));assert(properties.y>=actions.y+actions.height-1,'wrapped layer controls must not overlap properties');
+ await act('fit');await nextPaint();
+ writeFileSync(resolve(output,'narrow.png'),Buffer.from((await cdp.call('Page.captureScreenshot',{format:'png'})).result.data,'base64'));
+ await cdp.call('Emulation.clearDeviceMetricsOverride');await nextPaint();
+ // Double click the real separator to restore the default sidebar width.
+ r=await rect(bar);for(const type of ['mousePressed','mouseReleased'])await cdp.call('Input.dispatchMouseEvent',{type,x:r.x+3,y:r.y+100,button:'left',clickCount:2});await nextPaint();
+ assert(Math.abs((await rect(e('.sidebar'))).width-300)<=1);checks.push('narrow viewport and double-click layout reset');
+ writeFileSync(resolve(output,'workspace.png'),Buffer.from((await cdp.call('Page.captureScreenshot',{format:'png'})).result.data,'base64'));
+ driver.assertNoBrowserErrors();
+ return {schemaVersion:1,status:'passed',checks,generatedAt:new Date().toISOString(),revision:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),dirty:!!execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim(),runner:{chrome:driver.chrome,browser:await evaluate('navigator.userAgent'),platform:process.platform,arch:process.arch},buildHash:JSON.parse(readFileSync(resolve(root,'imageEditor/app-dist/app-manifest.json'))).buildHash,sourceFingerprints:Object.fromEntries(['imageEditor/src/editorUI.ts','imageEditor/src/uiFocus.ts','imageEditor/src/main.ts','imageEditor/index.html','imageEditor/styles.css','imageEditor/test/ui-components-browser.mjs','scripts/editor-e2e/browserDriver.mjs','package-lock.json'].map(file=>[file,createHash('sha256').update(readFileSync(resolve(root,file))).digest('hex')]))};
+}});writeFileSync(resolve(output,'report.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result,null,2));

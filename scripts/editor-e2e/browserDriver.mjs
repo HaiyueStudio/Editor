@@ -278,10 +278,14 @@ function createBrowserDriver(cdp, defaultTimeoutMs, browserErrors) {
     await click(expression, { label: `text input ${expression}` });
     const selected = await evaluate(`
       (() => {
-        const input = (${expression});
+        const host = (${expression});
+        const input = host instanceof HTMLInputElement || host instanceof HTMLTextAreaElement
+          ? host : host?.shadowRoot?.querySelector('input, textarea');
         if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return false;
         input.select();
-        return document.activeElement === input;
+        let focused = document.activeElement;
+        while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+        return focused === input;
       })()
     `);
     if (!selected) throw new Error(`Could not select the current value of ${expression}.`);

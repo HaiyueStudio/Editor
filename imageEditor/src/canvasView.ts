@@ -81,7 +81,7 @@ export class CanvasView {
     }, { ...options, passive: false });
     let drag: { pointerId: number; x: number; y: number; cameraX: number; cameraY: number } | undefined;
     viewport.addEventListener('pointerdown', event => {
-      if (!this.state || !this.canPan(event) || (event.target as HTMLElement).closest('button')) return;
+      if (!this.state || !this.canPan(event) || (event.target as HTMLElement).closest('button, hy-button')) return;
       drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, cameraX: this.camera.x, cameraY: this.camera.y };
       viewport.setPointerCapture(event.pointerId); viewport.classList.add('panning');
     }, options);

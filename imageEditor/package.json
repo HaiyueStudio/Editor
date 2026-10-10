@@ -54,7 +54,8 @@
     "test:browser:large": "npm run build:app && node test/large-image-browser.mjs",
     "test:hdr:environment": "npm run build:app && node test/hdr-environment-browser.mjs",
     "test:hdr:simulated": "npm run build:app && node test/hdr-environment-browser.mjs --simulated",
-    "hdr:verify": "node scripts/verify-hdr-environment.mjs"
+    "hdr:verify": "node scripts/verify-hdr-environment.mjs",
+    "test:browser:ui": "npm run build:app && node test/ui-components-browser.mjs"
   },
   "dependencies": {
     "@haiyue/editor-app-kit": "0.1.0",
@@ -64,7 +65,8 @@
     "ag-psd": "31.0.2",
     "iccdev": "2.3.23",
     "lcms-wasm": "1.0.5",
-    "pako": "2.1.0"
+    "pako": "2.1.0",
+    "@haiyue/ui": ">=0.1.2 <0.2.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.3",

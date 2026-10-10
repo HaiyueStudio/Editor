@@ -62,3 +62,60 @@
 .ink-grid > label { display: flex; flex-direction: column; gap: 4px; }
 .ink-grid canvas { width: 100%; height: 40px; border: 1px solid #555; }
 .ink-grid input[type=number] { width: 68px; }
+
+/* Main workspace controls consume the shared UI library's semantic tokens. */
+:root {
+  --hy-text-color: #d9dadd;
+  --hy-secondary-text-color: #8c9099;
+  --hy-surface-color: #202226;
+  --hy-surface-elevated-color: #292c32;
+  --hy-input-bg-color: #202227;
+  --hy-border-color: #41444c;
+  --hy-hover-border-color: #6b707b;
+  --hy-hover-bg-color: #383b42;
+  --hy-focus-border-color: var(--accent);
+  --hy-focus-ring-color: #f2956930;
+  --hy-accent-color: var(--accent);
+  --hy-accent-strong-color: #91634a;
+  --hy-split-bar-color: #363940;
+  --hy-split-bar-active-color: var(--accent);
+}
+.workspace { grid-template-columns: 52px minmax(0, 1fr); }
+#workspace-split { min-width: 0; min-height: 0; }
+#workspace-split > .editor-area, #workspace-split > .sidebar { height: 100%; min-width: 0; }
+#workspace-split > .sidebar { border-left: 0; }
+.navigator-panel { display: block; flex-shrink: 0; }
+.navigator-preview canvas { object-fit: contain; }
+hy-button { flex-shrink: 0; vertical-align: middle; }
+hy-button .button-content { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 27px; white-space: nowrap; }
+hy-button.save-button { padding: 0; background: none; --hy-surface-elevated-color: #30333a; --hy-border-color: #585b63; }
+.app-header { gap: 8px; }
+.app-header .brand { margin-right: 6px; }
+.app-header .recovery-status { max-width: 160px; }
+.options-bar { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.options-bar > *, .tool-settings { flex-shrink: 0; }
+.tool-settings hy-input[type=number] { width: 58px; }
+.tool-settings hy-input[type=color], .tool-rail hy-input[type=color], #range-color { width: 30px; }
+.tool-settings hy-select { width: max-content; min-width: 92px; }
+.tool-settings hy-checkbox { margin-inline: 4px; }
+#brush-pressure { width: 126px; }
+.selection-menu-content hy-button { display: block; margin: 3px 0; }
+.selection-menu-content hy-input { width: 60px; }
+.blend-controls { flex-wrap: wrap; }
+.blend-controls hy-select { flex: 1; min-width: 104px; }
+.blend-controls hy-input#opacity { width: 56px; padding: 0; }
+.daily-actions hy-select { width: calc(50% - 4px); }
+.coordinate-fields hy-input { width: 100%; }
+.advanced-properties hy-select { margin-top: 6px; }
+.canvas-status hy-button .button-content { min-height: 24px; }
+@media(max-width:1080px) { .workspace { grid-template-columns: 46px minmax(0,1fr); } .app-header { gap: 5px; padding-inline: 8px; } }
+@media(max-width:760px) { .workspace { grid-template-columns: 40px minmax(0,1fr); } .app-header { overflow-x: auto; } }
+/* Let command rows wrap without sacrificing canvas height calculations. */
+#app { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100dvh; }
+.app-header { flex-wrap: wrap; height: auto; min-height: 58px; padding-block: 8px; overflow: visible; }
+.workspace { height: 100%; min-height: 0; }
+.tool-rail hy-button.tool { display: inline-flex; align-items: center; justify-content: center; padding: 4px; }
+/* Wrapped controls contribute to panel height instead of overlapping the next section. */
+.layers-panel { flex-basis: auto; }
+#layer-list { height: 144px; flex-basis: 144px; }
+.layer-actions { flex-shrink: 0; }

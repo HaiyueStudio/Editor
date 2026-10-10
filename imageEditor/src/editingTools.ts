@@ -1,3 +1,4 @@
+import { isControlFocused } from './uiFocus.js';
 import { compositeDamage } from './compositor.js';
 import { exportRaster } from './rasterExport.js';
 import { CmykStroke,fillCmyk } from './cmykEditing.js';
@@ -56,7 +57,7 @@ export class EditingTools {
     }, { signal });
     window.addEventListener('blur', () => { this.space = false; this.cancel(); }, { signal });
     document.addEventListener('keydown', event => {
-      if (this.isInput()) return;
+      if (this.isInput() || (['Enter', ' '].includes(event.key) && document.activeElement?.matches('button, hy-button'))) return;
       if ((event.metaKey || event.ctrlKey) && ['c', 'v', 't'].includes(event.key.toLowerCase())) { event.preventDefault(); this.guard(() => event.key.toLowerCase() === 'c' ? this.copy() : event.key.toLowerCase() === 'v' ? this.paste() : this.startTransform()); return; }
       if (this.freeTransform.busy) return;
       if (event.code === 'Space') { this.space = true; event.preventDefault(); }
@@ -79,7 +80,7 @@ export class EditingTools {
     viewport.addEventListener('dblclick', event=>{if(this.tool==='polygon'){event.preventDefault();this.guard(()=>this.finishPolygon());}}, {signal});
     this.setTool('hand');
   }
-  private isInput() { return Boolean(document.querySelector('dialog[open]')) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? ''); }
+  private isInput() { return Boolean(document.querySelector('dialog[open]')) || isControlFocused(); }
   private guard(action: () => void) { try { action(); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
   get busy() { return Boolean(this.gesture || this.polygon || this.freeTransform.busy); }
   get color() { return hexColor($<HTMLInputElement>('paint-color').value); }
@@ -102,7 +103,7 @@ export class EditingTools {
     if (this.activeId !== doc?.identity.id) { this.maskEditing=false; this.cancel(); this.activeId = doc?.identity.id; }
     // A save/status refresh must not paint the previous selection over a live drag.
     if (!this.gesture && !this.polygon) this.showRect(doc?.state.selection ?? null);
-    for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-selection]')) element.disabled = !doc?.state.selection;
+    for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-selection]')) element.toggleAttribute('disabled', !doc?.state.selection);
   }
   private showRect(rect: Selection | null) {
     if (this.shown === rect) return; this.shown = rect;
@@ -115,7 +116,7 @@ export class EditingTools {
     }
   }
   private begin(event: PointerEvent) {
-    const doc = this.active(); if (!doc || this.freeTransform.busy || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    const doc = this.active(); if (!doc || this.freeTransform.busy || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button, hy-button')) return;
     const point = this.view.point(event);
     if (point.x < 0 || point.y < 0 || point.x >= doc.state.width || point.y >= doc.state.height) return;
     // Focus commits pending property inputs synchronously. Capture the gesture's

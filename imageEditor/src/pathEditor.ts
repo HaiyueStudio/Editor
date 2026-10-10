@@ -1,3 +1,4 @@
+import { isControlFocused } from './uiFocus.js';
 import { makeLayer, findLayer, layerLocked, type ImageDocument } from './document.js';
 import { type PathContent, type PathNode, validateContent } from './layerFeatures.js';
 import { rasterContent } from './contentRaster.js';
@@ -15,7 +16,7 @@ export class PathEditor {
    if(index<0){if(d.nodes.length>=256)throw new Error('路径最多 256 个锚点。');d.nodes.push({x:p.x,y:p.y,inX:p.x,inY:p.y,outX:p.x,outY:p.y});index=d.nodes.length-1;}this.drag={pointer:e.pointerId,index,handle};view.viewport.setPointerCapture(e.pointerId);e.preventDefault();this.draw();}),{signal});
   view.viewport.addEventListener('pointermove',e=>guard(()=>this.move(e)),{signal});view.viewport.addEventListener('pointerup',e=>guard(()=>{if(this.drag?.pointer!==e.pointerId)return;this.move(e);this.drag=undefined;if(view.viewport.hasPointerCapture(e.pointerId))view.viewport.releasePointerCapture(e.pointerId);}),{signal});
   view.viewport.addEventListener('pointercancel',()=>this.cancel(),{signal});view.viewport.addEventListener('image-tool-change',()=>{if(editing.tool!=='path')this.cancel();},{signal});
-  document.addEventListener('keydown',e=>{if(!this.draft||document.querySelector('dialog[open]')||/INPUT|TEXTAREA|SELECT/.test((e.target as Element)?.tagName))return;if(e.key==='Enter'||e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();guard(()=>e.key==='Enter'?this.apply():this.cancel());}else if(e.key==='Backspace'){e.preventDefault();e.stopImmediatePropagation();this.draft.nodes.pop();this.draw();}},{signal,capture:true});window.addEventListener('blur',()=>this.cancel(),{signal});
+  document.addEventListener('keydown',e=>{if(!this.draft||document.querySelector('dialog[open]')||isControlFocused())return;if(e.key==='Enter'||e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();guard(()=>e.key==='Enter'?this.apply():this.cancel());}else if(e.key==='Backspace'){e.preventDefault();e.stopImmediatePropagation();this.draft.nodes.pop();this.draw();}},{signal,capture:true});window.addEventListener('blur',()=>this.cancel(),{signal});
  }
  get busy(){return !!this.draft;}
  private viewScale(){return this.view.canvas.getBoundingClientRect().width/this.view.canvas.width;}

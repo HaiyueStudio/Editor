@@ -1,3 +1,5 @@
+import { initializeEditorUI } from './editorUI.js';
+import { isControlFocused } from './uiFocus.js';
 import { iccDocumentInfo,applyIccPolicy,builtinIcc,type IccPreset } from './iccWorkflow.js';
 import { CmykPanel } from './cmykPanel.js';
 import { ColorPanel } from './colorPanel.js';
@@ -34,6 +36,7 @@ Object.defineProperty(globalThis, 'haiyueEditor', { value: workspace.api, config
 workspace.platform.rpc.connect(window.haiyueEditorIPC);
 const store = new IndexedDbRecovery(), recovery = new RecoveryQueue(store);
 const lifecycle = new AbortController(), options = { signal: lifecycle.signal };
+initializeEditorUI(lifecycle.signal);
 let zoom = 1, renderPending = false, ready = false, disposed = false, importing = false;
 let recoveryEnabled = true, recoveryTimer: ReturnType<typeof setTimeout> | undefined, recoveryGeneration = 0;
 let releaseLease: (() => void) | undefined;
@@ -87,10 +90,10 @@ function property(id: string, value: string, disabled: boolean) {
 function render() {
   const doc = workspace.active, selected = doc?.selected;
   $('welcome').hidden = Boolean(doc);
-  for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-document]')) element.disabled = !doc;
-  for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-layer]')) element.disabled = !selected || Boolean(doc && layerLocked(doc.state.layers, selected.id));
-  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-action=undo]')) el.disabled = !doc?.history.canUndo;
-  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-action=redo]')) el.disabled = !doc?.history.canRedo;
+  for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-document]')) element.toggleAttribute('disabled', !doc);
+  for (const element of document.querySelectorAll<HTMLButtonElement>('[data-needs-layer]')) element.toggleAttribute('disabled', !selected || Boolean(doc && layerLocked(doc.state.layers, selected.id)));
+  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-action=undo]')) el.toggleAttribute('disabled', !doc?.history.canUndo);
+  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-action=redo]')) el.toggleAttribute('disabled', !doc?.history.canRedo);
   const tabs = $('document-tabs'); tabs.replaceChildren();
   for (const item of workspace.documents) {
     const wrapper = document.createElement('div'); wrapper.className = 'document-tab' + (item === doc ? ' active' : ''); wrapper.dataset.documentId = item.identity.id;
@@ -263,7 +266,7 @@ const actions: Record<string, () => unknown | Promise<unknown>> = {
 };
 document.addEventListener('click', event => {
   const action = (event.target as Element).closest<HTMLButtonElement>('[data-action]');
-  if (action && !action.disabled) { action.closest('details')?.removeAttribute('open'); editing.cancel(); void run(actions[action.dataset.action!.replace(/^menu-/,'')]!); }
+  if (action && !action.hasAttribute('disabled')) { action.closest('details')?.removeAttribute('open'); editing.cancel(); void run(actions[action.dataset.action!.replace(/^menu-/,'')]!); }
   if ((event.target as Element).closest('[data-close-dialog]')) (event.target as Element).closest('dialog')?.close();
 }, options);
 for (const [id, submit] of [
@@ -351,7 +354,7 @@ async function start() {
   await initializeIcc(); await workspace.start(); await acquireRecoveryLease();
   try { const count = workspace.restore(await store.load()); if (recoveryEnabled) recoveryStatus(count ? `已恢复 ${count} 个文档` : '本地恢复已就绪'); }
   catch (error) { recoveryEnabled = false; recoveryStatus('自动恢复不可用，请保存工程副本', true); notice('未覆盖原恢复数据：' + (error instanceof Error ? error.message : String(error)), true); }
-  const canShortcut = () => !editing.busy && !paths.busy && !document.querySelector('dialog[open]') && !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement) && !(document.activeElement instanceof HTMLSelectElement);
+  const canShortcut = () => !editing.busy && !paths.busy && !document.querySelector('dialog[open]') && !isControlFocused();
   for (const [chord, action] of [['Mod+Shift+I', 'invert-selection'], ['Mod+A', 'select-all'], ['Mod+D', 'deselect'], ['Mod+N', 'new'], ['Mod+O', 'open'], ['Mod+S', 'save'], ['Mod+Z', 'undo'], ['Mod+Shift+Z', 'redo'], ['Mod+Y', 'redo'], ['Mod+0', 'fit'], ['Mod+1', 'actual'], ['Delete', 'delete-selection'], ['Backspace', 'delete-selection']] as const)
     workspace.shell.shortcuts.register({ id: `image.${chord}`, ownerId: 'image.core', chord, when: canShortcut, handler: () => run(actions[action]!) });
   workspace.shell.shortcuts.attach(window);

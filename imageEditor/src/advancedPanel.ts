@@ -1,3 +1,4 @@
+import type { HYSelect } from '@haiyue/ui/select';
 import { formatRange, rebaseRuns } from './richText.js';
 import { AdjustmentControls } from './adjustmentControls.js';
 import { ImageDocument, makeLayer, layerLocked } from './document.js';
@@ -15,7 +16,7 @@ export class AdvancedPanel {
  constructor(private active:()=>ImageDocument|undefined,private editing:EditingTools){
   $('text-content').addEventListener('input',()=>{if(this.rich){this.rich={...this.rich,runs:rebaseRuns(this.rich,val('text-content')),text:val('text-content')};this.runInfo();}});
   $('text-format-range').onclick=()=>{try{if(!this.rich)return;const area=$<HTMLTextAreaElement>('text-content');this.rangeFormatted=true;this.rich={...this.rich,runs:formatRange(this.rich,area.selectionStart,area.selectionEnd,{size:Number(val('text-size')),family:val('text-family') as TextContent['family'],bold:$<HTMLInputElement>('text-bold').checked,italic:$<HTMLInputElement>('text-italic').checked,underline:$<HTMLInputElement>('text-underline').checked,color:val('text-color')})};this.runInfo();$('text-error').textContent='';}catch(e){$('text-error').textContent=String(e);}};
-  const select=$<HTMLSelectElement>('blend-mode');select.replaceChildren();for(const [value,label] of Object.entries(BLEND_MODES)){const option=new Option(label,value);select.add(option);}
+  $<HYSelect>('blend-mode').options=Object.entries(BLEND_MODES).map(([value,label])=>({value,label}));
  }
  private begin(edit:boolean){const doc=this.active();if(!doc)throw new Error('请先打开文档。');this.target={doc,revision:doc.revision,id:edit?doc.state.selectedId:null};return doc;}
  openText(edit=false){const doc=this.begin(edit),c=edit&&doc.selected?.content?.type==='text'?doc.selected.content:undefined;
@@ -59,6 +60,6 @@ export class AdvancedPanel {
  }
  sync(){const layer=this.active()?.selected;$('content-edit').hidden=!layer?.content||layer.content.type==='smart';$('content-rasterize').hidden=!layer?.content||layer.kind==='adjustment';$('mask-state').textContent=layer?.mask?`${layer.mask.disabled?'已停用':'已启用'} · ${layer.mask.width} × ${layer.mask.height}`:'无蒙版';
   $<HTMLSelectElement>('blend-mode').disabled=layer?.kind==='adjustment'||!layer||layerLocked(this.active()!.state.layers,layer.id);
-  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-mask-required]'))button.disabled=!layer?.mask||layerLocked(this.active()!.state.layers,layer.id);
+  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-mask-required]'))button.toggleAttribute('disabled',!layer?.mask||layerLocked(this.active()!.state.layers,layer.id));
  }
 }
