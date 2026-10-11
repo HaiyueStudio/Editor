@@ -1,3 +1,8 @@
+import { needsTiledView } from './imageLimits.js';
+import { importLargePng } from './largeImageImport.js';
+import { diskPager, type DiskBlob } from './diskPager.js';
+import { pagedBitmap } from './pagedPixels.js';
+import { deflate } from 'pako';
 import { profileResource,srgbProfileBytes,embeddedProfile } from './colorManagement.js';
 import { transformBitmapIcc,linearSrgbProfile } from './iccEngine.js';
 import { convertDepth } from './pixelFormat.js';
@@ -31,10 +36,12 @@ export function inspectImageSize(bytes: Uint8Array) {
 }
 export async function decodeImage(file: File): Promise<Bitmap> {
   if (file.size > 32 * 1024 * 1024) throw new Error('PNG/JPEG 文件不能超过 32 MiB。');
-  inspectImageSize(new Uint8Array(await file.arrayBuffer()));
+  const bytes=new Uint8Array(await file.arrayBuffer()),size=inspectImageSize(bytes);
+  if(needsTiledView(size)&&bytes[0]===137)return importLargePng(bytes);
   let decoded: ImageBitmap | undefined;
   try {
     decoded = await createImageBitmap(file, { imageOrientation: 'from-image' }); checkSize(decoded.width, decoded.height);
+    if(needsTiledView(decoded)){const tiles:DiskBlob[]=[],canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true})!;try{for(let y=0;y<decoded.height;y+=256)for(let x=0;x<decoded.width;x+=256){canvas.width=Math.min(256,decoded.width-x);canvas.height=Math.min(256,decoded.height-y);ctx.drawImage(decoded,x,y,canvas.width,canvas.height,0,0,canvas.width,canvas.height);tiles.push(await diskPager.write(deflate(new Uint8Array(ctx.getImageData(0,0,canvas.width,canvas.height).data))));}return pagedBitmap(decoded.width,decoded.height,{kind:'disk',tiles});}finally{canvas.width=canvas.height=1;}}
     const canvas = document.createElement('canvas'); canvas.width = decoded.width; canvas.height = decoded.height;
     const context = canvas.getContext('2d', { willReadFrequently: true }); if (!context) throw new Error('无法解码图片。');
     context.drawImage(decoded, 0, 0);

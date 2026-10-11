@@ -34,11 +34,11 @@ test('live styles own parameters, keep source pixels and undo, including disable
  const before=d.state;d.setStyles(d.selected.id,{...styles,enabled:false});assert.equal(pixel(compositeState(d.state),3,3)[3],0);d.history.undo();assert.equal(d.state,before);
  d.updateLayer(d.selected.id,{locked:true});const locked=d.state;assert.throws(()=>d.setStyles(d.selected.id,styles),/锁定/);assert.equal(d.state,locked);d.dispose();
 });
-test('smart scaling restores original source pixels; replace and duplicate own source buffers and undo',()=>{
+test('smart scaling restores original source pixels; replace owns input and duplicate shares immutable source buffers with undo',()=>{
  const d=doc(),id=d.selected.id;d.replaceLayerPixels(id,{...d.selected,bitmap:{width:4,height:4,data:Uint8ClampedArray.from({length:64},(_,i)=>i%4===3?255:(i*37)%256)}},'pattern');const original=d.selected.bitmap.data.slice();convertSmart(d,id);
  const ownedSource=d.selected.content.source.data;const transform=(width,height)=>commitTransform(d,transformedLayer(d.state,id,{width,height,angle:0,dx:0,dy:0}));transform(1,1);assert.equal(d.selected.content.source.data,ownedSource,'transform history shares the immutable source buffer');transform(4,4);assert.equal(d.selected.content.source.data,ownedSource);assert.deepEqual(d.selected.bitmap.data,original);
  const source=bitmap(2,2,[255,0,0,255]);replaceSmart(d,id,source,'new');source.data.fill(0);assert.equal(d.selected.content.source.data[0],255);d.history.undo();assert.deepEqual(d.selected.content.source.data,original);
- d.duplicateSelected();assert.notEqual(d.selected.content.source.data,d.state.layers[1].content.source.data);assert.deepEqual(d.selected.content.source.data,original);d.dispose();
+ d.duplicateSelected();assert.equal(d.selected.content.source.data,d.state.layers[1].content.source.data);assert.deepEqual(d.selected.content.source.data,original);d.dispose();
 });
 test('project v4 and recovery v5 retain owned smart source, live styles and adjustment parameters',async()=>{
  const d=doc();convertSmart(d,d.selected.id);d.setStyles(d.selected.id,styles);d.addLayer({...makeLayer('levels'),kind:'adjustment',content:levels},false);d.setClipping(d.selected.id,true);

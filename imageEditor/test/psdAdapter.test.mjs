@@ -35,6 +35,6 @@ test('unknown additional blocks are detected independently of codec warnings',()
 test('empty document export is valid; geometry and truncated resource sections fail before decode',()=>{
   const d=ImageDocument.create('空白',2,2);d.deleteSelected();assert(importPsd(exportPsd(d.state).bytes,'blank.psd').layered);
   const bytes=fixture('layer-offsets-read.psd');for(const end of [0,25,60,bytes.length-5])assert.throws(()=>importPsd(bytes.slice(0,end),'truncated.psd'));
-  const tooLarge=bytes.slice();new DataView(tooLarge.buffer).setUint32(18,9000);assert.throws(()=>importPsd(tooLarge,'large.psd'),/尺寸/);
+  const tooLarge=bytes.slice();new DataView(tooLarge.buffer).setUint32(18,30001);assert.throws(()=>importPsd(tooLarge,'large.psd'),/尺寸/);
   assert.throws(()=>resourceBlocks(new Uint8Array([56,66,73,77,0,1,0])),/截断/);
 });

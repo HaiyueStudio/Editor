@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build:types": "tsc -p tsconfig.json",
-    "build": "npm run build:types && node ../scripts/build-rollup-once.mjs --expect web",
+    "build": "npm run build:types && node ../scripts/build-rollup-once.mjs --expect web --heap-mb 4096",
     "build:app": "npm run build && node ../scripts/run-editor-app-kit.mjs assemble",
     "app:check": "npm run build:app && node ../scripts/run-editor-app-kit.mjs validate",
     "preview": "npm run build:app && node ../scripts/run-editor-app-kit.mjs preview",

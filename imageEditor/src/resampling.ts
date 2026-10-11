@@ -3,13 +3,13 @@ import { pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { checkSize, type Bitmap } from './document.js';
 import { validateResampling, type Resampling } from './resamplingTypes.js';
 export { RESAMPLING, validateResampling, type Resampling } from './resamplingTypes.js';
-function kernel(x:number,method:Resampling):number {
+export function kernel(x:number,method:Resampling):number {
  x=Math.abs(x);if(method==='bilinear')return Math.max(0,1-x);
  if(method==='bicubic')return x<1?1.5*x*x*x-2.5*x*x+1:x<2?-.5*x*x*x+2.5*x*x-4*x+2:0;
  return x<1e-8?1:x<3?Math.sin(Math.PI*x)*Math.sin(Math.PI*x/3)/(Math.PI*Math.PI*x*x/3):0;
 }
 const support=(method:Resampling)=>method==='bilinear'?1:method==='bicubic'?2:3;
-function weights(source:number,target:number,method:Resampling) {
+export function weights(source:number,target:number,method:Resampling) {
  const scale=Math.max(1,source/target),radius=support(method)*scale;
  return Array.from({length:target},(_,i)=>{const center=(i+.5)*source/target-.5,start=Math.ceil(center-radius),end=Math.floor(center+radius),indices:number[]=[],values:number[]=[];let sum=0;
   for(let j=start;j<=end;j++){const value=kernel((j-center)/scale,method);if(!value)continue;indices.push(Math.max(0,Math.min(source-1,j)));values.push(value);sum+=value;}return {indices,values:values.map(v=>v/sum)};

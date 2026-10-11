@@ -31,3 +31,5 @@ export function mapQuadPoint(q:readonly number[],u:number,v:number):[number,numb
 export function quadCoordinates(q:readonly number[],x:number,y:number):[number,number] {
  const m=inverseMap(q),z=m[6]!*x+m[7]!*y+1;return [(m[0]!*x+m[1]!*y+m[2]!)/z,(m[3]!*x+m[4]!*y+m[5]!)/z];
 }
+
+export function inverseQuad(q:readonly number[]){const m=inverseMap(q);return (x:number,y:number):[number,number]=>{const z=m[6]!*x+m[7]!*y+1;return [(m[0]!*x+m[1]!*y+m[2]!)/z,(m[3]!*x+m[4]!*y+m[5]!)/z];};}

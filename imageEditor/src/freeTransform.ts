@@ -1,3 +1,7 @@
+import {transformBounds,transformMany} from './multiTransform.js';
+import {commitSmartUpdates} from './sharedSmart.js';
+import { tiledEditing } from './tiledEditing.js';
+import { tiledTransform } from './tiledTransform.js';
 import { snapMove } from './layout.js';
 import type { Resampling } from './resampling.js';
 import { smartTransform } from './smartObject.js';
@@ -22,8 +26,12 @@ export function commitTransform(doc:ImageDocument,layer:ImageLayer,label='自由
 }
 /** One immutable source for every preview, and one history entry on explicit confirmation. */
 export class FreeTransform {
-  private session: { doc: ImageDocument; before: ImageState; layer: ImageLayer; value: TransformValues; center: Point } | undefined;
+  private session: { doc: ImageDocument; before: ImageState; layer: ImageLayer; value: TransformValues; center: Point; ids?:readonly string[] } | undefined;
   private drag: { pointer: number; handle: string; start: Point; value: TransformValues } | undefined;
+  private previewAbort:AbortController|undefined;
+  private previewTimer:ReturnType<typeof setTimeout>|undefined;
+  private preparedMany:{key:string;layers:ImageLayer[]}|undefined;
+  private prepared:{key:string;layer:ImageLayer}|undefined;
   private frame: number | undefined;
   private abort = new AbortController();
   private box = document.createElement('div');
@@ -51,27 +59,28 @@ export class FreeTransform {
   get busy() { return Boolean(this.session); }
   start() {
     this.cancel(); const doc = this.active(), layer = doc?.selected;
+    if(doc&&(doc.selectedIds.length>1||layer?.kind==='group'||layer?.content?.type==='smart'&&layer.content.transform.quad&&!layer.mask&&!layer.filterMask)){const ids=[...doc.selectedIds],b=transformBounds(doc.state,ids),value={width:b.width,height:b.height,angle:0,dx:0,dy:0};this.session={doc,before:doc.state,ids,layer:{...layer!,content:undefined,bitmap:{width:b.width,height:b.height,data:new Uint8ClampedArray()}} as unknown as ImageLayer,value,center:{x:b.x+b.width/2,y:b.y+b.height/2}};this.draw();this.box.focus();this.notify('多层自由变换：拖动移动／缩放／旋转；Enter 确认，Esc 取消');return;}
     if (!doc || !layer?.bitmap || doc.selectedIds.length !== 1) throw new Error('自由变换需要选择一个像素图层。');
     const value:TransformValues = layer.content?.type==='smart'?{...layer.content.transform,dx:0,dy:0}:{ width: layer.bitmap.width, height: layer.bitmap.height, angle: 0, dx: 0, dy: 0 };
     value.resampling=(document.getElementById('resampling-method') as HTMLSelectElement).value as Resampling;
     // Validate before entering the interactive mode.
-    transformedLayer(doc.state, layer.id, value);
+    if(!tiledEditing(doc.state))transformedLayer(doc.state, layer.id, value);else if(layer.content&&layer.content.type!=='smart'||layer.mask||layer.filterMask||layerLocked(doc.state.layers,layer.id,'position'))throw Error('分块变换需要未锁定、无原生内容及蒙版的像素图层。');
     const parent = parentOffset(doc.state.layers, layer.id)!;
     this.session = { doc, before: doc.state, layer, value, center: { x: parent.x + layer.x + layer.bitmap.width / 2, y: parent.y + layer.y + layer.bitmap.height / 2 } };
     this.draw(); this.box.focus(); this.notify('自由变换：拖动移动 · 手柄缩放 · 顶部圆点旋转 · Enter 确认 / Esc 取消');
   }
   sync() { if (this.session && (this.active() !== this.session.doc || this.session.doc.state !== this.session.before)) this.cancel(); }
-  private guard(action: () => void) { try { action(); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
+  private guard(action: () => void|Promise<void>) { try { const result=action();if(result)void result.catch(error=>{this.cancel();this.notify(String(error),true);}); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
   private update(point: Point,bypass=false) {
     const s = this.session!, d = this.drag!, v = { ...d.value }, dx = point.x - d.start.x, dy = point.y - d.start.y;
-    if (d.handle === 'move') { v.dx += Math.round(dx); v.dy += Math.round(dy);if(!bypass){const delta=snapMove(s.before,[s.layer.id],{x:v.dx,y:v.dy},this.view.scale);v.dx=delta.x;v.dy=delta.y;} }
+    if (d.handle === 'move') { v.dx += Math.round(dx); v.dy += Math.round(dy);if(!bypass){const delta=snapMove(s.before,s.ids??[s.layer.id],{x:v.dx,y:v.dy},this.view.scale);v.dx=delta.x;v.dy=delta.y;} }
     else if (d.handle === 'rotate') {
       const cx = s.center.x + v.dx, cy = s.center.y + v.dy;
       v.angle = ((v.angle + (Math.atan2(point.y - cy, point.x - cx) - Math.atan2(d.start.y - cy, d.start.x - cx)) * 180 / Math.PI + 540) % 360) - 180;
     } else {
       const angle = v.angle * Math.PI / 180, x = dx * Math.cos(angle) + dy * Math.sin(angle), y = -dx * Math.sin(angle) + dy * Math.cos(angle);
-      if (/[ew]/.test(d.handle)) v.width = Math.max(1, Math.min(8192, Math.round(v.width + (d.handle.includes('e') ? 2 : -2) * x)));
-      if (/[ns]/.test(d.handle)) v.height = Math.max(1, Math.min(8192, Math.round(v.height + (d.handle.includes('s') ? 2 : -2) * y)));
+      if (/[ew]/.test(d.handle)) v.width = Math.max(1, Math.min(30000, Math.round(v.width + (d.handle.includes('e') ? 2 : -2) * x)));
+      if (/[ns]/.test(d.handle)) v.height = Math.max(1, Math.min(30000, Math.round(v.height + (d.handle.includes('s') ? 2 : -2) * y)));
     }
     s.value = v; this.draw();
     if (this.frame === undefined) this.frame = requestAnimationFrame(() => { this.frame = undefined; this.guard(() => this.preview()); });
@@ -80,14 +89,18 @@ export class FreeTransform {
     const s = this.session!; this.box.hidden = false;
     Object.assign(this.box.style, { left: `${s.center.x + s.value.dx - s.value.width / 2}px`, top: `${s.center.y + s.value.dy - s.value.height / 2}px`, width: `${s.value.width}px`, height: `${s.value.height}px`, transform: `rotate(${s.value.angle}deg)` });
   }
-  private preview() { const s = this.session; if (s) this.view.preview({ ...s.before, layers: replacePixel(s.before.layers, s.layer.id, transformedLayer(s.before, s.layer.id, s.value)) }); }
-  commit() {
+  private preview() {const s=this.session;if(!s)return;if(s.ids){this.previewAbort?.abort();clearTimeout(this.previewTimer);const controller=new AbortController();this.previewAbort=controller;const value={...s.value},key=JSON.stringify(value);this.previewTimer=setTimeout(()=>{void transformMany(s.before,s.ids!,value,controller.signal).then(layers=>{if(this.session!==s||controller.signal.aborted||JSON.stringify(s.value)!==key)return;this.preparedMany={key,layers};let tree=s.before.layers;for(const l of layers)tree=replacePixel(tree,l.id,l);this.view.preview({...s.before,layers:tree});}).catch(e=>{if(!controller.signal.aborted)this.notify(String(e),true);});},150);return;}if(!tiledEditing(s.before)){this.view.preview({...s.before,layers:replacePixel(s.before.layers,s.layer.id,transformedLayer(s.before,s.layer.id,s.value))});return;}
+    this.previewAbort?.abort();clearTimeout(this.previewTimer);const controller=new AbortController();this.previewAbort=controller;const value={...s.value},key=JSON.stringify(value);this.previewTimer=setTimeout(()=>{void tiledTransform(s.before,s.layer.id,value,controller.signal).then(layer=>{if(this.session!==s||controller.signal.aborted||JSON.stringify(s.value)!==key)return;this.prepared={key,layer};this.view.preview({...s.before,layers:replacePixel(s.before.layers,layer.id,layer)});}).catch(error=>{if(!controller.signal.aborted)this.notify(String(error),true);});},150);
+  }
+  async commit() {
     const s = this.session; if (!s) return;
     if (this.active() !== s.doc || s.doc.state !== s.before) { this.cancel(); throw new Error('文档已变化，变换已取消。'); }
-    const layer = transformedLayer(s.before, s.layer.id, s.value); this.cancel();
+    this.previewAbort?.abort();clearTimeout(this.previewTimer);const controller=new AbortController();this.previewAbort=controller;
+    if(s.ids){const updates=this.preparedMany?.key===JSON.stringify(s.value)?this.preparedMany.layers:await transformMany(s.before,s.ids,s.value,controller.signal);if(this.session!==s||s.doc.state!==s.before)return;const changed=s.value.dx||s.value.dy||s.value.angle||s.value.width!==s.layer.bitmap!.width||s.value.height!==s.layer.bitmap!.height;this.cancel();if(changed)commitSmartUpdates(s.doc,updates,s.before.revision,'多层自由变换','transform');return;}
+    const layer = tiledEditing(s.before)?this.prepared?.key===JSON.stringify(s.value)?this.prepared.layer:await tiledTransform(s.before,s.layer.id,s.value,controller.signal):transformedLayer(s.before, s.layer.id, s.value);if(this.session!==s||s.doc.state!==s.before)return;this.cancel();
     const initial=s.layer.content?.type==='smart'?s.layer.content.transform:{width:s.layer.bitmap!.width,height:s.layer.bitmap!.height,angle:0,flipX:false,flipY:false};
     if (s.value.dx || s.value.dy || (['width','height','angle','flipX','flipY'] as const).some(k=>(s.value[k]??false)!==initial[k])) commitTransform(s.doc, layer, '自由变换', s.before.revision);
   }
-  cancel() { if (this.frame !== undefined) cancelAnimationFrame(this.frame); this.frame = undefined; const pointer = this.drag?.pointer; this.drag = undefined; const had = this.session; this.session = undefined; this.box.hidden = true; if (pointer !== undefined && this.box.hasPointerCapture(pointer)) this.box.releasePointerCapture(pointer); if (had) this.view.preview(); }
+  cancel() { this.previewAbort?.abort();this.previewAbort=undefined;clearTimeout(this.previewTimer);this.previewTimer=undefined;this.prepared=undefined;this.preparedMany=undefined;if (this.frame !== undefined) cancelAnimationFrame(this.frame); this.frame = undefined; const pointer = this.drag?.pointer; this.drag = undefined; const had = this.session; this.session = undefined; this.box.hidden = true; if (pointer !== undefined && this.box.hasPointerCapture(pointer)) this.box.releasePointerCapture(pointer); if (had) this.view.preview(); }
   dispose() { this.cancel(); this.abort.abort(); this.box.remove(); }
 }

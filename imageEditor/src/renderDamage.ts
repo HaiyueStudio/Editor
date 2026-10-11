@@ -1,24 +1,17 @@
 import { isPaged, PAGE_SIZE } from './pagedPixels.js';
 import type {Bitmap,ImageLayer,ImageState} from './document.js';
 import {compositeDamage,type CompositeRect} from './compositor.js';
-const visualKeys=['id','kind','x','y','visible','opacity','blend','passThrough','mask','clipping','styles','smartFilters','filterMask','blendIf','content'] as const;
-// History freezes metadata into fresh objects. Compare their values, while treating pixel/mask buffers as immutable identities.
-function sameMetadata(a:unknown,b:unknown):boolean {
- if(a===b)return true;
- if(!a||!b||typeof a!=='object'||typeof b!=='object'||ArrayBuffer.isView(a)||ArrayBuffer.isView(b))return false;
- const aa=a as Record<string,unknown>,bb=b as Record<string,unknown>,keys=Object.keys(aa);
- return keys.length===Object.keys(bb).length&&keys.every(k=>Object.hasOwn(bb,k)&&sameMetadata(aa[k],bb[k]));
-}
+import {sameLayerRendering,sameRenderSettings} from './renderInputs.js';
 /** Compare immutable committed buffers, including reconstructed undo frames. Undefined requests a full repaint. */
 export function documentDamage(before:ImageState,after:ImageState):CompositeRect|undefined {
- if(before.id!==after.id||before.width!==after.width||before.height!==after.height||before.bitDepth!==after.bitDepth||before.colorMode!==after.colorMode||!sameMetadata(before.display,after.display)||!sameMetadata(before.icc,after.icc)||before.psdOrigin!==after.psdOrigin)return;
+ if(before.id!==after.id||!sameRenderSettings(before,after))return;
  let damage:CompositeRect={x:0,y:0,width:0,height:0};
  const union=(r:CompositeRect)=>{if(!r.width||!r.height)return;if(!damage.width){damage=r;return;}const x=Math.min(damage.x,r.x),y=Math.min(damage.y,r.y);damage={x,y,width:Math.max(damage.x+damage.width,r.x+r.width)-x,height:Math.max(damage.y+damage.height,r.y+r.height)-y};};
  const walk=(a:readonly ImageLayer[],b:readonly ImageLayer[]):boolean=>{
   if(a.length!==b.length)return false;
   for(let i=0;i<a.length;i++){
    const old=a[i]!,next=b[i]!;if(old===next)continue;
-   if(visualKeys.some(k=>!sameMetadata(old[k],next[k]))||!walk(old.children,next.children))return false;
+   if(old.id!==next.id||!sameLayerRendering(old,next)||!walk(old.children,next.children))return false;
    if(old.bitmap===next.bitmap)continue;
    if(!old.bitmap||!next.bitmap)return false;
    const r=bitmapDamage(old.bitmap,next.bitmap);if(!r)return false;if(!r.width)continue;

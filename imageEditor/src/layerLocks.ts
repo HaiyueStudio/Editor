@@ -1,3 +1,4 @@
+import { tiledAlphaSources } from './tiledProvenance.js';
 import type { Layer } from 'ag-psd';
 import type { ImageLayer, ImageState } from './document.js';
 import { bitmapRegion } from './pagedPixels.js';
@@ -26,6 +27,7 @@ export function writePsdLocks(l:ImageLayer):Pick<Layer,'protected'|'transparency
 /** Restore alpha in the original local bounds; padded painting buffers cannot enlarge an alpha-locked layer. */
 export function preserveLayerAlpha(old:ImageLayer,next:ImageLayer):ImageLayer {
  if(!old.bitmap||!next.bitmap)return {...next,x:old.x,y:old.y,bitmap:old.bitmap};
+ if(tiledAlphaSources.get(next.bitmap)?.deref()===old.bitmap)return next;
  const a=old.bitmap,b=next.bitmap,source=bitmapRegion(a,0,0,a.width,a.height),data=source.data.slice(),ink=a.cmyk?.slice(),pixels=b.data,inks=b.cmyk;
  for(let y=0;y<a.height;y++)for(let x=0;x<a.width;x++){
   const i=(y*a.width+x)*4,bx=x+old.x-next.x,by=y+old.y-next.y;

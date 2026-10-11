@@ -378,3 +378,17 @@ This professional-production milestone brought Image to 51 commands; the process
 ## 图像第四批扩展
 
 新增 `image.smart.source.read`、`image.smart.source.replace`（document 目标）和 `image.color.precision`（workspace 目标），图像命令共 68 个。多层智能源通过工程／PSD 资源回写，使用父文档版本锁并支持一次撤销；高精度转换为独立的 RGBA16LE／RGBA32FLE SDR 资源转换，不改变 RGB8 文档。IPC／本地 RPC 使用相同调用契约。详见 [兼容性与基础能力](../../../imageEditor/docs/compatibility-foundations.md)。
+
+### Image non-destructive design extension
+
+Image exposes 104 commands. The six additions are `image.smart.instances`, `image.smart.detach`, `image.smart.link.relink`, `image.smart.link.update`, `image.smart.warp` and `image.layers.transform`. All use the existing document target / revision / resource / atomic history contract; `smart.instances` is read-only. `smart.source.replace` now defaults to updating shared instances; set `scope:"instance"` to detach and replace only the target. Linked updates consume explicitly uploaded PSD/PSB resources, never automatically fetch file paths or URLs. See [contracts, parameter tables, persistence versions and supported limits](../../../imageEditor/docs/non-destructive-design.md).
+
+### Image retouch and painting extension (111 commands)
+
+Adds `image.retouch.patch`, `image.retouch.content-aware`, `image.selection.fine`, `image.retouch.decontaminate`, `image.retouch.liquify`, `image.retouch.denoise`, and `image.retouch.lens`. Extends `image.pixels.stroke` with flow, spacing, roundness, angle, scatter, smoothing, texture and a bounded grayscale tip. All seven commands prepare cancellable regional results, enforce revisions and commit one undoable change. Region-aware dispatch avoids leasing the entire layer. See [retouch parameters and limits](../../../imageEditor/docs/retouch-painting.md); runtime discovery is authoritative.
+
+### Image production delivery extension (125 commands)
+
+Image adds `artboard.list/set/delete/select/export`, `spot.list/save/fill/delete/export`, and workspace `import.begin/write/finish/close`. Import accepts TIFF, EXR, PSD and PSB through sequential ≤4 MiB resource chunks into a ≤2 GiB disk spool; finish decodes before attaching the document and returns PSD per-layer diagnostics. Close import/export handles and release input/output resource IDs after use. `document.open/export` and `export.prepare` also accept TIFF/EXR. Artboard and spot exports return handles consumed by the existing `export.read/close` contract. All document edits use existing revision, cancellation and atomic history semantics. Project v19 / recovery v17 preserve delivery metadata and native paged masks. See [production delivery](../../../imageEditor/docs/production-delivery.md) for exact schemas, format coverage and remaining limits; Photoshop certification is not claimed.
+
+Image 存储 P0：命令总数仍为 125。`image.export.prepare`、`image.import.begin` 的 format 增加 `project`，通过既有 read/write/close 分段传输 v20 二进制 `.hyimage`（文件最大 2 GiB）。`document.open` 自动识别 JSON／二进制，`document.export` 保留旧 JSON 资源兼容。`image.storage.trim` 增加 collection 回收统计；Web Locks 不可用或其他窗口／Worker 活跃时明确返回 unavailable／busy。细节见 `imageEditor/docs/storage-p0.md`。

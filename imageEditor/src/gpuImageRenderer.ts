@@ -6,8 +6,8 @@ import { colorDisplay } from './iccEngine.js';
 import { maskWeight } from './layerFeatures.js';
 import { GPU_BLEND_MODES, GPU_IMAGE_BUDGET, gpuImageLayers, gpuDisplayProfile } from './gpuImagePlan.js';
 
-const vertex=`@vertex fn vs(@builtin(vertex_index) i:u32)->@builtin(position) vec4f {let p=array<vec2f,3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3));return vec4f(p[i],0,1);}`;
-const compositeShader=vertex+`
+export const vertex=`@vertex fn vs(@builtin(vertex_index) i:u32)->@builtin(position) vec4f {let p=array<vec2f,3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3));return vec4f(p[i],0,1);}`;
+export const compositeShader=vertex+`
 @group(0) @binding(0) var below:texture_2d<f32>;
 @group(0) @binding(1) var source:texture_2d<f32>;
 @group(0) @binding(2) var<uniform> props:vec4f;
@@ -25,7 +25,7 @@ fn blend(b:vec3f,s:vec3f,m:u32)->vec3f {
  if(sa==0||a==0){return b;}
  return vec4f(((1-sa)*b.a*b.rgb+(1-b.a)*sa*s.rgb+sa*b.a*blend(b.rgb,s.rgb,u32(props.w)))/a,a);
 }`;
-const displayShader=vertex+`
+export const displayShader=vertex+`
 @group(0) @binding(0) var pixels:texture_2d<f32>;
 @group(0) @binding(1) var<storage,read> curves:array<vec4f>;
 struct Settings {matrix:mat3x3f,enabled:vec4f}

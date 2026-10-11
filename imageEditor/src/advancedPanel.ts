@@ -1,3 +1,6 @@
+import { tiledEditing, tiledApplyMask } from './tiledEditing.js';
+import { replacePixel } from './pixelTools.js';
+import { invertMask } from './tiledMasks.js';
 import type { HYSelect } from '@haiyue/ui/select';
 import { formatRange, rebaseRuns } from './richText.js';
 import { AdjustmentControls } from './adjustmentControls.js';
@@ -49,15 +52,15 @@ export class AdvancedPanel {
    target.doc.addLayer({...makeLayer(name,bitmap),kind:content.type==='adjustment'?'adjustment':'pixel',content,x:bitmap?Math.round((target.doc.state.width-bitmap.width)/2):0,y:bitmap?Math.round((target.doc.state.height-bitmap.height)/2):0},false);
   }
  }
- mask(action:'add'|'invert'|'toggle'|'remove'|'paint'|'pixels'|'apply'){
+ async mask(action:'add'|'invert'|'toggle'|'remove'|'paint'|'pixels'|'apply'){
   const doc=this.active(),layer=doc?.selected;if(!doc||!layer)throw new Error('请先选择图层。');this.editing.cancel();
   if(action==='pixels'){this.editing.setMaskEditing(false);return;}
   if(action==='add'){if(layer.mask)throw new Error('图层已有蒙版。');doc.setMask(layer.id,maskFromSelection(doc.state,layer.id));return;}
   if(!layer.mask)throw new Error('请先添加图层蒙版。');
   if(action==='paint'){this.editing.setMaskEditing(true);return;}
-  if(action==='apply'){doc.applySelectedMask();this.editing.setMaskEditing(false);return;}
+  if(action==='apply'){if(tiledEditing(doc.state)){const before=doc.state,changed=await tiledApplyMask(before,layer.id);doc.commitLayers('应用蒙版',replacePixel(before.layers,layer.id,changed),[layer.id],doc.selectedIds,before.revision);}else doc.applySelectedMask();this.editing.setMaskEditing(false);return;}
   if(action==='remove'){doc.setMask(layer.id,undefined);this.editing.setMaskEditing(false);return;}
-  doc.setMask(layer.id,action==='toggle'?{...layer.mask,disabled:!layer.mask.disabled}:{...layer.mask,data:layer.mask.data.map(v=>255-v),defaultColor:255-layer.mask.defaultColor});
+  doc.setMask(layer.id,action==='toggle'?{...layer.mask,disabled:!layer.mask.disabled}:invertMask(layer.mask));
  }
  sync(){const layer=this.active()?.selected;$('content-edit').hidden=!layer?.content||layer.content.type==='smart';$('content-rasterize').hidden=!layer?.content||layer.kind==='adjustment';$('mask-state').textContent=layer?.mask?`${layer.mask.disabled?'已停用':'已启用'} · ${layer.mask.width} × ${layer.mask.height}`:'无蒙版';
   $<HTMLSelectElement>('blend-mode').disabled=layer?.kind==='adjustment'||!layer||layerLocked(this.active()!.state.layers,layer.id);

@@ -1,3 +1,4 @@
+import {modernComposite} from './advancedBlend.js';
 import { pixelColor, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import { allLayers, checkSize, findLayer, ImageDocument, layerLocked, makeLayer, type Bitmap, type ImageLayer, type ImageState } from './document.js';
 import { compositeState, compositeRegion } from './compositor.js';
@@ -104,21 +105,25 @@ export function moveLayers(doc: ImageDocument, ids: readonly string[], x: number
   for (const layer of roots) layers = replacePixel(layers, layer.id, { ...layer, x: layer.x + x, y: layer.y + y });
   doc.commitLayers('移动图层', layers, roots.map(l => l.id), ids);
 }
-export function mergeLayers(doc: ImageDocument, ids: readonly string[]): string {
-  const state = doc.state, roots = selectedRoots(state, ids); if (roots.length < 2) throw new Error('请至少选择两个图层。');
+function mergePlan(state:ImageState,ids:readonly string[]){
+  const roots = selectedRoots(state, ids); if (roots.length < 2) throw new Error('请至少选择两个图层。');
   let siblings: readonly ImageLayer[] | undefined;
   const walk = (layers: readonly ImageLayer[]) => { if (layers.some(layer => layer.id === roots[0]!.id)) siblings = layers; else for (const layer of layers) walk(layer.children); }; walk(state.layers);
   const positions = roots.map(layer => siblings!.indexOf(layer)).sort((a, b) => a - b);
   if (positions.some((p, i) => p < 0 || p !== positions[0]! + i)) throw new Error('请合并同一组内连续的图层，避免改变未选图层的叠放关系。');
   if (siblings![positions.at(-1)!+1]?.clipping)throw new Error('合并范围包含未选剪贴层的基底，请先释放剪贴关系。');
-  if (roots.some(layer => layer.kind === 'adjustment' || layer.blend !== 'normal' || layer.clipping || layer.styles?.enabled || layer.blendIf?.enabled)) throw new Error('合并的顶层图层需使用正常混合模式；调整层请保留或先导出合并副本。');
+  if (roots.some(layer => modernComposite(layer)||layer.kind === 'adjustment' || layer.blend !== 'normal' || layer.clipping || layer.styles?.enabled || layer.blendIf?.enabled)) throw new Error('合并的顶层图层需使用正常混合模式；调整层请保留或先导出合并副本。');
   const affected = allLayers(roots).map(l => l.id); if (affected.some(id => layerLocked(state.layers, id))) throw new Error('所选图层或子图层已锁定。');
   if (roots.some(layer => !layer.visible)) throw new Error('请先显示要合并的图层，或取消选择隐藏图层。');
   const visible = roots.filter(layer => layer.visible); if (!visible.length) throw new Error('所选图层均不可见。');
   const bounds = union(visible.map(layer => layerBounds(state, layer))), parent = parentOffset(state.layers, roots[0]!.id)!;
   checkSize(bounds.width, bounds.height);
-  const bitmap = compositeState({ ...state, width: bounds.width, height: bounds.height, selection: null, layers: roots.map(l => ({ ...l, x: l.x + parent.x - bounds.x, y: l.y + parent.y - bounds.y })) });
+  const composite = { ...state, width: bounds.width, height: bounds.height, selection: null, layers: roots.map(l => ({ ...l, x: l.x + parent.x - bounds.x, y: l.y + parent.y - bounds.y })) };
+  return {composite,affected,finish(bitmap:Bitmap){
   const merged = { ...makeLayer('合并图层', bitmap), x: bounds.x - parent.x, y: bounds.y - parent.y }, selected = new Set(roots.map(l => l.id));
   const replace = (layers: readonly ImageLayer[]): readonly ImageLayer[] => layers === siblings ? layers.flatMap((layer, i) => i === positions[0] ? [merged] : selected.has(layer.id) ? [] : [layer]) : layers.map(l => l.children.length ? { ...l, children: replace(l.children) } : l);
-  doc.commitLayers('合并图层', replace(state.layers), affected, [merged.id]); return merged.id;
+  return {layers:replace(state.layers),id:merged.id};}};
 }
+export function mergeLayers(doc:ImageDocument,ids:readonly string[]):string{const plan=mergePlan(doc.state,ids),result=plan.finish(compositeState(plan.composite));doc.commitLayers('合并图层',result.layers,plan.affected,[result.id]);return result.id;}
+export async function prepareTiledMerge(state:ImageState,ids:readonly string[],signal?:AbortSignal){const plan=mergePlan(state,ids),{DiskRasterWriter}=await import('./rasterSource.js'),{compositeRegionAsync}=await import('./diskCompositor.js'),s=plan.composite,writer=new DiskRasterWriter(s.width,s.height,s.bitDepth??8,s.colorMode==='cmyk');for(let y=0;y<s.height;y+=32)await writer.write(await compositeRegionAsync(s,{x:0,y,width:s.width,height:Math.min(32,s.height-y)},signal),signal);return {...plan.finish(writer.finish()),affected:plan.affected};}
+export async function mergeLayersAsync(doc:ImageDocument,ids:readonly string[],signal?:AbortSignal){const revision=doc.revision,result=await prepareTiledMerge(doc.state,ids,signal);doc.commitLayers('合并图层',result.layers,result.affected,[result.id],revision);return result.id;}

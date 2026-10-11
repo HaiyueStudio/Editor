@@ -1,0 +1,24 @@
+import type { EditorDisposable,EditorJsonValue,EditorOperationSchema } from '@haiyue/editor-plugin-sdk';
+import type { ImageWorkspace } from './workspace.js';
+import { findLayer, uid, type ImageDocument } from './document.js';
+import { smartInstances,prepareSharedSource,commitSmartUpdates } from './sharedSmart.js';
+import { readSmartSource } from './smartSource.js';
+import { smartGeometryAsync,smartGeometryBitmap,validateMesh,type MeshPoint } from './smartGeometry.js';
+import { tiledEditing } from './tiledEditing.js';
+import { transformMany } from './multiTransform.js';
+import type { TransformValues } from './freeTransform.js';
+import type { SmartContent } from './layerFeatures.js';
+const str={type:'string',minLength:1,maxLength:160} as const;
+export function registerDesignOperations(w:ImageWorkspace):EditorDisposable {
+ const owned:EditorDisposable[]=[],register=(name:string,properties:Record<string,EditorOperationSchema>,required:string[],prepare:(p:Record<string,EditorJsonValue>,d:ImageDocument,signal:AbortSignal)=>Promise<()=>EditorJsonValue>|(()=>EditorJsonValue),access:'read'|'write'='write')=>owned.push(w.registerOperation({ownerId:'image.operations',descriptor:{id:'image.'+name,version:1,title:name,target:'document',documentKinds:['haiyue.image'],access,input:{type:'object',properties,required},output:{type:'json'}},async prepare(p,ctx){const d=w.documents.find(d=>d.identity.id===ctx.document?.id);if(!d)throw Error('文档已关闭。');return {d,apply:await prepare(p as Record<string,EditorJsonValue>,d,ctx.signal)};},commit:({d,apply})=>access==='write'?d.runAtomic(apply):apply(),rollback(){}}));
+ register('smart.instances',{layerId:str},['layerId'],(p,d)=>()=>({instances:smartInstances(d.state,p.layerId as string).map(l=>({layerId:l.id,name:l.name,sourceId:(l.content as SmartContent).sourceId,link:(l.content as SmartContent).link??null}))}),'read');
+ register('smart.detach',{layerId:str},['layerId'],(p,d)=>{const l=findLayer(d.state.layers,p.layerId as string);if(l?.content?.type!=='smart')throw Error('请选择智能对象。');const content={...l.content,sourceId:uid(),link:undefined};return ()=>{commitSmartUpdates(d,[{...l,content}]);return {applied:true};};});
+ for(const action of ['relink','update'] as const)register('smart.link.'+action,{layerId:str,resourceId:str,name:str,uri:{type:'string',minLength:1,maxLength:2048},scope:{type:'string',enum:['shared','instance']}},['layerId','resourceId',...(action==='relink'?['uri','name']:[])],async(p,d,signal)=>{
+ const c=findLayer(d.state.layers,p.layerId as string)?.content;if(c?.type!=='smart')throw Error('请选择智能对象。');if(action==='update'&&!c.link)throw Error('智能对象尚未链接，请先重新链接。');const bytes=w.platform.resources.read(p.resourceId as string),name=(p.name as string|undefined)??c.link?.name??c.name,source=readSmartSource(bytes,name).bitmap,next:SmartContent={...c,name,source,sourcePsd:bytes.slice(),sourcePdf:undefined,link:action==='relink'?{uri:p.uri as string,name}:c.link!},updates=await prepareSharedSource(d.state,p.layerId as string,next,(p.scope??'shared') as 'shared'|'instance',signal);
+ return ()=>{commitSmartUpdates(d,updates);return {applied:true,layerIds:updates.map(l=>l.id)};};});
+ register('smart.warp',{layerId:str,points:{type:'array',maxItems:16,items:{type:'object',properties:{x:{type:'number',minimum:-4,maximum:5},y:{type:'number',minimum:-4,maximum:5}},required:['x','y']}},reset:{type:'boolean'}},['layerId'],async(p,d,signal)=>{
+ const l=findLayer(d.state.layers,p.layerId as string);if(l?.content?.type!=='smart'||!l.bitmap)throw Error('网格变形需要智能对象。');if(l.mask||l.filterMask||l.content.sourcePdf)throw Error('网格变形暂不支持带蒙版或 PDF 矢量源。');if(p.reset===true?!!p.points:!p.points)throw Error('请提供控制点或 reset。');const mesh=p.points as unknown as MeshPoint[];if(!p.reset)validateMesh(mesh);const {mesh:old,...base}=l.content.transform,content:SmartContent={...l.content,transform:{...base,...(!p.reset?{mesh}: {})}},bitmap=tiledEditing(d.state)?await smartGeometryAsync(content,signal):smartGeometryBitmap(content);
+ return ()=>{commitSmartUpdates(d,[{...l,content,bitmap}],d.revision,'网格变形');return {applied:true};};});
+ register('layers.transform',{layerIds:{type:'array',maxItems:128,items:str},width:{type:'integer',minimum:1,maximum:30000},height:{type:'integer',minimum:1,maximum:30000},angle:{type:'number',minimum:-360,maximum:360},dx:{type:'integer',minimum:-32768,maximum:32768},dy:{type:'integer',minimum:-32768,maximum:32768},flipX:{type:'boolean'},flipY:{type:'boolean'}},['layerIds','width','height'],async(p,d,signal)=>{const layers=await transformMany(d.state,p.layerIds as string[],{angle:0,dx:0,dy:0,...p} as unknown as TransformValues,signal);return ()=>{commitSmartUpdates(d,layers,d.revision,'多层自由变换','transform');return {applied:true,layerIds:layers.map(l=>l.id)};};});
+ return {async dispose(){for(const d of owned)await d.dispose();}};
+}

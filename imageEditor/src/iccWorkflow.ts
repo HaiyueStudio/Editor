@@ -1,8 +1,9 @@
+import { needsTiledView } from './imageLimits.js';
 import type { ImageState } from './document.js';
 import { allLayers,layerLocked } from './document.js';
 import { embeddedProfile,profileResource,srgbProfileBytes,builtinProfile } from './colorManagement.js';
 import { concatBytes,resourceBlocks } from './psdResources.js';
-import { profileInfo,linearSrgbProfile,workingProfile,convertIccLayers,type IccSettings } from './iccEngine.js';
+import { profileInfo,transformBitmapIcc,linearSrgbProfile,workingProfile,convertIccLayers,type IccSettings } from './iccEngine.js';
 import { convertDocumentCmyk } from './cmyk.js';
 import { pixelJob } from './pixelJobs.js';
 export const ICC_PRESETS=['srgb','linear-srgb','display-p3','adobe-rgb'] as const;
@@ -22,11 +23,12 @@ export function assertWorkingProfile(state:ImageState,profile:Uint8Array){const 
 export function withDocumentProfile(state:ImageState,profile?:Uint8Array):ImageState{return {...state,psdOrigin:{sourceName:state.psdOrigin?.sourceName??state.name,flattened:state.psdOrigin?.flattened??false,resources:profileResources(state,profile)}};}
 export async function applyIccPolicy(state:ImageState,policy:'preserve'|'assign'|'convert'|'remove',profile?:Uint8Array,settings:IccSettings=state.icc??defaultIccSettings(),signal?:AbortSignal):Promise<ImageState>{
  signal?.throwIfAborted();if(policy==='preserve'){if(profile)throw Error('保留配置策略不能同时指定目标配置。');const source=embeddedProfile(state);if(source)assertWorkingProfile(state,source);return state;}
- if(policy==='remove')return withDocumentProfile(state);
+ if(policy==='remove'){const result=withDocumentProfile(state);return needsTiledView(state)&&state.colorMode==='cmyk'?{...result,layers:await (await import('./tiledColor.js')).refreshTiledCmyk(state,undefined,signal)}:result;}
  if(!profile)throw Error('指定或转换配置需要目标 ICC。');assertWorkingProfile(state,profile);
- if(policy==='assign')return {...withDocumentProfile(state,profile),icc:settings};
+ if(policy==='assign')return {...withDocumentProfile(state,profile),icc:settings,...(needsTiledView(state)&&state.colorMode==='cmyk'?{layers:await (await import('./tiledColor.js')).refreshTiledCmyk(state,profile,signal)}:{})};
  if(allLayers(state.layers).some(l=>layerLocked(state.layers,l.id)))throw Error('请先解除图层锁定。');const source=embeddedProfile(state);if(source)assertWorkingProfile(state,source);
  const conversion={intent:settings.intent,bpc:settings.bpc};
+ if(needsTiledView(state)){const {mapNativeLayers,tiledMode}=await import('./tiledColor.js');if(allLayers(state.layers).some(l=>l.content||l.smartFilters?.length||l.styles?.enabled||l.blendIf?.enabled))throw Error('配置转换前请栅格化参数化内容／效果。');return {...(state.colorMode==='cmyk'?await tiledMode(state,'cmyk',profile,signal):{...withDocumentProfile(state,profile),layers:await mapNativeLayers(state.layers,b=>transformBitmapIcc(b,workingProfile(state),profile,conversion),signal)}),icc:settings};}
  const converted=state.colorMode==='cmyk'?convertDocumentCmyk(state,profile,conversion):{...withDocumentProfile(state,profile),layers:typeof Worker==='undefined'?convertIccLayers(state.layers,workingProfile(state),profile,conversion):await pixelJob<ReturnType<typeof convertIccLayers>>({kind:'icc-layers',state,iccSource:workingProfile(state),iccTarget:profile,iccSettings:conversion},signal)};
  signal?.throwIfAborted();return {...converted,icc:settings};
 }

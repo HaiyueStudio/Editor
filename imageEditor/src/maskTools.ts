@@ -1,3 +1,5 @@
+import { needsTiledView } from './imageLimits.js';
+import { cloneSelection } from './selectionRuns.js';
 import { pixelArray,withPixels } from './pixelFormat.js';
 import { rawMaskWeight } from './maskEffects.js';
 import { checkSize, findLayer, type ImageState, type ImageLayer } from './document.js';
@@ -6,6 +8,7 @@ import { selectionWeight } from './selection.js';
 import { maskWeight, type LayerMask } from './layerFeatures.js';
 export function maskFromSelection(state:ImageState,id:string):LayerMask {
  const layer=findLayer(state.layers,id);if(!layer)throw new Error('图层不存在。');const parent=parentOffset(state.layers,id)!;
+ if(needsTiledView(state))return {width:state.width,height:state.height,x:-parent.x-layer.x,y:-parent.y-layer.y,data:new Uint8Array(),coverage:cloneSelection(state.selection??{x:0,y:0,width:state.width,height:state.height}),disabled:false,defaultColor:0};
  const data=new Uint8Array(state.width*state.height);for(let y=0;y<state.height;y++)for(let x=0;x<state.width;x++)data[y*state.width+x]=Math.round(selectionWeight(state.selection,x,y)*255);
  return {width:state.width,height:state.height,x:-parent.x-layer.x,y:-parent.y-layer.y,data,disabled:false,defaultColor:0};
 }

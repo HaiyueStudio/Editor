@@ -1,3 +1,4 @@
+import {validateBrush,advancedBrush,type ExtendedBrush} from './brushDynamics.js';
 import { pixelStorageBytes } from './pagedPixels.js';
 import { mapCmykGeometry } from './cmykGeometry.js';
 import { pixelColor, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
@@ -7,13 +8,13 @@ import { IMAGE_LIMITS, pixelBytes, checkSize, findLayer, layerLocked, type Bitma
 
 export interface Point { x: number; y: number }
 export interface BrushPoint extends Point { pressure?:number }
-export interface BrushDynamics { coverageOnly?:boolean; hardness?:number; pressure?:'none'|'size'|'opacity'|'both'; sample?:(x:number,y:number)=>readonly [number,number,number,number]|undefined }
+export interface BrushDynamics extends ExtendedBrush { coverageOnly?:boolean; hardness?:number; pressure?:'none'|'size'|'opacity'|'both'; sample?:(x:number,y:number)=>readonly [number,number,number,number]|undefined }
 /** Sparse 128px tiles: a small mark on a large canvas needs only touched coverage tiles. */
 class StrokeCoverage {
  private tiles=new Map<number,Uint8Array>();
  constructor(private width:number){}
  get bytes(){return this.tiles.size*16384;}
- increase(x:number,y:number,value:number){const columns=Math.ceil(this.width/128),key=Math.floor(y/128)*columns+Math.floor(x/128),i=(y%128)*128+x%128;let tile=this.tiles.get(key);if(!tile){if(!value)return false;tile=new Uint8Array(16384);this.tiles.set(key,tile);}if(value<=tile[i]!)return false;tile[i]=value;return true;}
+ increase(x:number,y:number,value:number,accumulate=false){const columns=Math.ceil(this.width/128),key=Math.floor(y/128)*columns+Math.floor(x/128),i=(y%128)*128+x%128;let tile=this.tiles.get(key);if(!tile){if(!value)return false;tile=new Uint8Array(16384);this.tiles.set(key,tile);}if(accumulate)value=Math.min(255,Math.round(tile[i]!+(255-tile[i]!)*value/255));if(value<=tile[i]!)return 0;tile[i]=value;return value;}
 }
 export interface Rect extends Point { width: number; height: number }
 export type Color = readonly [number, number, number];
@@ -54,6 +55,7 @@ export class PixelStroke {
   private readonly selection: Selection | null | undefined;
   private readonly origin: Point;
   private previous: BrushPoint | undefined;
+  private readonly advanced:boolean;private stampIndex=0;private remainder=0;
   changed = false;
   private dirty: Rect | undefined;
   changedBounds: Rect | undefined;
@@ -61,6 +63,7 @@ export class PixelStroke {
   constructor(state: ImageState, id: string, private size: number, private opacity: number, private color: Color, private erase = false, private dynamics:BrushDynamics = {}) {
     if (!Number.isFinite(size) || size < 1 || size > 512 || !Number.isFinite(opacity) || opacity <= 0 || opacity > 1) throw new Error('画笔大小或不透明度无效。');
     if(!Number.isFinite(dynamics.hardness??1)||(dynamics.hardness??1)<0||(dynamics.hardness??1)>1||!['none','size','opacity','both'].includes(dynamics.pressure??'none'))throw new Error('画笔硬度或笔压模式无效。');
+    validateBrush(dynamics);this.advanced=advancedBrush(dynamics);
     this.color=pixelColor(color,state.bitDepth??8) as unknown as Color;
     const layer = editablePixel(state, id), parent = parentOffset(state.layers, id)!;
     this.alphaLocked=!dynamics.coverageOnly&&layerLocked(state.layers,id,'transparency');
@@ -82,7 +85,13 @@ export class PixelStroke {
   }
   point(point: BrushPoint) {
     if (![point.x, point.y].every(Number.isFinite)||!Number.isFinite(point.pressure??1)||(point.pressure??1)<0||(point.pressure??1)>1) throw new Error('画笔坐标或笔压无效。');
-    const a=this.previous??point,b={...point};this.previous=b;
+    const a=this.previous??point,b={...point};
+    if(this.advanced){
+      const smooth=this.dynamics.smoothing??0;if(this.previous){b.x=a.x+(b.x-a.x)*(1-smooth);b.y=a.y+(b.y-a.y)*(1-smooth);}
+      const stamp=(p:BrushPoint)=>{const seed=++this.stampIndex,noise=(k:number)=>{let n=Math.imul(seed+k,1597334677);n^=n>>>16;return (n>>>0)/4294967296-.5;},spread=(this.dynamics.scatter??0)*this.size,q={...p,x:p.x+noise(0)*spread,y:p.y+noise(971)*spread};this.segment(q,q);};
+      if(!this.previous)stamp(b);else{const length=Math.hypot(b.x-a.x,b.y-a.y),spacing=Math.max(.5,this.size*(this.dynamics.spacing??.15));let distance=spacing-this.remainder;for(;distance<=length;distance+=spacing){const t=distance/length;stamp({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});}this.remainder=(this.remainder+length)%spacing;}this.previous=b;return;
+    }
+    this.previous=b;
     // Short segments avoid scanning the empty bounding rectangle of long diagonal strokes.
     const pieces=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/Math.max(8,this.size/2)));
     for(let k=0;k<pieces;k++){const at=(t:number):BrushPoint=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});this.segment(at(k/pieces),at((k+1)/pieces));}
@@ -103,13 +112,15 @@ export class PixelStroke {
     const dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy, bitmap = this.layer.bitmap!;
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
       const t = length2 ? Math.max(0, Math.min(1, ((x + 0.5 - a.x) * dx + (y + 0.5 - a.y) * dy) / length2)) : 0;
-      const pressure=(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t,mode=this.dynamics.pressure??'none',radius=r*(mode==='size'||mode==='both'?pressure:1),distance=Math.hypot(x+.5-a.x-t*dx,y+.5-a.y-t*dy),hardness=this.dynamics.hardness??1;
+      const pressure=(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t,mode=this.dynamics.pressure??'none',radius=r*(mode==='size'||mode==='both'?pressure:1),px=x+.5-a.x-t*dx,py=y+.5-a.y-t*dy,angle=(this.dynamics.angle??0)*Math.PI/180,u=px*Math.cos(angle)+py*Math.sin(angle),v=(-px*Math.sin(angle)+py*Math.cos(angle))/(this.dynamics.roundness??1),distance=Math.hypot(u,v),hardness=this.dynamics.hardness??1;
       if((mode==='size'||mode==='both')&&pressure===0)continue;
       const edge=Math.max(0,Math.min(1,radius+.5-distance)),soft=hardness===1?1:Math.max(0,Math.min(1,(radius-Math.max(0,distance-.5))/Math.max(.5,radius*(1-hardness))));
-      const coverage=Math.round(selectionWeight(this.selection,x,y)*edge*soft*(mode==='opacity'||mode==='both'?pressure:1)*255);
+      let tip=1;if(this.dynamics.tip){const q=this.dynamics.tip,tx=Math.floor((u/(radius*2)+.5)*q.width),ty=Math.floor((v/(radius*2)+.5)*q.height);tip=tx<0||ty<0||tx>=q.width||ty>=q.height?0:q.data[ty*q.width+tx]!/255;}
+      const grain=1-(this.dynamics.texture??0)*((Math.imul(x,73856093)^Math.imul(y,19349663))>>>0)/4294967296;
+      let coverage=Math.round((this.dynamics.flow??1)*tip*grain*selectionWeight(this.selection,x,y)*edge*soft*(mode==='opacity'||mode==='both'?pressure:1)*255);
       if(!coverage)continue;
       const localX=x-this.origin.x,localY=y-this.origin.y,p=localY*bitmap.width+localX,sample=this.dynamics.sample?.(x,y);
-      if(this.dynamics.sample&&!sample||!this.coverage.increase(localX,localY,coverage))continue;
+      if(this.dynamics.sample&&!sample)continue;coverage=this.coverage.increase(localX,localY,coverage,this.advanced)||0;if(!coverage)continue;
       const i=p*4,sourceAlpha=coverage/255*this.opacity*(sample?sample[3]/255:1),oldAlpha=this.original[i+3]!/255,tone=sample??this.color;
       if(!sourceAlpha)continue;
       if(this.alphaLocked){if(!oldAlpha||this.erase)continue;for(let c=0;c<3;c++)bitmap.data[i+c]=tone[c]!*sourceAlpha+this.original[i+c]!*(1-sourceAlpha);}

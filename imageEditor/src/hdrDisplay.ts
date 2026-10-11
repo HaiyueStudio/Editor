@@ -3,13 +3,13 @@ import { forEachCompositeTileAsync } from './diskCompositor.js';
 import { embeddedProfile } from './colorManagement.js';
 import { linearSrgbProfile, transformBitmapIcc } from './iccEngine.js';
 export interface HdrStatus { requested:'auto'|'sdr'|'hdr'; active:boolean; dynamicRange:'high'|'standard'; backend:'webgpu-extended'|'haiyue-webgpu'|'canvas2d'; reason:string;phase:'idle'|'initializing'|'ready'|'fallback';document:{id:string;revision:number;width:number;height:number}|null;configuration:{format:string;colorSpace:string;toneMapping:string}|null;adapter:{vendor:string;architecture:string;device:string;description:string}|null }
-export function hdrAdmission(state:ImageState,high:boolean,gpu:boolean):string {
+export function hdrAdmission(state:ImageState,high:boolean,gpu:boolean,tiled=false):string {
  if((state.display?.output??'sdr')==='sdr')return 'SDR 预览';
  if(state.bitDepth!==32)return '系统 HDR 需要 32 位线性文档';
  if(!high)return '系统当前未报告 HDR／EDR 显示能力，使用 SDR 映射';
  if(!gpu)return '当前环境没有 WebGPU，使用 SDR 映射';
  if(state.icc?.proofProfile&&state.icc.proofEnabled!==false||state.icc?.monitorProfile)return '软打样／自定义显示器配置使用 SDR 预览；HDR 显示由系统管理';
- if(state.width*state.height*8>128*1024*1024)return 'HDR 显示纹理超过 128 MiB';
+ if(!tiled&&state.width*state.height*8>128*1024*1024)return 'HDR 显示纹理超过 128 MiB';
  return '';
 }
 /** IEEE binary16, rounded to nearest; display samples are finite, positive and bounded. */

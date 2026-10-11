@@ -1,26 +1,26 @@
+import { seedImagePreview,seedRasterDocumentPreview } from './imagePreviews.js';
 import { checkImportTextFonts } from './textFonts.js';
-import { hydratePixels } from './pagedPixels.js';
+import { workerTask,progressLabel,type TaskReport } from './workerTask.js';
 import type { ImageState } from './document.js';
 import type { PsdImportResult, PsdExportResult } from './psdAdapter.js';
 import type { PsdRequest } from './psdWorker.js';
 export class PsdJobs {
   private stop: (()=>void) | undefined;
-  constructor(private status:(busy:boolean,label:string)=>void) {}
+  constructor(private status:(busy:boolean,label:string)=>void,private unavailable:()=>boolean=()=>false) {}
+  get busy(){return !!this.stop;}
   // Transfer is opt-in: the file picker owns disposable bytes; API/batch callers may reuse theirs.
-  import(bytes:Uint8Array,name:string,transferOwnership=false) { return this.run<PsdImportResult>({kind:'import',bytes,name},'正在解析 PSD…',transferOwnership&&bytes.buffer instanceof ArrayBuffer?[bytes.buffer]:[]).then(checkImportTextFonts); }
+  import(bytes:Uint8Array,name:string,transferOwnership=false) { return this.run<PsdImportResult>({kind:'import',bytes,name},'正在解析 PSD…',transferOwnership&&bytes.buffer instanceof ArrayBuffer?[bytes.buffer]:[]).then(result=>{if(result.layered)seedImagePreview(result.layered,result.preview);return checkImportTextFonts(result);}); }
   export(state:ImageState,allowRasterize=false,embedProfile=true) { return this.run<PsdExportResult>({kind:'export',state,allowRasterize,embedProfile},'正在编码并校验 PSD…'); }
+  importFile(file:File){return this.run<PsdImportResult>({kind:'file',file,format:'psd'},'正在后台解析 PSD…').then(result=>{if(result.layered)seedImagePreview(result.layered,result.preview);return checkImportTextFonts(result);});}
+  productionFile(file:File){return this.run<ImageState>({kind:'file',file,format:/\.exr$/i.test(file.name)?'exr':'tiff'},'正在后台解码图像…');}
   cancel() { this.stop?.(); }
-  private run<T>(request:PsdRequest,label:string,transfer:ArrayBuffer[]=[]):Promise<T> {
-    if(this.stop) return Promise.reject(new Error('正在处理另一项 PSD 任务，请完成或取消后重试。'));
-    return new Promise((resolve,reject)=>{
-      const worker=new Worker(new URL('./psd-worker.js',import.meta.url),{type:'module'});
-      const done=(error?:Error,value?:T)=>{clearTimeout(timer);worker.terminate();this.stop=undefined;this.status(false,'');if(error)reject(error);else resolve(value!);};
-      const timer=setTimeout(()=>done(new Error('PSD 处理超过两分钟，已停止，请缩小文档后重试。')),120000);
-      this.stop=()=>done(new Error('PSD 操作已取消，当前文档未改变。'));
-      worker.onmessage=(event:MessageEvent<{ok:boolean;value:T;error:string}>)=>event.data.ok?done(undefined,hydratePixels(event.data.value)):done(new Error(event.data.error));
-      worker.onerror=event=>{event.preventDefault();done(new Error('PSD 处理失败：'+event.message));};
-      this.status(true,label);
-      try { worker.postMessage(request,transfer); } catch(error) { done(error instanceof Error?error:new Error(String(error))); }
-    });
+  private async run<T>(request:PsdRequest,label:string,transfer:ArrayBuffer[]=[]):Promise<T> {
+    if(this.stop||this.unavailable())throw new Error('正在处理另一项文件任务，请完成或取消后重试。');
+    const controller=new AbortController();this.stop=()=>controller.abort(new DOMException('文件操作已取消，当前文档未改变。','AbortError'));this.status(true,label);
+    try{return await psdJob<T>(request,controller.signal,p=>this.status(true,progressLabel(label,p)),transfer);}
+    finally{this.stop=undefined;this.status(false,'');}
   }
+}
+export async function psdJob<T>(request:PsdRequest,signal?:AbortSignal,report?:TaskReport,transfer:ArrayBuffer[]=[]):Promise<T>{
+ signal?.throwIfAborted();const value=await workerTask<T>(new Worker(new URL('./psd-worker.js',import.meta.url),{type:'module'}),request,{signal,report,transfer});const data=value as {layered?:ImageState;layers?:unknown};if(data.layered)seedRasterDocumentPreview(data.layered);else if(data.layers)seedRasterDocumentPreview(value as ImageState);return value;
 }

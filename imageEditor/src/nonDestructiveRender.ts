@@ -1,11 +1,14 @@
+import {isDesignAdjustment,designAdjustmentBitmap} from './designAdjustments.js';
+import {extendedStyleBitmap, type StyleContext} from './extendedStyles.js';
 import { hueSaturationBitmap } from './hueSaturation.js';
 import { pixelColor, depthOf, pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
 import type { Bitmap } from './document.js';
 import type { AdjustmentContent, LayerStyles } from './layerFeatures.js';
 import { filterBitmap } from './filters.js';
 export function adjustmentBitmap(source:Bitmap,content:AdjustmentContent):Bitmap {
+ if(isDesignAdjustment(content.filter))return designAdjustmentBitmap(source,content);
  if(content.filter==='hue-saturation')return hueSaturationBitmap(source,content.hueSaturation!);
- if(content.filter!=='curves'&&content.filter!=='levels')return filterBitmap(source,{kind:content.filter,amount:content.amount});
+ if(content.filter!=='curves'&&content.filter!=='levels')return filterBitmap(source,{kind:content.filter as import('./filters.js').FilterSettings['kind'],amount:content.amount});
  if(depthOf(source)!==8){const fn=continuousAdjustment(content),channels=['red','green','blue'].map(k=>{const v=content.channels?.[k as 'red'];return v?continuousAdjustment({...content,...v}):null;}),data=source.data.slice();for(let i=0;i<data.length;i+=4)for(let c=0;c<3;c++){const v=fn(data[i+c]!);data[i+c]=channels[c]?.(v)??v;}return {...source,data};}
  const lut=adjustmentLut(content),channels=['red','green','blue'].map(k=>{const v=content.channels?.[k as 'red'];return v?adjustmentLut({...content,...v}):null;});
  const data=source.data.slice();for(let i=0;i<data.length;i+=4)for(let c=0;c<3;c++){const v=lut[data[i+c]!]!;data[i+c]=channels[c]?.[v]??v;}return {...source,data};
@@ -24,7 +27,7 @@ function adjustmentLut(content:AdjustmentContent):Uint8ClampedArray {
  return lut;
 }
 function rgb(color:string,source:Bitmap){return pixelColor([1,3,5].map(i=>parseInt(color.slice(i,i+2),16)),depthOf(source));}
-function spread(alpha:Float32Array,width:number,height:number,radius:number,maximum:boolean):Float32Array {
+export function spread(alpha:Float32Array,width:number,height:number,radius:number,maximum:boolean):Float32Array {
  if(!radius)return alpha.slice();
  if(!Number.isInteger(radius)){const lo=Math.floor(radius),t=radius-lo,a=spread(alpha,width,height,lo,maximum),b=spread(alpha,width,height,lo+1,maximum);return a.map((v,i)=>v*(1-t)+b[i]!*t);}
  const pass=(input:Float32Array,horizontal:boolean)=>{
@@ -40,7 +43,8 @@ function spread(alpha:Float32Array,width:number,height:number,radius:number,maxi
  };return pass(pass(alpha,true),false);
 }
 /** Common styles are live parameters. Shadow uses a bounded separable blur; stroke uses square dilation. */
-export function styleBitmap(source:Bitmap,styles:LayerStyles|undefined,origin={x:0,y:0}):Bitmap {
+export function styleBitmap(source:Bitmap,styles:LayerStyles|undefined,origin={x:0,y:0},context?:StyleContext):Bitmap {
+ if(context||styles&&(styles.innerShadow||styles.outerGlow||styles.gradient||styles.satin||styles.bevel||styles.extraShadows||styles.extraStrokes||Object.entries(styles).some(([k,v])=>v&&typeof v==='object'&&('blend' in v&&(k!=='innerGlow'||!['normal','screen'].includes(String(v.blend)))||'enabled' in v||'position' in v||'contour' in v||'spread' in v))))return extendedStyleBitmap(source,styles,origin,context);
  if(!styles?.enabled)return source;
  if(!styles.shadow&&!styles.stroke&&!styles.innerGlow){if(!styles.overlay)return source;const overlay=styles.overlay,color=rgb(overlay.color,source),data=source.data.slice();for(let i=0;i<data.length;i+=4)if(data[i+3])for(let c=0;c<3;c++)data[i+c]=data[i+c]!*(1-overlay.opacity)+color[c]!*overlay.opacity;return withPixels(source.width,source.height,data,source);}
  const {width,height}=source,alpha=Float32Array.from({length:width*height},(_,i)=>source.data[i*4+3]!/255),data=pixelArray(source.data.length,source);

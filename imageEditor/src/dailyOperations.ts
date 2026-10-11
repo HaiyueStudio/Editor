@@ -1,3 +1,10 @@
+import {brushSchema,brushValues} from './brushDynamics.js';
+import {DESIGN_ADJUSTMENTS} from './designAdjustments.js';
+import {styleSchema} from './styleSchema.js';
+import { tiledColorSelection } from './tiledSelection.js';
+import { tiledApplyMask, tiledCopy, tiledEditing, tiledFill, tiledStroke, tiledGradient, sampleRegion } from './tiledEditing.js';
+import { tiledTransform } from './tiledTransform.js';
+import { editTiledMask, invertMask } from './tiledMasks.js';
 import { CmykStroke,fillCmyk } from './cmykEditing.js';
 import { initializeIcc,profileInfo } from './iccEngine.js';
 import { sampleHex,exportPixelResource, importPixelResource } from './pixelFormat.js';
@@ -12,10 +19,10 @@ import type { LayerStyles } from './layerFeatures.js';
 import type { EditorOperationContext, EditorDisposable, EditorJsonValue, EditorOperationSchema } from '@haiyue/editor-plugin-sdk';
 import type { ImageWorkspace } from './workspace.js';
 import { findLayer, layerLocked, checkSize, makeLayer, type ImageDocument } from './document.js';
-import { alignLayers, copyPixels, pastePixels, sampleColor, sampleBitmap, gradientPixels, mergeLayers, moveLayers, type Alignment } from './dailyEditing.js';
+import { alignLayers, copyPixels, pastePixels, sampleColor, sampleBitmap, gradientPixels, prepareTiledMerge, mergeLayers, moveLayers, type Alignment } from './dailyEditing.js';
 import { transformedLayer, commitTransform, type TransformValues } from './freeTransform.js';
 import { combineSelection, polygonSelection, colorSelection, modifySelection, type SelectionMode } from './selection.js';
-import { PixelStroke, fillPixels, hexColor, type Point } from './pixelTools.js';
+import { replacePixel, PixelStroke, fillPixels, hexColor, type Point } from './pixelTools.js';
 import { maskFromSelection, maskFromStroke, maskStrokeState } from './maskTools.js';
 import { validateContent, type LayerContent } from './layerFeatures.js';
 
@@ -23,7 +30,7 @@ type Params = { readonly [key: string]: EditorJsonValue };
 const string = { type: 'string', minLength: 1, maxLength: 160 } as const;
 const color = { type: 'string', minLength: 7, maxLength: 7 } as const;
 const coordinate = { type: 'integer', minimum: -32768, maximum: 32768 } as const;
-const dimension = { type: 'integer', minimum: 1, maximum: 8192 } as const;
+const dimension = { type: 'integer', minimum: 1, maximum: 30000 } as const;
 const opacity = { type: 'number', minimum: 0.01, maximum: 1 } as const;
 const point = { type: 'object', properties: { x: coordinate, y: coordinate }, required: ['x', 'y'] } as const;
 const points = { type: 'array', items: point, maxItems: 8192 } as const;
@@ -32,8 +39,8 @@ const mode = { type: 'string', enum: ['replace', 'add', 'subtract', 'intersect']
 const content: EditorOperationSchema = { type: 'object', properties: {
   type: { type: 'string', enum: ['text', 'shape', 'adjustment', 'path'] }, text: { type: 'string', minLength: 1, maxLength: 2000 }, size: { type: 'number', minimum: 6, maximum: 512 }, family: { type: 'string', enum: ['sans-serif', 'serif', 'monospace'] }, bold: { type: 'boolean' }, italic: { type: 'boolean' }, align: { type: 'string', enum: ['left', 'center', 'right'] }, color,
   shape: { type: 'string', enum: ['rectangle', 'ellipse', 'line'] }, width: dimension, height: dimension, radius: { type: 'number', minimum: 0, maximum: 4096 }, fill: {type:'json'}, stroke: color, strokeAlignment:{type:'string',enum:['center','inside']},strokeWidth: { type: 'number', minimum: 0, maximum: 512 },
-  filter: { type: 'string', enum: ['brightness', 'contrast', 'saturation', 'hue', 'grayscale', 'invert', 'levels', 'curves', 'hue-saturation'] }, amount: { type: 'integer', minimum: -180, maximum: 180 },
-  contours:{type:'json'},hueSaturation:{type:'json'},
+  filter: { type: 'string', enum: [...Object.keys(DESIGN_ADJUSTMENTS), 'brightness', 'contrast', 'saturation', 'hue', 'grayscale', 'invert', 'levels', 'curves', 'hue-saturation'] }, amount: { type: 'integer', minimum: -180, maximum: 180 },
+  parameters:{type:'json'},contours:{type:'json'},hueSaturation:{type:'json'},
   levels: { type:'object', properties:{black:{type:'integer',minimum:0,maximum:253},white:{type:'integer',minimum:2,maximum:255},gamma:{type:'number',minimum:0.1,maximum:9.99},outputBlack:{type:'integer',minimum:0,maximum:255},outputWhite:{type:'integer',minimum:0,maximum:255}},required:['black','white','gamma','outputBlack','outputWhite'] },
   curves: {type:'array',maxItems:16,items:{type:'object',properties:{input:{type:'integer',minimum:0,maximum:255},output:{type:'integer',minimum:0,maximum:255}},required:['input','output']}},
   channels:{type:'object',properties:Object.fromEntries(['red','green','blue'].map(k=>[k,{type:'object',properties:{levels:{ type:'object', properties:{black:{type:'integer',minimum:0,maximum:253},white:{type:'integer',minimum:2,maximum:255},gamma:{type:'number',minimum:0.1,maximum:9.99},outputBlack:{type:'integer',minimum:0,maximum:255},outputWhite:{type:'integer',minimum:0,maximum:255}},required:['black','white','gamma','outputBlack','outputWhite'] },curves:{type:'array',maxItems:16,items:{type:'object',properties:{input:{type:'integer',minimum:0,maximum:255},output:{type:'integer',minimum:0,maximum:255}},required:['input','output']}}}}]))},
@@ -51,7 +58,7 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
   const done = (action: () => unknown) => () => { action(); return { applied: true }; };
   register('layer.clipping', {layerId:string,enabled:{type:'boolean'}}, ['layerId','enabled'], (p,d)=>done(()=>d.setClipping(p.layerId as string,p.enabled as boolean)));
   const effect={color,opacity:{type:'number',minimum:0,maximum:1}} as const;
-  register('layer.styles',{layerId:string,remove:{type:'boolean'},styles:{type:'object',properties:{enabled:{type:'boolean'},innerGlow:{type:'object',properties:{...effect,size:{type:'number',minimum:0,maximum:64},choke:{type:'number',minimum:0,maximum:100},noise:{type:'number',minimum:0,maximum:1},range:{type:'number',minimum:0.0001,maximum:1},source:{type:'string',enum:['edge','center']},blend:{type:'string',enum:['normal','screen']}},required:['color','opacity','size','choke','noise','range','source','blend']},overlay:{type:'object',properties:effect,required:['color','opacity']},stroke:{type:'object',properties:{...effect,size:{type:'integer',minimum:1,maximum:64}},required:['color','opacity','size']},shadow:{type:'object',properties:{...effect,dx:{type:'number',minimum:-256,maximum:256},dy:{type:'number',minimum:-256,maximum:256},blur:{type:'integer',minimum:0,maximum:64}},required:['color','opacity','dx','dy','blur']}},required:['enabled']}},['layerId'],(p,d)=>{
+  register('layer.styles',{layerId:string,remove:{type:'boolean'},styles:styleSchema},['layerId'],(p,d)=>{
     if(p.remove===true&&p.styles||p.remove!==true&&!p.styles)throw new Error('请提供样式，或指定 remove。');
     return done(()=>d.setStyles(p.layerId as string,p.remove===true?undefined:p.styles as unknown as LayerStyles));
   });
@@ -64,19 +71,20 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
   register('layers.select', { layerIds: ids }, ['layerIds'], (p, d) => done(() => d.selectMany(p.layerIds as string[])));
   register('layers.align', { layerIds: ids, alignment: { type: 'string', enum: ['left', 'center', 'right', 'top', 'middle', 'bottom'] }, relativeTo: { type: 'string', enum: ['selection', 'canvas'] } }, ['layerIds', 'alignment'], (p, d) => done(() => alignLayers(d, p.layerIds as string[], p.alignment as Alignment, p.relativeTo as 'selection' | 'canvas' | undefined)));
   register('layers.move', { layerIds: ids, dx: coordinate, dy: coordinate }, ['layerIds', 'dx', 'dy'], (p, d) => done(() => moveLayers(d, p.layerIds as string[], p.dx as number, p.dy as number)));
-  register('layers.merge', { layerIds: ids }, ['layerIds'], (p, d) => () => ({ layerId: mergeLayers(d, p.layerIds as string[]) }));
-  for (const action of ['delete', 'duplicate', 'rasterize', 'mask.apply'] as const) register(`layer.${action}`, { layerId: string }, ['layerId'], (p, d) => done(() => {
+  register('layers.merge', { layerIds: ids }, ['layerIds'], async(p,d,c)=>{if(!tiledEditing(d.state))return ()=>({layerId:mergeLayers(d,p.layerIds as string[])});const result=await prepareTiledMerge(d.state,p.layerIds as string[],c.signal);return ()=>{d.commitLayers('合并图层',result.layers,result.affected,[result.id]);return {layerId:result.id};};});
+  for (const action of ['delete', 'duplicate', 'rasterize', 'mask.apply'] as const) register(`layer.${action}`, { layerId: string }, ['layerId'], async (p, d, context) => {if(action==='mask.apply'&&tiledEditing(d.state)){const layer=await tiledApplyMask(d.state,p.layerId as string,context.signal);return done(()=>d.commitLayers('应用蒙版',(replacePixel(d.state.layers,layer.id,layer)),[layer.id]));}return done(() => {
     d.select(p.layerId as string);
     if (action === 'delete') d.deleteSelected(); else if (action === 'duplicate') d.duplicateSelected(); else if (action === 'rasterize') d.rasterizeSelected(); else d.applySelectedMask();
-  }));
+  });});
   register('layer.reorder', { layerId: string, direction: { type: 'string', enum: ['up', 'down'] } }, ['layerId', 'direction'], (p, d) => done(() => { d.select(p.layerId as string); d.reorder(p.direction === 'up' ? 1 : -1); }));
-  register('layer.transform', { layerId: string, width: dimension, height: dimension, angle: { type: 'number', minimum: -360, maximum: 360 }, dx: coordinate, dy: coordinate, flipX: { type: 'boolean' }, flipY: { type: 'boolean' },resampling:{type:'string',enum:Object.keys(RESAMPLING)} }, ['layerId', 'width', 'height'], (p, d) => {
+  register('layer.transform', { layerId: string, width: dimension, height: dimension, angle: { type: 'number', minimum: -360, maximum: 360 }, dx: coordinate, dy: coordinate, flipX: { type: 'boolean' }, flipY: { type: 'boolean' },resampling:{type:'string',enum:Object.keys(RESAMPLING)} }, ['layerId', 'width', 'height'], async (p, d, context) => {
+    if(tiledEditing(d.state)){const layer=await tiledTransform(d.state,p.layerId as string,{angle:0,dx:0,dy:0,...p} as unknown as TransformValues,context.signal);return done(()=>commitTransform(d,layer,'API: transform'));}
     const layer = transformedLayer(d.state, p.layerId as string, { angle: 0, dx: 0, dy: 0, ...p } as unknown as TransformValues);
     return done(() => commitTransform(d, layer, 'API: transform'));
   });
-  register('color.sample', { x: coordinate, y: coordinate, layerId: string }, ['x', 'y'], (p, d) => { const rgba = sampleColor(d.state, p.x as number, p.y as number, p.layerId as string | undefined); return () => ({ rgba, hex: sampleHex(rgba,d.state) }); }, 'read');
-  register('pixels.copy', { layerId: string }, [], (p, d) => {
-    const copy = copyPixels(d.state, p.layerId as string | undefined);
+  register('color.sample', { x: coordinate, y: coordinate, layerId: string }, ['x', 'y'], async (p, d, context) => { if(tiledEditing(d.state)){const b=await sampleRegion(d.state,{x:p.x as number,y:p.y as number,width:1,height:1},p.layerId as string|undefined,context.signal),rgba=Array.from(b.data);return ()=>({rgba,hex:sampleHex(rgba,d.state)});}const rgba = sampleColor(d.state, p.x as number, p.y as number, p.layerId as string | undefined); return () => ({ rgba, hex: sampleHex(rgba,d.state) }); }, 'read');
+  register('pixels.copy', { layerId: string }, [], async (p, d, context) => {
+    const copy = tiledEditing(d.state)?await tiledCopy(d.state,p.layerId as string|undefined,context.signal):copyPixels(d.state, p.layerId as string | undefined);
     const out=exportPixelResource(copy.bitmap);return () => ({ ...platform.resources.put(out.bytes), format:out.format, width: copy.bitmap.width, height: copy.bitmap.height, x: copy.x, y: copy.y });
   }, 'read');
   register('pixels.paste', { sourceProfileId:string,format:{type:'string',enum:['rgba8','rgba16le','rgba32fle','cmyka32fle']},resourceId: string, width: dimension, height: dimension, x: coordinate, y: coordinate, name: string }, ['resourceId', 'width', 'height'], async (p, d) => {
@@ -88,18 +96,22 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     const copy = { bitmap: importPixelResource(bytes,width,height,(p.format??'rgba8') as string), x: (p.x ?? 0) as number, y: (p.y ?? 0) as number,...(profile?{profile}:{}) };
     return () => ({ layerId: pastePixels(d, copy, p.name as string | undefined) });
   });
-  register('pixels.gradient', { layerId: string, start: point, end: point, from: color, to: color, kind: { type: 'string', enum: ['linear', 'radial'] }, opacity }, ['layerId', 'start', 'end', 'from', 'to', 'kind'], (p, d) => {
+  register('pixels.gradient', { layerId: string, start: point, end: point, from: color, to: color, kind: { type: 'string', enum: ['linear', 'radial'] }, opacity }, ['layerId', 'start', 'end', 'from', 'to', 'kind'], async (p, d, context) => {
+    if(tiledEditing(d.state)){const layer=await tiledGradient(d.state,p.layerId as string,p.start as unknown as Point,p.end as unknown as Point,hexColor(p.from as string),hexColor(p.to as string),p.kind as 'linear'|'radial',(p.opacity??1) as number,context.signal);return done(()=>d.replaceLayerPixels(layer.id,layer,'API: gradient'));}
     const layer = gradientPixels(d.state, p.layerId as string, p.start as unknown as Point, p.end as unknown as Point, hexColor(p.from as string), hexColor(p.to as string), p.kind as 'linear' | 'radial', (p.opacity ?? 1) as number);
     return done(() => d.replaceLayerPixels(layer.id, layer, 'API: gradient'));
   });
-  for (const action of ['fill', 'stroke'] as const) register(`pixels.${action}`, { layerId: string, color, opacity, erase: { type: 'boolean' }, target: { type: 'string', enum: ['pixels', 'mask', 'filterMask'] }, points:{type:'array',maxItems:8192,items:{type:'object',properties:{x:coordinate,y:coordinate,pressure:{type:'number',minimum:0,maximum:1}},required:['x','y']}}, hardness:{type:'number',minimum:0,maximum:1},pressure:{type:'string',enum:['none','size','opacity','both']},size: { type: 'number', minimum: 1, maximum: 512 } }, ['layerId', ...(action === 'stroke' ? ['points', 'size'] : [])], (p, d) => {
+  for (const action of ['fill', 'stroke'] as const) register(`pixels.${action}`, { ...brushSchema, layerId: string, color, opacity, erase: { type: 'boolean' }, target: { type: 'string', enum: ['pixels', 'mask', 'filterMask'] }, points:{type:'array',maxItems:8192,items:{type:'object',properties:{x:coordinate,y:coordinate,pressure:{type:'number',minimum:0,maximum:1}},required:['x','y']}}, hardness:{type:'number',minimum:0,maximum:1},pressure:{type:'string',enum:['none','size','opacity','both']},size: { type: 'number', minimum: 1, maximum: 512 } }, ['layerId', ...(action === 'stroke' ? ['points', 'size'] : [])], async (p, d, context) => {
     const maskTarget=p.target==='filterMask'?'filter':'layer',isMask=p.target==='mask'||p.target==='filterMask';
     const id = p.layerId as string, original = findLayer(d.state.layers, id); if (!original) throw new Error('图层不存在。');
+    if(tiledEditing(d.state)){const tone=p.erase&&isMask?[0,0,0] as const:hexColor((p.color??'#000000') as string),opacity=(p.opacity??1) as number,dynamics={...brushValues(p),hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'},path=p.points as unknown as Point[];
+     if(isMask){const mask=await editTiledMask(d.state,id,maskTarget,tone,opacity,action==='stroke'?{points:path,size:p.size as number,dynamics}:undefined,context.signal);return done(()=>d.setMask(id,mask,maskTarget));}
+     const layer=action==='fill'?await tiledFill(d.state,id,p.erase?null:tone,opacity,context.signal):await tiledStroke(d.state,id,path,p.size as number,opacity,tone,p.erase===true,dynamics,context.signal);return done(()=>d.replaceLayerPixels(id,layer,`API: ${action}`));}
     const state = isMask ? maskStrokeState(d.state,id,maskTarget) : d.state, tone = p.erase && isMask ? [0, 0, 0] as const : hexColor((p.color ?? '#000000') as string), erase = p.erase === true && !isMask;
     let layer,damage:{x:number;y:number;width:number;height:number}|undefined;
-    if(!isMask&&state.colorMode==='cmyk'&&erase){const settings={ink:[0,0,0,0],erase:true,opacity:(p.opacity??1) as number};if(action==='fill')layer=fillCmyk(state,id,settings);else{const path=p.points as unknown as Point[];if(!path.length)throw Error('笔画至少需要一个点。');const stroke=new CmykStroke(state,id,p.size as number,settings,{hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'});for(const point of path)stroke.point(point);layer=stroke.layer;}}
+    if(!isMask&&state.colorMode==='cmyk'&&erase){const settings={ink:[0,0,0,0],erase:true,opacity:(p.opacity??1) as number};if(action==='fill')layer=fillCmyk(state,id,settings);else{const path=p.points as unknown as Point[];if(!path.length)throw Error('笔画至少需要一个点。');const stroke=new CmykStroke(state,id,p.size as number,settings,{...brushValues(p),hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'});for(const point of path)stroke.point(point);layer=stroke.layer;}}
     else if (action === 'fill') layer = fillPixels(state, id, erase ? null : tone, (p.opacity ?? 1) as number);
-    else { const path = p.points as unknown as Point[]; if (!path.length) throw new Error('笔画至少需要一个点。'); const stroke = new PixelStroke(state, id, p.size as number, (p.opacity ?? 1) as number, tone, erase,{hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'}); for (const point of path) stroke.point(point); layer = stroke.layer;damage=stroke.changedBounds; }
+    else { const path = p.points as unknown as Point[]; if (!path.length) throw new Error('笔画至少需要一个点。'); const stroke = new PixelStroke(state, id, p.size as number, (p.opacity ?? 1) as number, tone, erase,{...brushValues(p),hardness:(p.hardness??1) as number,pressure:(p.pressure??'none') as 'none'}); for (const point of path) stroke.point(point); layer = stroke.layer;damage=stroke.changedBounds; }
     return done(() => isMask ? d.setMask(id,maskFromStroke(original,layer,maskTarget),maskTarget) : d.replaceLayerPixels(id, layer, `API: ${action}`,d.revision,damage));
   });
   register('selection.all', {}, [], (_, d) => done(() => d.setSelection({ x: 0, y: 0, width: d.state.width, height: d.state.height })));
@@ -107,11 +119,13 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     const selected = polygonSelection(p.points as unknown as Point[], d.state.width, d.state.height);
     return done(() => d.setSelection(combineSelection(d.state.selection, selected, (p.mode ?? 'replace') as SelectionMode, d.state.width, d.state.height)));
   });
-  register('selection.color', { color, tolerance: { type: 'number', minimum: 0, maximum: 255 }, seed: point, layerId: string, mode }, ['color', 'tolerance'], (p, d) => {
+  register('selection.color', { color, tolerance: { type: 'number', minimum: 0, maximum: 255 }, seed: point, layerId: string, mode }, ['color', 'tolerance'], async (p, d, context) => {
+    if(tiledEditing(d.state)){const selected=await tiledColorSelection(d.state,hexColor(p.color as string),p.tolerance as number,p.seed as unknown as Point|undefined,p.layerId as string|undefined,context.signal);return done(()=>d.setSelection(combineSelection(d.state.selection,selected,(p.mode??'replace') as SelectionMode,d.state.width,d.state.height)));}
     const selected = colorSelection(sampleBitmap(d.state, p.layerId as string | undefined), hexColor(p.color as string), p.tolerance as number, p.seed as unknown as Point | undefined);
     return done(() => d.setSelection(combineSelection(d.state.selection, selected, (p.mode ?? 'replace') as SelectionMode, d.state.width, d.state.height)));
   });
-  register('selection.wand', { x: coordinate, y: coordinate, tolerance: { type: 'number', minimum: 0, maximum: 255 }, contiguous: { type: 'boolean' }, layerId: string, mode }, ['x', 'y', 'tolerance'], (p, d) => {
+  register('selection.wand', { x: coordinate, y: coordinate, tolerance: { type: 'number', minimum: 0, maximum: 255 }, contiguous: { type: 'boolean' }, layerId: string, mode }, ['x', 'y', 'tolerance'], async (p, d, context) => {
+    if(tiledEditing(d.state)){const x=p.x as number,y=p.y as number,b=await sampleRegion(d.state,{x,y,width:1,height:1},p.layerId as string|undefined,context.signal),selected=await tiledColorSelection(d.state,Array.from(b.data) as [number,number,number,number],p.tolerance as number,p.contiguous===false?undefined:{x,y},p.layerId as string|undefined,context.signal);return done(()=>d.setSelection(combineSelection(d.state.selection,selected,(p.mode??'replace') as SelectionMode,d.state.width,d.state.height)));}
     const x = p.x as number, y = p.y as number, source = sampleBitmap(d.state, p.layerId as string | undefined);
     if (x < 0 || y < 0 || x >= source.width || y >= source.height) throw new Error('取样坐标超出画布。');
     const at = (y * source.width + x) * 4, rgba = Array.from(source.data.subarray(at, at + 4)) as [number, number, number, number];
@@ -133,7 +147,7 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
     const target=p.target==='filter'?'filter':'layer';let mask=target==='filter'?layer.filterMask:layer.mask;
     if (p.action === 'fromSelection') mask = maskFromSelection(d.state, id);
     else if (p.action === 'remove') mask = undefined;
-    else { if (!mask) throw new Error('图层没有蒙版。'); mask = p.action === 'invert' ? { ...mask, data: mask.data.map(v => 255 - v), defaultColor: 255 - mask.defaultColor } : { ...mask, disabled: p.action === 'disable' }; }
+    else { if (!mask) throw new Error('图层没有蒙版。'); mask = p.action === 'invert' ? invertMask(mask) : { ...mask, disabled: p.action === 'disable' }; }
     return done(() => d.setMask(id,mask,target));
   });
   const target={type:'string',enum:['layer','filter']} as const;
@@ -147,8 +161,8 @@ export function registerDailyOperations(workspace: ImageWorkspace): EditorDispos
   });
   register('smart.filters',{layerId:string,filters:{type:'array',maxItems:16,items:{type:'object',properties:{id:string,enabled:{type:'boolean'},opacity:{type:'number',minimum:0,maximum:1},blend:{type:'string',enum:Object.keys(BLEND_MODES)},settings:{type:'object',properties:{kind:{type:'string',enum:Object.keys(FILTERS)},amount:{type:'number'},radius:{type:'number',minimum:.1,maximum:32},threshold:{type:'integer',minimum:0,maximum:255}},required:['kind','amount']}},required:['id','enabled','opacity','blend','settings']}}},['layerId','filters'],async(p,d,context)=>{
     const layer=findLayer(d.state.layers,p.layerId as string),filters=p.filters as unknown as SmartFilter[];if(layer?.content?.type!=='smart'||!layer.bitmap)throw new Error('请选择智能对象。');if(layerLocked(d.state.layers,layer.id))throw new Error('图层已锁定。');validateSmartFilters(filters);
-    const output=typeof Worker==='undefined'?filterStackBitmap(layer.bitmap,filters):await pixelJob<Bitmap>({kind:'stack',bitmap:layer.bitmap,filters},context.signal);
-    return done(()=>{primeFilterStack(layer.bitmap!,filters,output);d.setLiveEffects(layer.id,{smartFilters:filters});});
+    const output=tiledEditing(d.state)?undefined:typeof Worker==='undefined'?filterStackBitmap(layer.bitmap,filters):await pixelJob<Bitmap>({kind:'stack',bitmap:layer.bitmap,filters},context.signal);
+    return done(()=>{if(output)primeFilterStack(layer.bitmap!,filters,output);d.setLiveEffects(layer.id,{smartFilters:filters});});
   });
   register('layer.import', { resourceId: string, name: string, x: coordinate, y: coordinate }, ['resourceId', 'name'], async (p, d) => {
     const bytes = platform.resources.read(p.resourceId as string), bitmap = await (await import('./imageImport.js')).decodeImage(new File([bytes.slice().buffer], p.name as string));

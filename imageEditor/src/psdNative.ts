@@ -1,3 +1,8 @@
+import {readSmartPlacement,readSmartLink} from './psdSmartPlacement.js';
+import {readSmartFilters,writeSmartFilters} from './psdSmartFilters.js';
+import {isDesignAdjustment,readDesignAdjustment,writeDesignAdjustment} from './designAdjustments.js';
+import {writeStyles as effects} from './psdStyles.js';
+import {writeAdvancedBlend} from './advancedBlend.js';
 import { readPdfSmart } from './pdfSmart.js';
 import { mapQuadPoint } from './projective.js';
 import { readHueSaturation, writeHueSaturation } from './hueSaturation.js';
@@ -20,27 +25,9 @@ export function shapeKnots(c:ShapeContent,x:number,y:number):BezierKnot[] {
  const radius=Math.min(c.radius,(r-l)/2,(b-t)/2);if(!radius)return [knot(l,t),knot(r,t),knot(r,b),knot(l,b)];
  const a=radius*(1-k);return [knot(l+radius,t,l+a,t),knot(r-radius,t,r-radius,t,r-a,t),knot(r,t+radius,r,t+a),knot(r,b-radius,r,b-radius,r,b-a),knot(r-radius,b,r-a,b),knot(l+radius,b,l+radius,b,l+a,b),knot(l,b-radius,l,b-a),knot(l,t+radius,l,t+radius,l,t+a)];
 }
-function effects(styles:LayerStyles):LayerEffectsInfo {
- const s=styles.shadow,g=styles.innerGlow;return {disabled:!styles.enabled,scale:1,
- ...(g?{innerGlow:{enabled:true,present:true,blendMode:g.blend,color:rgb(g.color),opacity:g.opacity,technique:'softer',choke:units(g.choke),size:units(g.size),noise:g.noise,jitter:0,antialiased:false,range:g.range,source:g.source,contour:{name:'Linear',curve:[{x:0,y:0},{x:255,y:255}]}}}:{}),
- ...(styles.overlay?{solidFill:[{enabled:true,present:true,blendMode:'normal',color:rgb(styles.overlay.color),opacity:styles.overlay.opacity}]}:{}),
- ...(styles.stroke?{stroke:[{enabled:true,present:true,fillType:'color',position:'outside',size:units(styles.stroke.size),color:rgb(styles.stroke.color),opacity:styles.stroke.opacity,blendMode:'normal'}]}:{}),
- ...(s?{dropShadow:[{enabled:true,present:true,blendMode:'normal',color:rgb(s.color),opacity:s.opacity,size:units(s.blur),distance:units(Math.hypot(s.dx,s.dy)),angle:Math.atan2(s.dy,-s.dx)*180/Math.PI,useGlobalLight:false,choke:units(0),layerConceals:true}]}:{})};
-}
-export function readStyles(e:LayerEffectsInfo):LayerStyles {
- if(Object.keys(e).some(k=>!['disabled','scale','solidFill','stroke','dropShadow','innerGlow'].includes(k)))throw new Error('仅支持颜色叠加、外描边和普通投影。');
- const scale=e.scale??1;if(!Number.isFinite(scale)||scale<=0||scale>10)throw Error('图层样式缩放无效。');
- const result:LayerStyles={enabled:!e.disabled};
- if(e.innerGlow){const g=e.innerGlow;if(g.enabled===false||!['normal','screen'].includes(g.blendMode??'normal')||g.jitter||g.technique&&g.technique!=='softer'||g.size?.units!=='Pixels'||g.choke?.units!=='Pixels'||g.contour?.curve.some((p,i)=>p.x!==i*255||p.y!==i*255))throw Error('内发光当前支持纯色柔和线性轮廓。');result.innerGlow={color:hex(g.color),opacity:g.opacity??1,size:g.size.value*scale,choke:g.choke.value,noise:g.noise??0,source:g.source??'edge',blend:(g.blendMode??'normal') as 'normal'|'screen',range:g.range??.5};}
- for(const list of [e.solidFill,e.stroke,e.dropShadow])if(list&&(list.length!==1||list[0]!.blendMode&&list[0]!.blendMode!=='normal'||list[0]!.enabled===false))throw new Error('暂不支持多重、停用的单项或非正常混合样式。');
- if(e.solidFill){const f=e.solidFill[0]!;result.overlay={color:hex(f.color),opacity:f.opacity??1};}
- if(e.stroke){const f=e.stroke[0]!;if(f.position!=='outside'||f.fillType!=='color'||f.size?.units!=='Pixels'||!Number.isInteger(f.size.value))throw new Error('暂仅支持像素宽度的纯色外描边。');result.stroke={color:hex(f.color),opacity:f.opacity??1,size:Math.round(f.size.value*scale)};}
- if(e.dropShadow){const f=e.dropShadow[0]!;if(f.useGlobalLight||f.choke?.value||(f as unknown as Record<string,unknown>).noise||f.antialiased||f.layerConceals===false||f.contour?.curve.length&&!(f.contour.curve.length===2&&f.contour.curve[0]?.x===0&&f.contour.curve[0]?.y===0&&f.contour.curve[1]?.x===255&&f.contour.curve[1]?.y===255)||f.size?.units!=='Pixels'||f.distance?.units!=='Pixels')throw new Error('暂不支持全局光、扩展或自定义轮廓投影。');const angle=(f.angle??0)*Math.PI/180,d=f.distance.value*scale;result.shadow={color:hex(f.color),opacity:f.opacity??1,blur:f.size.value*scale,dx:Math.round(-Math.cos(angle)*d*10000)/10000||0,dy:Math.round(Math.sin(angle)*d*10000)/10000||0};}
- validateStyles(result);return result;
-}
-
+export {readExtendedStyles as readStyles} from './psdStyles.js';
 export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFile[]):Partial<Layer> {
- const c=layer.content,result:Partial<Layer>={clipping:Boolean(layer.clipping),...(layer.styles?{effects:effects(layer.styles)}:{})};
+ const c=layer.content,result:Partial<Layer>={...writeAdvancedBlend(layer),clipping:Boolean(layer.clipping),...(layer.styles?{effects:effects(layer.styles)}:{})};
  if(layer.mask?.vector){result.vectorMask=structuredClone(layer.mask.vector);result.vectorMask.disable=layer.mask.disabled;for(const path of result.vectorMask.paths)for(const knot of path.knots)knot.points=knot.points.map((v,i)=>v+(i%2?y:x)) as typeof knot.points;}
  if(!c)return result;
  if(c.type==='text'){
@@ -53,7 +40,8 @@ export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFil
   result.vectorFill={type:'color',color:rgb(c.fill)};result.vectorMask={paths:[{open:c.shape==='line',operation:'combine',fillRule:'non-zero',knots:shapeKnots(c,x,y)}]};
   result.vectorStroke={strokeEnabled:c.strokeWidth>0,fillEnabled:c.shape!=='line',lineWidth:units(c.strokeWidth),lineAlignment:'center',lineCapType:'butt',lineJoinType:'miter',opacity:1,blendMode:'normal',content:{type:'color',color:rgb(c.stroke)}};
  }else if(c.type==='adjustment'){
-  if(c.filter==='hue-saturation')result.adjustment=writeHueSaturation(c.hueSaturation!);
+  if(isDesignAdjustment(c.filter))result.adjustment=writeDesignAdjustment(c);
+  else if(c.filter==='hue-saturation')result.adjustment=writeHueSaturation(c.hueSaturation!);
   else if(c.filter==='levels'){const record=(l:Levels)=>({shadowInput:l.black,highlightInput:l.white,midtoneInput:l.gamma,shadowOutput:l.outputBlack,highlightOutput:l.outputWhite});result.adjustment={type:'levels',rgb:record(c.levels!),...Object.fromEntries(Object.entries(c.channels??{}).map(([k,v])=>[k,record(v.levels!)]))};}
   else if(c.filter==='curves')result.adjustment={type:'curves',rgb:c.curves!.map(p=>({...p})),...Object.fromEntries(Object.entries(c.channels??{}).map(([k,v])=>[k,v.curves!.map(p=>({...p}))]))};
   else if(c.filter==='invert'&&c.amount===100)result.adjustment={type:'invert'};
@@ -66,13 +54,15 @@ export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFil
    const existing=linked.find(f=>f.id===c.sourceId);if(existing){if(!existing.data||existing.data.length!==pdf.data.length||existing.data.some((v,i)=>v!==pdf.data[i]))throw Error('共享智能源 ID 对应了不同文件。');}else linked.push({id:c.sourceId,name:c.name,type:'PDF',data:pdf.data});
    return result;
   }
-  // Each placed instance receives its own ID; duplicated sources may be independently replaced.
-  const placedId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(layer.id)?layer.id:uid();
+  const placedId=c.sourceId;
   result.placedLayer={id:placedId,type:'raster',warp:{style:'none'},width:c.source.width,height:c.source.height,transform:corners,resolution:{units:'Density',value:72}};
+  if(layer.smartFilters?.length)result.placedLayer.filter=writeSmartFilters(layer.smartFilters);
+  if(t.mesh)result.placedLayer.warp={style:'custom',value:0,perspective:0,perspectiveOther:0,rotate:'horizontal',uOrder:4,vOrder:4,bounds:{left:units(0),top:units(0),right:units(c.source.width),bottom:units(c.source.height)},customEnvelopeWarp:{meshPoints:t.mesh.map(p=>({x:p.x*c.source.width,y:p.y*c.source.height}))}};
   if(t.quad)result.placedLayer.nonAffineTransform=t.quad.map((v,i)=>v+(i%2?y:x));
   const sourcePsd={width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source};
   const embedded=c.sourcePsd??((c.source.depth??8)!==8?writeHighPsd(sourcePsd,c.source.depth as 16|32):writePsdUint8Array({width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source},{noBackground:true,compress:true}));
   const psb=new DataView(embedded.buffer,embedded.byteOffset).getUint16(4)===2;
+  const previous=linked.findIndex(f=>f.id===placedId);if(previous>=0)linked.splice(previous,1);
   linked.push({id:placedId,name:c.name.replace(/\.ps[db]$/i,'')+(psb?'.psb':'.psd'),type:psb?'8BPB':'8BPS',data:c.sourcePsd?(readSmartSource(c.sourcePsd,c.name),embedded):c.source.depth?embedded:concatBytes([embedded.subarray(0,psdSections(embedded).composite),rawCompositeData(embedded,c.source)])});
  }
  return result;
@@ -83,7 +73,8 @@ export function readNativeContent(layer:Layer,psd:Psd):LayerContent|undefined {
  let result:LayerContent|undefined;
  const present=[layer.text,layer.vectorMask||layer.vectorFill||layer.vectorStroke,layer.adjustment,layer.placedLayer].filter(Boolean);if(present.length>1)throw new Error('同一层包含多种原生内容，暂不能编辑。');
  if(layer.adjustment){const a=layer.adjustment;
-  if(a.type==='hue/saturation')result={type:'adjustment',filter:'hue-saturation',amount:100,hueSaturation:readHueSaturation(a)};
+  const extra=readDesignAdjustment(a);if(extra)result=extra;
+  else if(a.type==='hue/saturation')result={type:'adjustment',filter:'hue-saturation',amount:100,hueSaturation:readHueSaturation(a)};
   else if(a.type==='invert')result={type:'adjustment',filter:'invert',amount:100};
   else if(a.type==='levels'||a.type==='curves'){
    const neutral={black:0,white:255,gamma:1,outputBlack:0,outputWhite:255},line=[{input:0,output:0},{input:255,output:255}];
@@ -109,12 +100,11 @@ export function readNativeContent(layer:Layer,psd:Psd):LayerContent|undefined {
   const candidate:ShapeContent={type:'shape',shape:path.open?'line':path.knots.length===8?'rectangle':path.knots.some(k=>!near(k.points[0]!,k.points[2]!)||!near(k.points[1]!,k.points[3]!))?'ellipse':'rectangle',width:b.width,height:b.height,radius:0,fill:hex(layer.vectorFill.color),stroke:stroke?.content?.type==='color'?hex(stroke.content.color):'#000000',strokeWidth:size};
   if(path.knots.length===8)candidate.radius=path.knots[0]!.points[2]!-x-Math.min(size/2,b.width/2,b.height/2);
   const expected=shapeKnots(candidate,x,y);if(paths.length>1||stroke?.lineAlignment==='inside'||path.knots.some(k=>!k.linked)||expected.length!==path.knots.length||expected.some((k,i)=>k.points.some((n,j)=>!near(n,path.knots[i]!.points[j]!)))){result={type:'path',...(stroke?.lineAlignment==='inside'?{strokeAlignment:'inside'}:{}),width:b.width,height:b.height,closed:!path.open,fill:stroke?.fillEnabled===false?null:hex(layer.vectorFill.color),stroke:candidate.stroke,strokeWidth:size,fillRule:path.fillRule==='even-odd'?'evenodd':'nonzero',nodes:path.knots.map(k=>({inX:k.points[0]!-x,inY:k.points[1]!-y,x:k.points[2]!-x,y:k.points[3]!-y,outX:k.points[4]!-x,outY:k.points[5]!-y}))} as PathContent;if(paths.length>1)result.contours=paths.slice(1).map(p=>({closed:!p.open,fillRule:p.fillRule==='even-odd'?'evenodd':'nonzero',operation:p.operation==='combine'?'combine':'continue',nodes:p.knots.map(k=>({inX:k.points[0]!-x,inY:k.points[1]!-y,x:k.points[2]!-x,y:k.points[3]!-y,outX:k.points[4]!-x,outY:k.points[5]!-y}))}));}else result=candidate;
- }else if(layer.placedLayer){const p=layer.placedLayer,file=psd.linkedFiles?.find(f=>f.id===p.id);
-  if(p.type!=='raster'||p.filter||p.nonAffineTransform||p.warp?.style&&p.warp.style!=='none'||!file?.data||file.linkedFile||file.data.byteLength>64*1024*1024)throw new Error('仅支持无滤镜／透视的嵌入式像素 PSD 智能对象。');
+ }else if(layer.placedLayer){const p=layer.placedLayer,file=psd.linkedFiles?.find(f=>f.id===p.id&&f.data);
+  if(p.type!=='raster'||!file?.data||file.data.byteLength>64*1024*1024)throw new Error('仅支持无滤镜／透视的嵌入式像素 PSD 智能对象。');
+  readSmartFilters(p.filter);
   const embeddedState=readSmartSource(file.data,file.name),source=embeddedState.bitmap;
-  const q=p.transform;if(q.length!==8||!q.every(Number.isFinite))throw new Error('智能对象变换无效。');const ax=q[2]!-q[0]!,ay=q[3]!-q[1]!,bx=q[6]!-q[0]!,by=q[7]!-q[1]!,width=Math.round(Math.hypot(ax,ay)),height=Math.round(Math.hypot(bx,by));
-  if(!near(q[4]!,q[0]!+ax+bx)||!near(q[5]!,q[1]!+ay+by)||Math.abs(ax*bx+ay*by)>.02)throw new Error('智能对象透视／斜切暂不支持。');
-  result={type:'smart',sourceId:p.id,name:file.name.replace(/\.psd$/i,'').slice(0,160),source:{...source,data:source.data.slice()},...(embeddedState.simple?{}:{sourcePsd:file.data.slice()}),transform:{width,height,angle:Math.atan2(ay,ax)*180/Math.PI,flipX:false,flipY:ax*by-ay*bx<0}};
+  result={type:'smart',sourceId:p.id,name:file.name.slice(0,160),source:{...source,data:source.data.slice()},sourcePsd:file.data.slice(),...readSmartLink(psd,p.id),transform:readSmartPlacement(layer,source.width,source.height)};
  }
  if(result)validateContent(result);return result;
 }

@@ -36,7 +36,7 @@ export async function runRollupOnce(options) {
   const label = options.label ?? expectedOutputs.join(', ');
   const command = options.command ?? process.execPath;
   const args = options.args ?? [
-    '--max-old-space-size=2048',
+    `--max-old-space-size=${positiveDuration(options.heapMb, 2048, 'heapMb')}`,
     options.rollupBin ?? defaultRollupBin,
     '-c',
     options.config ?? 'rollup.config.js',

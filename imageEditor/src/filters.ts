@@ -78,7 +78,10 @@ export function filterBitmap(source:Bitmap,settings:FilterSettings):Bitmap {
 }
 export function filterLayer(state:ImageState,id:string,settings:FilterSettings):ImageLayer {
   const layer=editablePixel(state,id);if(!layer.bitmap)throw new Error('请选择含像素的图层。');
-  const filtered=filterBitmap(layer.bitmap,settings),offset=parentOffset(state.layers,id)!,source=layer.bitmap.data;
+  return applyFilteredLayer(state,id,filterBitmap(layer.bitmap,settings));
+}
+export function applyFilteredLayer(state:ImageState,id:string,filtered:Bitmap):ImageLayer {
+  const layer=editablePixel(state,id),offset=parentOffset(state.layers,id)!,source=layer.bitmap!.data;
   for(let y=0;y<filtered.height;y++)for(let x=0;x<filtered.width;x++){
     const weight=selectionWeight(state.selection,x+layer.x+offset.x,y+layer.y+offset.y),i=(y*filtered.width+x)*4;
     if(weight===1)continue;

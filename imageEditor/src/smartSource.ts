@@ -1,3 +1,4 @@
+import {commitSmartUpdates,sharedSourceUpdates} from './sharedSmart.js';
 import { readPsd, writePsdUint8Array, type Layer } from 'ag-psd';
 import { importPsd, exportPsd } from './psdAdapter.js';
 import { allLayers, checkSize, findLayer, ImageDocument, makeLayer, uid, validateState, type ImageState } from './document.js';
@@ -25,11 +26,11 @@ export function openSmartSource(content:SmartContent):ImageState {
 export function prepareSmartSource(content:SmartContent,state:ImageState):SmartContent {
  validateState(state);if(allLayers(state.layers).some(l=>l.content?.type==='smart'))throw new Error('多层智能源暂不允许嵌套智能对象。');
  const bytes=exportPsd(state).bytes,{bitmap}=readSmartSource(bytes,state.name);
- return {...content,sourceId:uid(),name:state.name,source:bitmap,sourcePsd:bytes,sourcePdf:undefined};
+ return {...content,sourceId:uid(),name:state.name,source:bitmap,sourcePsd:bytes,sourcePdf:undefined,link:undefined};
 }
-export function applySmartSource(doc:ImageDocument,id:string,content:SmartContent){
+export function applySmartSource(doc:ImageDocument,id:string,content:SmartContent,scope:'shared'|'instance'='shared'){
  if(findLayer(doc.state.layers,id)?.content?.type!=='smart')throw new Error('请选择智能对象。');
- doc.setContent(id,content,smartBitmap(content));
+ commitSmartUpdates(doc,sharedSourceUpdates(doc.state,id,content,scope));
 }
 
 export function originalSmartSource(content:SmartContent){

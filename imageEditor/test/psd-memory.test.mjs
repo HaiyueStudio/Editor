@@ -43,7 +43,7 @@ test('admission counts native working precision, masks, and off-canvas layers be
     const memory=estimatePsdMemory(doc,42,depth,cmyk);assert.equal(memory.layerPixelBytes,(32*32+8*8)*bpp);assert.equal(memory.compositePixelBytes,16*bpp);assert.equal(memory.limitBytes,IMAGE_LIMITS.bytes);
   }
   assert.throws(()=>estimatePsdMemory({...doc,children:[{left:2,right:1,top:0,bottom:1}]},0,8,false),/范围/);
-  assert.throws(()=>estimatePsdMemory({...doc,children:[{left:0,right:9000,top:0,bottom:1}]},0,8,false),/尺寸/);
+  assert.throws(()=>estimatePsdMemory({...doc,children:[{left:0,right:30001,top:0,bottom:1}]},0,8,false),/尺寸/);
   assert.throws(()=>estimatePsdMemory({...doc,children:Array.from({length:129},()=>({}))},0,8,false),/128/);
 });
 

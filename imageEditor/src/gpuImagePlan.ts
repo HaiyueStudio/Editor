@@ -1,16 +1,18 @@
+import {modernComposite} from './advancedBlend.js';
 import type { ImageLayer, ImageState } from './document.js';
 import { embeddedProfile, parseRgbProfile, builtinProfile } from './colorManagement.js';
 export const GPU_IMAGE_BUDGET=128*1024*1024;
-export const GPU_BLEND_MODES=['normal','multiply','screen','overlay','darken','lighten','hard-light','difference','exclusion'] as const;
+export const GPU_BLEND_MODES:readonly import('./layerFeatures.js').BlendMode[]=['normal','multiply','screen','overlay','darken','lighten','hard-light','difference','exclusion'] as const;
+export const GPU_POINT_FILTERS=['brightness','contrast','saturation','grayscale','invert'] as const;
 export interface GpuImageLayer {layer:ImageLayer;x:number;y:number}
 /** Admit only semantics implemented by the GPU compositor. Everything else uses the reference compositor. */
-export function gpuImageLayers(state:ImageState):GpuImageLayer[]|undefined {
+export function gpuImageLayers(state:ImageState,pointFilters=false):GpuImageLayer[]|undefined {
  if((state.bitDepth??8)!==8||state.colorMode==='cmyk')return;
  const result:GpuImageLayer[]=[];
  const walk=(layers:readonly ImageLayer[],x=0,y=0):boolean=>layers.every(layer=>{
   if(layer.clipping)return false;
   if(!layer.visible||!layer.opacity)return true;
-  if(layer.styles?.enabled||layer.smartFilters?.some(f=>f.enabled)||layer.blendIf?.enabled||layer.content?.type==='adjustment')return false;
+  if(modernComposite(layer)||layer.styles?.enabled||layer.smartFilters?.some(f=>f.enabled&&(!pointFilters||f.blend!=='normal'||!GPU_POINT_FILTERS.includes(f.settings.kind as typeof GPU_POINT_FILTERS[number])||layer.filterMask&&!layer.filterMask.disabled))||layer.blendIf?.enabled||layer.content?.type==='adjustment')return false;
   const px=x+layer.x,py=y+layer.y;
   if(layer.kind==='group')return !!layer.passThrough&&layer.opacity===1&&!layer.mask&&walk(layer.children,px,py);
   if(!layer.bitmap||!GPU_BLEND_MODES.includes(layer.blend)||!Number.isInteger(px)||!Number.isInteger(py))return false;

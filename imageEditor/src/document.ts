@@ -1,3 +1,7 @@
+import {validateDelivery,type Artboard,type SpotChannel} from './deliveryModel.js';
+import {validateAdvancedBlend, type AdvancedBlend} from './advancedBlend.js';
+import { cloneSelection, validateRuns } from './selectionRuns.js';
+import { DOCUMENT_DIMENSION, checkDenseAllocation } from './imageLimits.js';
 import { applyLayerComp, captureLayerComp, validateLayerComps, freezeLayerComps, type LayerComps } from './layerComps.js';
 import { isLayerLocked, validateLocks, protectLayerChanges, type LayerLocks, type LockAction } from './layerLocks.js';
 import { archiveBytes, hydrateArchive, validateDiskBlob, type DiskBacking } from './diskPager.js';
@@ -10,7 +14,7 @@ import { type BitDepth, type PixelArray, type DisplaySettings, validateBitmap, n
 import { freezeProductivity, validateProductivity, type AlphaChannel, type Layout, type ImageAction } from './productivityModel.js';
 import { liveBitmap, validateSmartFilters, validateBlendIf, type SmartFilter, type BlendIf } from './liveEffects.js';
 import { validateMask } from './maskEffects.js';
-import { BLEND_MODES, maskWeight, validateContent, validateStyles, cloneContent, freezeContent, type LayerStyles, type BlendMode, type LayerMask, type LayerContent } from './layerFeatures.js';
+import { BLEND_MODES, freezeStyles, maskWeight, validateContent, validateStyles, cloneContent, freezeContent, type LayerStyles, type BlendMode, type LayerMask, type LayerContent } from './layerFeatures.js';
 import { pixelHistory } from './pixelHistory.js';
 import { MAX_PSD_RESOURCES, resourceBlocks } from './psdResources.js';
 import { selectionCount, type Selection } from './selection.js';
@@ -21,7 +25,7 @@ export interface Bitmap { readonly width: number; readonly height: number; reado
 export interface ImageLayer {
   readonly passThrough?:boolean; readonly nativePsd?:{id:number;contentKey:string;stylesKey:string};
   readonly id: string; readonly name: string; readonly visible: boolean; readonly locked: boolean; readonly locks?: LayerLocks;
-  readonly opacity: number; readonly blend: BlendMode;
+  readonly fillOpacity?:number; readonly advancedBlend?:AdvancedBlend; readonly opacity: number; readonly blend: BlendMode;
   readonly x: number; readonly y: number;
   readonly clipping?: boolean; readonly styles?: LayerStyles;
   readonly smartFilters?:readonly SmartFilter[]; readonly filterMask?:LayerMask; readonly blendIf?:BlendIf;
@@ -29,6 +33,7 @@ export interface ImageLayer {
   readonly kind: 'pixel' | 'group' | 'adjustment'; readonly bitmap: Bitmap | null; readonly children: readonly ImageLayer[];
 }
 export interface ImageState {
+ readonly artboards?:readonly Artboard[]; readonly spotChannels?:readonly SpotChannel[];
   readonly layerComps?:LayerComps;
   readonly paging?:{enabled:boolean}; readonly psdArchive?:Uint8Array; readonly psdArchiveStore?:DiskBacking;
   readonly colorMode?:'rgb'|'cmyk';readonly icc?:IccSettings; readonly bitDepth?:BitDepth; readonly display?:DisplaySettings;
@@ -40,11 +45,11 @@ export interface ImageState {
   readonly selectedIds?: readonly string[];
   readonly layers: readonly ImageLayer[]; readonly selectedId: string | null; readonly revision: number;
 }
-export const IMAGE_LIMITS = Object.freeze({ dimension: 8192, pixels: 16_777_216, bytes: 128 * 1024 * 1024, layers: 128, depth: 16, documents: 8 });
+export const IMAGE_LIMITS = Object.freeze({ dimension: DOCUMENT_DIMENSION, pixels: DOCUMENT_DIMENSION * DOCUMENT_DIMENSION, bytes: 128 * 1024 * 1024, layers: 128, depth: 16, documents: 8 });
 export const uid = () => crypto.randomUUID();
 export function checkSize(width: number, height: number) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > IMAGE_LIMITS.dimension || height > IMAGE_LIMITS.dimension || width * height > IMAGE_LIMITS.pixels)
-    throw new Error('画布或图片尺寸超出范围（边长 1–8192，最多 1677 万像素）。');
+    throw new Error('画布或图片尺寸超出范围（边长 1–30000）。');
 }
 export function allLayers(layers: readonly ImageLayer[]): ImageLayer[] { return layers.flatMap(layer => [layer, ...allLayers(layer.children)]); }
 export function findLayer(layers: readonly ImageLayer[], id: string | null): ImageLayer | undefined { return allLayers(layers).find(layer => layer.id === id); }
@@ -57,7 +62,9 @@ function retainedStateBytes(...states: ImageState[]) {
       collect(state);return buffers;
     };
     const a=backing(states[0]!),b=backing(states[1]!);
-    const metadata=states.reduce((n,s)=>n+JSON.stringify(s.actions??[]).length*2+JSON.stringify(s.layout??{}).length*2+JSON.stringify(s.layerComps??{}).length*2,4096);
+    const directories=new Set(states.flatMap(s=>allLayers(s.layers).map(l=>l.bitmap?.pages).filter(p=>p?.kind==='disk').map(p=>p!.tiles)));
+    const directoryBytes=[...directories].reduce((n,tiles)=>n+tiles.length*8,0);
+    const metadata=directoryBytes+states.reduce((n,s)=>n+JSON.stringify(s.actions??[]).length*2+JSON.stringify(s.layout??{}).length*2+JSON.stringify(s.layerComps??{}).length*2,4096);
     return [...new Set([...a,...b])].filter(v=>!a.has(v)||!b.has(v)).reduce((n,v)=>n+v.byteLength,0)+metadata;
   }
 
@@ -67,6 +74,8 @@ function retainedStateBytes(...states: ImageState[]) {
     for (const layer of allLayers(state.layers))  { if (layer.bitmap){if(isPaged(layer.bitmap)){for(const b of pageBuffers(layer.bitmap))buffers.add(b.buffer);}else buffers.add(layer.bitmap.data.buffer);if(layer.bitmap.cmyk)buffers.add(layer.bitmap.cmyk.buffer);} if(layer.mask)buffers.add(layer.mask.data.buffer); if(layer.filterMask)buffers.add(layer.filterMask.data.buffer); if(layer.content?.type==='smart'){if(isPaged(layer.content.source)){for(const b of pageBuffers(layer.content.source))buffers.add(b.buffer);}else buffers.add(layer.content.source.data.buffer);if(layer.content.sourcePsd)buffers.add(layer.content.sourcePsd.buffer);if(layer.content.sourcePdf)buffers.add(layer.content.sourcePdf.data.buffer);} }
     if(state.icc?.proofProfile)buffers.add(state.icc.proofProfile.buffer);if(state.icc?.monitorProfile)buffers.add(state.icc.monitorProfile.buffer);
     if (state.selection?.mask) buffers.add(state.selection.mask.buffer);
+    for(const row of state.selection?.runs??[])buffers.add(row.buffer);
+    for(const l of allLayers(state.layers))for(const m of [l.mask,l.filterMask])for(const row of m?.coverage?.runs??[])buffers.add(row.buffer);
     for(const channel of state.channels??[])buffers.add(channel.data.buffer);
     if (state.psdOrigin) buffers.add(state.psdOrigin.resources.buffer);
   }
@@ -82,8 +91,8 @@ function siblings(layers: readonly ImageLayer[], id: string, operation: (items: 
   return index >= 0 ? operation(layers, index) : layers.map(layer => ({ ...layer, children: siblings(layer.children, id, operation) }));
 }
 function freezeState(state: ImageState): ImageState {
-  const freeze = (layers: readonly ImageLayer[]): readonly ImageLayer[] => Object.freeze(layers.map(layer => Object.freeze({ ...layer, ...(layer.locks?{locks:Object.freeze({...layer.locks})}:{}), ...(layer.smartFilters?{smartFilters:Object.freeze(layer.smartFilters.map(f=>Object.freeze({...f,settings:Object.freeze({...f.settings})})))}:{}),...(layer.filterMask?{filterMask:Object.freeze({...layer.filterMask})}:{}),...(layer.blendIf?{blendIf:Object.freeze({...layer.blendIf,source:Object.freeze([...layer.blendIf.source]) as typeof layer.blendIf.source,underlying:Object.freeze([...layer.blendIf.underlying]) as typeof layer.blendIf.underlying})}:{}), ...(layer.styles?{styles:Object.freeze({...layer.styles,...(layer.styles.innerGlow?{innerGlow:Object.freeze({...layer.styles.innerGlow})}:{}),...(layer.styles.overlay?{overlay:Object.freeze({...layer.styles.overlay})}:{}),...(layer.styles.stroke?{stroke:Object.freeze({...layer.styles.stroke})}:{}),...(layer.styles.shadow?{shadow:Object.freeze({...layer.styles.shadow})}:{})})}:{}), ...(layer.content ? {content:freezeContent(layer.content)}:{}), ...(layer.mask?{mask:Object.freeze({...layer.mask})}:{}), children: freeze(layer.children) })));
-  return Object.freeze(hydrateArchive({ ...state,...(state.layerComps?{layerComps:freezeLayerComps(state.layerComps)}:{}),paging:state.paging??{enabled:false}, ...(state.icc?{icc:Object.freeze({...state.icc})}:{}),...freezeProductivity(state), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) }));
+  const freeze = (layers: readonly ImageLayer[]): readonly ImageLayer[] => Object.freeze(layers.map(layer => Object.freeze({ ...layer, ...(layer.locks?{locks:Object.freeze({...layer.locks})}:{}), ...(layer.smartFilters?{smartFilters:Object.freeze(layer.smartFilters.map(f=>Object.freeze({...f,settings:Object.freeze({...f.settings})})))}:{}),...(layer.filterMask?{filterMask:Object.freeze({...layer.filterMask})}:{}),...(layer.blendIf?{blendIf:Object.freeze({...layer.blendIf,source:Object.freeze([...layer.blendIf.source]) as typeof layer.blendIf.source,underlying:Object.freeze([...layer.blendIf.underlying]) as typeof layer.blendIf.underlying})}:{}), ...(layer.advancedBlend?{advancedBlend:Object.freeze({...layer.advancedBlend})}:{}),...(layer.styles?{styles:freezeStyles(layer.styles)}:{}), ...(layer.content ? {content:freezeContent(layer.content)}:{}), ...(layer.mask?{mask:Object.freeze({...layer.mask})}:{}), children: freeze(layer.children) })));
+  return Object.freeze(hydrateArchive({ ...state,...(state.layerComps?{layerComps:freezeLayerComps(state.layerComps)}:{}),paging:state.paging??{enabled:false}, ...(state.icc?{icc:Object.freeze({...state.icc})}:{}),...freezeProductivity(state),...(state.artboards?{artboards:Object.freeze(state.artboards.map(b=>Object.freeze({...b,...(b.layerIds?{layerIds:Object.freeze([...b.layerIds])}:{})})))}:{}),...(state.spotChannels?{spotChannels:Object.freeze(state.spotChannels.map(c=>Object.freeze({...c,mask:Object.freeze({...c.mask})})))}:{}), ...(state.colorManagement?{colorManagement:Object.freeze({...state.colorManagement})}:{}), selectedIds: Object.freeze((state.selectedId ? (state.selectedIds?.includes(state.selectedId) ? state.selectedIds : [state.selectedId]) : []).filter(id => Boolean(findLayer(state.layers, id)))), selection: state.selection ? Object.freeze({ ...state.selection }) : null, layers: freeze(state.layers) }));
 }
 export function validateState(state: ImageState) {
   hydratePixels(state);validateLayerComps(state.layerComps);
@@ -102,17 +111,19 @@ export function validateState(state: ImageState) {
   }
   const rect = state.selection;
   if (rect && (![rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) || rect.x < 0 || rect.y < 0 || rect.width < 1 || rect.height < 1 || rect.x + rect.width > state.width || rect.y + rect.height > state.height)) throw new Error('选区超出画布或无效。');
+  if(rect)validateRuns(rect);
   if (rect?.mask && (!(rect.mask instanceof Uint8Array) || rect.mask.length !== rect.width * rect.height)) throw new Error('选区蒙版无效。');
   if (!state.name.trim() || state.name.length > 160) throw new Error('文档名称长度应为 1–160 个字符。');
   const ids = new Set<string>();
-  let bytes = JSON.stringify(state.layerComps??{}).length*2+validateProductivity(state)+(state.psdArchiveStore?.disk?0:archiveBytes(state));if(state.icc){const c=state.icc;if(![0,1,2,3].includes(c.intent)||![0,1,2,3].includes(c.proofIntent)||typeof c.bpc!=='boolean'||typeof c.gamutWarning!=='boolean'||c.proofEnabled!==undefined&&typeof c.proofEnabled!=='boolean'||c.proofEnabled===true&&!c.proofProfile)throw new Error('ICC 设置无效。');for(const p of [c.proofProfile,c.monitorProfile])if(p){inspectIccBytes(p);bytes+=p.byteLength;}}
+  let bytes = (rect?validateRuns(rect)+(rect.mask?.byteLength??0):0)+JSON.stringify(state.layerComps??{}).length*2+validateProductivity(state)+validateDelivery(state)+(state.psdArchiveStore?.disk?0:archiveBytes(state));if(state.icc){const c=state.icc;if(![0,1,2,3].includes(c.intent)||![0,1,2,3].includes(c.proofIntent)||typeof c.bpc!=='boolean'||typeof c.gamutWarning!=='boolean'||c.proofEnabled!==undefined&&typeof c.proofEnabled!=='boolean'||c.proofEnabled===true&&!c.proofProfile)throw new Error('ICC 设置无效。');for(const p of [c.proofProfile,c.monitorProfile])if(p){inspectIccBytes(p);bytes+=p.byteLength;}}
   const visit = (layers: readonly ImageLayer[], depth: number) => {
     if (depth > IMAGE_LIMITS.depth) throw new Error('图层组嵌套过深。');
     for (const layer of layers) {
+      validateAdvancedBlend(layer);if(layer.kind==='adjustment'&&(layer.fillOpacity!==undefined&&layer.fillOpacity!==1||layer.advancedBlend))throw Error('调整层暂不支持填充透明度和高级混合。');
       if(layer.passThrough!==undefined&&(typeof layer.passThrough!=='boolean'||layer.kind!=='group'))throw Error('穿透模式需要图层组。');
-      if(layer.passThrough&&(layer.mask||layer.styles?.enabled||layer.blendIf?.enabled||layer.clipping))throw Error('穿透图层组的蒙版、样式或剪贴效果需要先关闭穿透模式。');
+      if(layer.passThrough&&(layer.mask||layer.styles?.enabled||layer.blendIf?.enabled||layer.clipping||layer.fillOpacity!==undefined&&layer.fillOpacity!==1||layer.advancedBlend&&Object.values(layer.advancedBlend).some(Boolean)))throw Error('穿透图层组的蒙版、样式或剪贴效果需要先关闭穿透模式。');
       if(layer.nativePsd&&(!archiveBytes(state)||!Number.isInteger(layer.nativePsd.id)||typeof layer.nativePsd.contentKey!=='string'||layer.nativePsd.contentKey.length>65536||typeof layer.nativePsd.stylesKey!=='string'||layer.nativePsd.stylesKey.length>65536))throw Error('PSD 原生图层引用无效。');
-      if(state.colorMode==='cmyk'&&(layer.content||layer.styles?.enabled||layer.smartFilters?.length||layer.clipping||layer.blendIf?.enabled))throw Error('CMYK 参数化内容、剪贴和效果需先转换 RGB。');
+      if(state.colorMode==='cmyk'&&(layer.content||layer.styles?.enabled||layer.smartFilters?.length||layer.clipping||layer.blendIf?.enabled||layer.advancedBlend||['hue','saturation','color','luminosity','darker-color','lighter-color'].includes(layer.blend)))throw Error('CMYK 参数化内容、剪贴和效果需先转换 RGB。');
       if (ids.has(layer.id) || !layer.id || layer.id.length > 80) throw new Error('图层 ID 无效或重复。');
       ids.add(layer.id);
       if (!layer.name.trim() || layer.name.length > 160) throw new Error('图层名称长度应为 1–160 个字符。');
@@ -133,7 +144,7 @@ export function validateState(state: ImageState) {
       if(layer.smartFilters!==undefined){validateSmartFilters(layer.smartFilters);if(layer.content?.type!=='smart')throw new Error('智能滤镜需要智能对象。');}
       if(layer.filterMask!==undefined&&layer.content?.type!=='smart')throw new Error('滤镜蒙版需要智能对象。');
       if(layer.blendIf!==undefined)validateBlendIf(layer.blendIf);
-      for(const mask of [layer.mask,layer.filterMask])if(mask!==undefined){validateMask(mask);bytes+=mask.data.byteLength;}
+      for(const mask of [layer.mask,layer.filterMask])if(mask!==undefined){validateMask(mask);bytes+=mask.data.byteLength+(mask.coverage?validateRuns(mask.coverage)+(mask.coverage.mask?.byteLength??0):0);}
       if (layer.bitmap) {
         checkSize(layer.bitmap.width, layer.bitmap.height);
         validateBitmap(layer.bitmap);if(layer.bitmap.pages?.kind==='disk'){if(!!layer.bitmap.pages.inks!==(state.colorMode==='cmyk'))throw Error('磁盘分色与文档颜色模式不符。');}else if(state.colorMode==='cmyk'){validateCmyk(layer.bitmap);bytes+=layer.bitmap.cmyk!.byteLength;}else if(layer.bitmap.cmyk)throw Error('RGB 图层不能携带原生 CMYK 通道。');if((layer.bitmap.depth??8)!==(state.bitDepth??8))throw new Error('图层与文档位深不一致。');
@@ -168,6 +179,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   }
   static create(name: string, width: number, height: number, white = false) {
     checkSize(width, height);
+    if(white)checkDenseAllocation(width,height);
     const bitmap = white ? { width, height, data: new Uint8ClampedArray(width * height * 4).fill(255) } : null;
     const layer = makeLayer(white ? '背景' : '图层 1', bitmap);
     return new ImageDocument({ id: uid(), name, width, height, layers: [layer], selectedId: layer.id, revision: 1 });
@@ -199,13 +211,16 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   commitLayers(label: string, layers: readonly ImageLayer[], affectedIds: readonly string[], selectedIds = this.selectedIds, expectedRevision = this.revision, mode:'edit'|'pixels'|'transform'|'validated'='edit') {
     if (expectedRevision !== this.revision) throw new Error('文档已变化，请重新操作。');
     for (const id of affectedIds) if (!findLayer(this.current.layers, id) || layerLocked(this.current.layers, id)) throw new Error('图层不存在或已锁定。');
+    const smartOwned=new WeakMap<Bitmap,{input:import('./layerFeatures.js').SmartContent;owned:import('./layerFeatures.js').SmartContent}>();
     const own = (items: readonly ImageLayer[]): ImageLayer[] => items.map(layer => {
       const old = findLayer(this.current.layers, layer.id);
       // Transform metadata may reuse an already-owned immutable smart source. New/replaced sources still copy.
-      const content=layer.content?.type==='smart'&&old?.content?.type==='smart'&&layer.content.source===old.content.source&&layer.content.sourcePsd===old.content.sourcePsd&&layer.content.sourcePdf===old.content.sourcePdf?{...layer.content,transform:{...layer.content.transform}}:layer.content&&layer.content!==old?.content?cloneContent(layer.content):layer.content;
-      return { ...layer, ...(content?{content}:{}), ...(layer.styles?{styles:structuredClone(layer.styles)}:{}), bitmap: layer.bitmap && layer.bitmap !== old?.bitmap ? { ...layer.bitmap, data: layer.bitmap.data.slice() } : layer.bitmap,
-        ...(layer.smartFilters&&layer.smartFilters!==old?.smartFilters?{smartFilters:structuredClone(layer.smartFilters)}:{}),...(layer.blendIf&&layer.blendIf!==old?.blendIf?{blendIf:structuredClone(layer.blendIf)}:{}),...(layer.filterMask&&layer.filterMask!==old?.filterMask?{filterMask:{...layer.filterMask,data:layer.filterMask.data.slice()}}:{}),
-        ...(layer.mask && layer.mask !== old?.mask ? { mask: { ...layer.mask, data: layer.mask.data.slice() } } : {}), children: own(layer.children) };
+      const shared=layer.content?.type==='smart'?smartOwned.get(layer.content.source):undefined;
+      const content=layer.content?.type==='smart'&&shared&&shared.input.sourcePsd===layer.content.sourcePsd&&shared.input.sourcePdf===layer.content.sourcePdf?{...layer.content,source:shared.owned.source,sourcePsd:shared.owned.sourcePsd,sourcePdf:shared.owned.sourcePdf}:layer.content?.type==='smart'&&old?.content?.type==='smart'&&layer.content.source===old.content.source&&layer.content.sourcePsd===old.content.sourcePsd&&layer.content.sourcePdf===old.content.sourcePdf?{...layer.content,transform:{...layer.content.transform}}:layer.content&&layer.content!==old?.content?cloneContent(layer.content):layer.content;
+      if(content?.type==='smart'&&layer.content?.type==='smart')smartOwned.set(layer.content.source,{input:layer.content,owned:content});
+      return { ...layer, ...(content?{content}:{}), ...(layer.styles?{styles:structuredClone(layer.styles)}:{}), bitmap: layer.bitmap && layer.bitmap !== old?.bitmap ? (isPaged(layer.bitmap)?hydrateBitmap({...layer.bitmap} as Bitmap):{ ...layer.bitmap, data: layer.bitmap.data.slice() }) : layer.bitmap,
+        ...(layer.smartFilters&&layer.smartFilters!==old?.smartFilters?{smartFilters:structuredClone(layer.smartFilters)}:{}),...(layer.blendIf&&layer.blendIf!==old?.blendIf?{blendIf:structuredClone(layer.blendIf)}:{}),...(layer.filterMask&&layer.filterMask!==old?.filterMask?{filterMask:{...layer.filterMask,data:layer.filterMask.data.slice(),...(layer.filterMask.coverage?{coverage:cloneSelection(layer.filterMask.coverage)}:{})}}:{}),
+        ...(layer.mask && layer.mask !== old?.mask ? { mask: { ...layer.mask, data: layer.mask.data.slice(),...(layer.mask.coverage?{coverage:cloneSelection(layer.mask.coverage)}:{}) } } : {}), children: own(layer.children) };
     });
     this.edit(label, state => ({ ...state, layers: own(layers), selectedIds: [...selectedIds], selectedId: selectedIds.at(-1) ?? null }),undefined,undefined,mode);
   }
@@ -244,12 +259,12 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   applyComp(id:number){this.edit('应用图层复合',s=>applyLayerComp(s,id));}
   captureComp(name:string,id?:number,comment=''){this.edit(id===undefined?'新建图层复合':'更新图层复合',s=>({...s,layerComps:captureLayerComp(s,name,id,comment)}));}
   deleteComp(id:number){if(!this.state.layerComps?.list.some(c=>c.id===id))throw Error('图层复合不存在。');this.edit('删除图层复合',s=>({...s,layerComps:{list:s.layerComps!.list.filter(c=>c.id!==id),...(s.layerComps!.lastApplied!==undefined&&s.layerComps!.lastApplied!==id?{lastApplied:s.layerComps!.lastApplied}:{})}}));}
-  setProductivity(patch:Partial<Pick<ImageState,'channels'|'layout'|'actions'>>,label='生产设置') {
-    const owned=structuredClone(patch);validateProductivity({...this.state,...owned});this.edit(label,state=>({...state,...owned}));
+  setProductivity(patch:Partial<Pick<ImageState,'channels'|'layout'|'actions'|'artboards'|'spotChannels'>>,label='生产设置') {
+    const owned=structuredClone(patch);validateProductivity({...this.state,...owned});validateDelivery({...this.state,...owned});this.edit(label,state=>({...state,...owned}));
   }
   setSelection(selection: Selection | null) {
     if (!selection && !this.current.selection) return;
-    const owned = selection ? { ...selection, ...(selection.mask ? { mask: selection.mask.slice() } : {}) } : null;
+    const owned = selection ? cloneSelection(selection) : null;
     this.edit('修改选区', state => ({ ...state, selection: owned }));
   }
   replaceLayerPixels(id: string, value: ImageLayer, label: string, expectedRevision = this.revision, bounds?: { x: number; y: number; width: number; height: number }, mode:'edit'|'pixels'|'transform'='pixels') {
@@ -258,6 +273,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
     if(layer?.content)throw new Error('请先栅格化文字或形状图层，再进行像素编辑。');
     if (!layer || layer.kind !== 'pixel' || value.kind !== 'pixel') throw new Error('请选择像素图层。');
     if (layerLocked(this.current.layers, id)) throw new Error('图层或上级图层组已锁定。');
+    if(value.bitmap&&isPaged(value.bitmap)){if(bounds)throw Error('磁盘分块编辑请提交完整的不可变分块目录。');const owned={...layer,x:value.x,y:value.y,bitmap:value.bitmap};this.edit(label,state=>({...state,layers:replace(state.layers,id,()=>owned)}),undefined,undefined,mode);return;}
     if (value.bitmap && value.bitmap.data.length !== value.bitmap.width * value.bitmap.height * 4) throw new Error('图层像素数据不完整。');
     const owned = { ...layer, x: value.x, y: value.y, bitmap: value.bitmap ? { ...value.bitmap, data: bounds ? value.bitmap.data : value.bitmap.data.slice() } : null };
     let region = bounds;
@@ -287,7 +303,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
     if(layerLocked(this.state.layers,id))throw new Error('图层已锁定。');
     if(!findLayer(this.state.layers,id))throw new Error('图层不存在。');
     const previous=findLayer(this.state.layers,id)?.[target==='filter'?'filterMask':'mask'];
-    const owned=mask?{...mask,data:mask.data.slice(),...(mask.vector?{vector:structuredClone(mask.vector)}:{})}:undefined;
+    const owned=mask?{...mask,data:mask.data.slice(),...(mask.coverage?{coverage:cloneSelection(mask.coverage)}:{}),...(mask.vector?{vector:structuredClone(mask.vector)}:{})}:undefined;
     if(owned?.vector&&previous&&(mask!.data!==previous.data||mask!.x!==previous.x||mask!.y!==previous.y||mask!.defaultColor!==previous.defaultColor))delete owned.vector;
     const key=target==='filter'?'filterMask':'mask';
     this.edit('修改蒙版',state=>({...state,layers:replace(state.layers,id,layer=>{const rest={...layer};delete rest[key];return {...rest,...(owned?{[key]:owned}:{})};})}));
@@ -300,7 +316,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   setContent(id:string,content:LayerContent,bitmap:Bitmap|null) {
     if(layerLocked(this.state.layers,id))throw new Error('图层已锁定。');
     const layer=findLayer(this.state.layers,id);if(!layer||layer.kind==='group')throw new Error('请选择内容图层。');
-    validateContent(content);const owned=bitmap?{...bitmap,data:bitmap.data.slice()}:null;
+    validateContent(content);const owned=bitmap?bitmap.pages?hydrateBitmap({...bitmap}):{...bitmap,data:bitmap.data.slice()}:null;
     this.edit('编辑图层内容',state=>({...state,layers:replace(state.layers,id,item=>{const result:ImageLayer={...item,kind:content.type==='adjustment'?'adjustment':'pixel',content:cloneContent(content),bitmap:owned};if(item.mask?.vector&&(item.content?.type==='shape'||item.content?.type==='path'))delete (result as {mask?:LayerMask}).mask;return result;})}));
   }
   rasterizeSelected() {
@@ -325,7 +341,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   rename(name: string) { if (name.trim() !== this.current.name) this.edit('重命名文档', state => ({ ...state, name: name.trim() })); }
   addLayer(layer: ImageLayer, intoSelection = true) {
     // Pixels become document-owned; caller mutations cannot change history or recovery snapshots.
-    const clone = (item: ImageLayer): ImageLayer => ({ ...item, ...(item.smartFilters?{smartFilters:structuredClone(item.smartFilters)}:{}),...(item.blendIf?{blendIf:structuredClone(item.blendIf)}:{}),...(item.filterMask?{filterMask:{...item.filterMask,data:item.filterMask.data.slice()}}:{}),...(item.styles?{styles:structuredClone(item.styles)}:{}), ...(item.content?{content:cloneContent(item.content)}:{}), ...(item.mask?{mask:{...item.mask,data:item.mask.data.slice()}}:{}), bitmap: item.bitmap ? isPaged(item.bitmap)?hydrateBitmap({...item.bitmap} as Bitmap):{ ...item.bitmap, data: item.bitmap.data.slice() } : null, children: item.children.map(clone) });
+    const clone = (item: ImageLayer): ImageLayer => ({ ...item, ...(item.smartFilters?{smartFilters:structuredClone(item.smartFilters)}:{}),...(item.blendIf?{blendIf:structuredClone(item.blendIf)}:{}),...(item.filterMask?{filterMask:{...item.filterMask,data:item.filterMask.data.slice(),...(item.filterMask.coverage?{coverage:cloneSelection(item.filterMask.coverage)}:{})}}:{}),...(item.styles?{styles:structuredClone(item.styles)}:{}), ...(item.content?{content:cloneContent(item.content)}:{}), ...(item.mask?{mask:{...item.mask,data:item.mask.data.slice(),...(item.mask.coverage?{coverage:cloneSelection(item.mask.coverage)}:{})}}:{}), bitmap: item.bitmap ? isPaged(item.bitmap)?hydrateBitmap({...item.bitmap} as Bitmap):{ ...item.bitmap, data: item.bitmap.data.slice() } : null, children: item.children.map(clone) });
     const owned = clone(layer);
     this.edit('添加图层', state => {
       const selected = intoSelection ? this.selected : undefined;
@@ -335,11 +351,12 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
       return { ...state, layers, selectedId: owned.id };
     });
   }
-  updateLayer(id: string, patch: Partial<Pick<ImageLayer, 'name' | 'visible' | 'locked' | 'locks' | 'opacity' | 'blend' | 'x' | 'y' | 'passThrough'>>) {
+  updateLayer(id: string, patch: Partial<Pick<ImageLayer, 'name' | 'visible' | 'locked' | 'locks' | 'opacity' | 'fillOpacity' | 'advancedBlend' | 'blend' | 'x' | 'y' | 'passThrough'>>) {
     const existing = findLayer(this.current.layers, id);
     if (!existing) throw new Error('图层不存在。');
     if (Object.entries(patch).every(([key, value]) => existing[key as keyof ImageLayer] === value)) return;
     if (layerLocked(this.current.layers, id) && Object.keys(patch).some(key => key !== 'visible' && key !== 'locked' && key !== 'locks')) throw new Error('图层已锁定。');
+    if(patch.advancedBlend)patch={...patch,advancedBlend:{...patch.advancedBlend}};
     if(patch.locks!==undefined){validateLocks(patch.locks);patch={...patch,locks:{...existing.locks,...patch.locks}};}
     if(layerLocked(this.current.layers,id,'position')&&(patch.x!==undefined&&patch.x!==existing.x||patch.y!==undefined&&patch.y!==existing.y))throw Error('图层位置已锁定。');
     this.edit('修改图层', state => ({ ...state, layers: replace(state.layers, id, layer => ({ ...layer, ...patch })) }));
@@ -355,7 +372,7 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
   duplicateSelected() {
     const selected = this.selected; if (!selected) return;
     if (layerLocked(this.current.layers, selected.id)) throw new Error('图层已锁定。');
-    const duplicate = (layer: ImageLayer): ImageLayer => ({ ...layer, id: uid(), ...(layer.smartFilters?{smartFilters:structuredClone(layer.smartFilters)}:{}),...(layer.blendIf?{blendIf:structuredClone(layer.blendIf)}:{}),...(layer.filterMask?{filterMask:{...layer.filterMask,data:layer.filterMask.data.slice()}}:{}),...(layer.styles?{styles:structuredClone(layer.styles)}:{}), ...(layer.content?{content:cloneContent(layer.content)}:{}), ...(layer.mask?{mask:{...layer.mask,data:layer.mask.data.slice()}}:{}), bitmap: layer.bitmap ? isPaged(layer.bitmap)?hydrateBitmap({...layer.bitmap} as Bitmap):{ ...layer.bitmap, data: layer.bitmap.data.slice() } : null, children: layer.children.map(duplicate) });
+    const duplicate = (layer: ImageLayer): ImageLayer => ({ ...layer, id: uid(), ...(layer.smartFilters?{smartFilters:structuredClone(layer.smartFilters)}:{}),...(layer.blendIf?{blendIf:structuredClone(layer.blendIf)}:{}),...(layer.filterMask?{filterMask:{...layer.filterMask,data:layer.filterMask.data.slice(),...(layer.filterMask.coverage?{coverage:cloneSelection(layer.filterMask.coverage)}:{})}}:{}),...(layer.styles?{styles:structuredClone(layer.styles)}:{}), ...(layer.content?{content:layer.content.type==='smart'?{...layer.content,transform:{...layer.content.transform}}:cloneContent(layer.content)}:{}), ...(layer.mask?{mask:{...layer.mask,data:layer.mask.data.slice(),...(layer.mask.coverage?{coverage:cloneSelection(layer.mask.coverage)}:{})}}:{}), bitmap: layer.bitmap ? isPaged(layer.bitmap)?hydrateBitmap({...layer.bitmap} as Bitmap):{ ...layer.bitmap, data: layer.bitmap.data.slice() } : null, children: layer.children.map(duplicate) });
     const copy = { ...duplicate(selected), name: selected.name.slice(0, 156) + ' 副本' };
     this.edit('复制图层', state => ({ ...state, layers: siblings(state.layers, selected.id, (items, i) => [...items.slice(0, i + 1), copy, ...items.slice(i + 1)]), selectedId: copy.id }));
   }
@@ -369,6 +386,6 @@ export class ImageDocument implements EditorDocumentAdapter<ImageState> {
     });
     if (changed) this.edit('调整图层顺序', state => ({ ...state, layers }));
   }
-  dispose() { if (this.disposed) return; this.disposed = true; this.history.dispose(); this.listeners.clear(); const { psdOrigin, channels, actions, layout, ...metadata } = this.current; this.current = Object.freeze({ ...metadata, layers: [], selectedId: null, selectedIds: [], selection: null }); }
+  dispose() { if (this.disposed) return; this.disposed = true; this.history.dispose(); this.listeners.clear(); const {id,name,width,height,revision,bitDepth,colorMode}=this.current;this.current=Object.freeze({id,name,width,height,revision,...(bitDepth?{bitDepth}:{}),...(colorMode?{colorMode}:{}),layers:[],selectedId:null,selectedIds:[],selection:null}); }
   private emit() { for (const listener of this.listeners) listener(); }
 }
