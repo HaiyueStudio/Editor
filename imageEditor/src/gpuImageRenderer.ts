@@ -25,6 +25,13 @@ fn blend(b:vec3f,s:vec3f,m:u32)->vec3f {
  if(sa==0||a==0){return b;}
  return vec4f(((1-sa)*b.a*b.rgb+(1-b.a)*sa*s.rgb+sa*b.a*blend(b.rgb,s.rgb,u32(props.w)))/a,a);
 }`;
+/** Display-only affine sampling. Blend in document space, then apply its ICC display transform. */
+export const affineCompositeShader=compositeShader
+ .replace('var<uniform> props:vec4f;', 'var<uniform> props:Props; struct Props {base:vec4f,row0:vec4f,row1:vec4f}')
+ .replace('let at=pos-vec2i(props.xy);', 'let q=vec3f(p.xy,1);let uv=vec2f(dot(props.row0.xyz,q),dot(props.row1.xyz,q));let at=vec2i(floor(uv));')
+ .replace('props.z','props.base.z').replace('props.w','props.base.w')
+ .replace('let s=textureLoad(source,at,0);', `let f=fract(uv-.5);let origin=vec2i(floor(uv-.5));var c=vec4f(0);for(var y=0;y<2;y++){for(var x=0;x<2;x++){let xy=origin+vec2i(x,y);let t=textureLoad(source,clamp(xy,vec2i(0),vec2i(textureDimensions(source))-1),0);let weight=select(1-f.x,f.x,x==1)*select(1-f.y,f.y,y==1);c+=vec4f(t.rgb*t.a,t.a)*weight;}}let s=vec4f(c.rgb/max(c.a,.000001),c.a);`);
+export type PreviewMatrices=ReadonlyMap<string,Float32Array>;
 export const displayShader=vertex+`
 @group(0) @binding(0) var pixels:texture_2d<f32>;
 @group(0) @binding(1) var<storage,read> curves:array<vec4f>;
@@ -43,7 +50,7 @@ function sameMask(a:ImageLayer['mask'],b:ImageLayer['mask']){return a===b||!!a&&
 export class GpuImageRenderer {
  readonly canvas=document.createElement('canvas');
  private engine:HaiyueEngine|undefined;private initializing:Promise<void>|undefined;private unavailable=false;private disposed=false;
- private composite:GPURenderPipeline|undefined;private display:GPURenderPipeline|undefined;private curves:GPUBuffer|undefined;private settings:GPUBuffer|undefined;
+ private affine:GPURenderPipeline|undefined;private composite:GPURenderPipeline|undefined;private display:GPURenderPipeline|undefined;private curves:GPUBuffer|undefined;private settings:GPUBuffer|undefined;
  private entries=new Map<string,Entry>();private targets:GPUTexture[]=[];private size='';private documentId='';
  private profileOrigin:ImageState['psdOrigin'];private profileIcc:ImageState['icc'];private profile:ReturnType<typeof gpuDisplayProfile>;private profileSet=false;
  private serial:Promise<unknown>=Promise.resolve();private frame=0;
@@ -68,13 +75,13 @@ export class GpuImageRenderer {
   const d=this.engine!.device;
   d.addEventListener('uncapturederror',event=>{event.preventDefault();if(this.disposed||this.unavailable||this.engine?.state!=='ready'||this.engine.device!==d)return;this.unavailable=true;this.release();this.hide();this.fallback.dataset.renderer=JSON.stringify({backend:'canvas2d',reason:event.error.message});this.repaint();});
   const make=(code:string,format:GPUTextureFormat)=>{const module=d.createShaderModule({code});return d.createRenderPipelineAsync({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format}]},primitive:{topology:'triangle-list'}});};
-  [this.composite,this.display]=await Promise.all([make(compositeShader,'rgba8unorm'),make(displayShader,this.engine!.format)]);
+  [this.affine,this.composite,this.display]=await Promise.all([make(affineCompositeShader,'rgba8unorm'),make(compositeShader,'rgba8unorm'),make(displayShader,this.engine!.format)]);
   this.curves=d.createBuffer({size:256*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.STORAGE});this.settings=d.createBuffer({size:64,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
  }
- render(state:ImageState,dirty:CompositeRect|undefined,signal:AbortSignal,mutable=false):Promise<boolean>{
-  const job=this.serial.catch(()=>{}).then(()=>this.draw(state,dirty,signal,mutable)).catch(error=>{if(signal.aborted)throw error;this.unavailable=true;this.release();this.hide();this.fallback.dataset.renderer=JSON.stringify({backend:'canvas2d',reason:String(error)});return false;});this.serial=job;return job;
+ render(state:ImageState,dirty:CompositeRect|undefined,signal:AbortSignal,mutable=false,matrices?:PreviewMatrices):Promise<boolean>{
+  const job=this.serial.catch(()=>{}).then(()=>this.draw(state,dirty,signal,mutable,matrices)).catch(error=>{if(signal.aborted)throw error;this.unavailable=true;this.release();this.hide();this.fallback.dataset.renderer=JSON.stringify({backend:'canvas2d',reason:String(error)});return false;});this.serial=job;return job;
  }
- private async draw(state:ImageState,dirty:CompositeRect|undefined,signal:AbortSignal,mutable:boolean){
+ private async draw(state:ImageState,dirty:CompositeRect|undefined,signal:AbortSignal,mutable:boolean,matrices?:PreviewMatrices){
   signal.throwIfAborted();if(this.disposed||this.unavailable)return false;await this.initialize();signal.throwIfAborted();if(!this.engine||!this.display||!this.composite)return false;
   const d=this.engine.device,started=performance.now(),pixels=state.width*state.height;
   if(state.width>d.limits.maxTextureDimension2D||state.height>d.limits.maxTextureDimension2D||pixels*20>GPU_IMAGE_BUDGET){this.reset();this.fallback.dataset.renderer=JSON.stringify({backend:'canvas2d',reason:'GPU 显示尺寸／预算限制'});return false;}
@@ -89,7 +96,7 @@ export class GpuImageRenderer {
   let uploadedBytes=0,output=this.targets[0]!,composition='reference';const buffers:GPUBuffer[]=[];
   try{
    if(layers){
-    composition='gpu';const active=new Set(layers.map(l=>l.layer.id));for(const [id,e] of this.entries)if(!active.has(id)){e.texture.destroy();this.entries.delete(id);}
+    composition=matrices?'gpu-transform-preview':'gpu';const active=new Set(layers.map(l=>l.layer.id));for(const [id,e] of this.entries)if(!active.has(id)){e.texture.destroy();this.entries.delete(id);}
     // Finish all awaited uploads before encoding the frame. Superseded uploads are never presented.
     for(const {layer,x:layerX,y:layerY} of layers){signal.throwIfAborted();const b=layer.bitmap!,old=this.entries.get(layer.id),mutated=mutable&&layer.id===state.selectedId;
      if(old&&old.bitmap===b&&sameMask(old.mask,layer.mask)&&!mutated)continue;
@@ -104,8 +111,8 @@ export class GpuImageRenderer {
     }
     const encoder=d.createCommandEncoder();const clear=encoder.beginRenderPass({colorAttachments:[{view:output.createView(),loadOp:'clear',clearValue:{r:0,g:0,b:0,a:0},storeOp:'store'}]});clear.end();
     for(const {layer,x,y} of layers){const target=this.targets[output===this.targets[0]?1:0]!;
-     const uniform=d.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});buffers.push(uniform);d.queue.writeBuffer(uniform,0,new Float32Array([x,y,layer.opacity,GPU_BLEND_MODES.indexOf(layer.blend)]));
-     const pass=encoder.beginRenderPass({colorAttachments:[{view:target.createView(),loadOp:'clear',clearValue:{r:0,g:0,b:0,a:0},storeOp:'store'}]});pass.setPipeline(this.composite);pass.setBindGroup(0,d.createBindGroup({layout:this.composite.getBindGroupLayout(0),entries:[{binding:0,resource:output.createView()},{binding:1,resource:this.entries.get(layer.id)!.texture.createView()},{binding:2,resource:{buffer:uniform}}]}));pass.draw(3);pass.end();output=target;
+     const matrix=matrices?.get(layer.id),pipeline=matrix?this.affine!:this.composite;const values=matrix?new Float32Array([x,y,layer.opacity,GPU_BLEND_MODES.indexOf(layer.blend),...matrix]):new Float32Array([x,y,layer.opacity,GPU_BLEND_MODES.indexOf(layer.blend)]);const uniform=d.createBuffer({size:values.byteLength,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});buffers.push(uniform);d.queue.writeBuffer(uniform,0,values);
+     const pass=encoder.beginRenderPass({colorAttachments:[{view:target.createView(),loadOp:'clear',clearValue:{r:0,g:0,b:0,a:0},storeOp:'store'}]});pass.setPipeline(pipeline);pass.setBindGroup(0,d.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:output.createView()},{binding:1,resource:this.entries.get(layer.id)!.texture.createView()},{binding:2,resource:{buffer:uniform}}]}));pass.draw(3);pass.end();output=target;
     }d.queue.submit([encoder.finish()]);
    }else{
     for(const e of this.entries.values())e.texture.destroy();this.entries.clear();

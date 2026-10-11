@@ -6,7 +6,7 @@ export const GPU_BLEND_MODES:readonly import('./layerFeatures.js').BlendMode[]=[
 export const GPU_POINT_FILTERS=['brightness','contrast','saturation','grayscale','invert'] as const;
 export interface GpuImageLayer {layer:ImageLayer;x:number;y:number}
 /** Admit only semantics implemented by the GPU compositor. Everything else uses the reference compositor. */
-export function gpuImageLayers(state:ImageState,pointFilters=false):GpuImageLayer[]|undefined {
+export function gpuImageLayers(state:ImageState,pointFilters=false,cull=true):GpuImageLayer[]|undefined {
  if((state.bitDepth??8)!==8||state.colorMode==='cmyk')return;
  const result:GpuImageLayer[]=[];
  const walk=(layers:readonly ImageLayer[],x=0,y=0):boolean=>layers.every(layer=>{
@@ -16,7 +16,7 @@ export function gpuImageLayers(state:ImageState,pointFilters=false):GpuImageLaye
   const px=x+layer.x,py=y+layer.y;
   if(layer.kind==='group')return !!layer.passThrough&&layer.opacity===1&&!layer.mask&&walk(layer.children,px,py);
   if(!layer.bitmap||!GPU_BLEND_MODES.includes(layer.blend)||!Number.isInteger(px)||!Number.isInteger(py))return false;
-  if(px<state.width&&py<state.height&&px+layer.bitmap.width>0&&py+layer.bitmap.height>0)result.push({layer,x:px,y:py});return true;
+  if(!cull||px<state.width&&py<state.height&&px+layer.bitmap.width>0&&py+layer.bitmap.height>0)result.push({layer,x:px,y:py});return true;
  });
  return walk(state.layers)?result:undefined;
 }

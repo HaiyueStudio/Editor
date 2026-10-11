@@ -23,7 +23,7 @@
   "outputDirectory": "app-dist",
   "electronRendererDirectory": "electron/app-dist",
   "budget": {
-    "maxRawBytes": 4600000,
+    "maxRawBytes": 4650000,
     "maxGzipBytes": 1520000
   },
   "pwa": {

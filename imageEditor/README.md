@@ -1,5 +1,9 @@
 # Haiyue Image Editor — PSD、选区与滤镜
 
+交互性能更新：[第二轮 P2](docs/interaction-p2.md)（多图层／蒙版／剪贴组 GPU 分批合成、复杂效果局部参考执行、增量指纹与缓存访问记录）。
+
+上一批：[第二轮 P1](docs/interaction-p1.md)（PSD 提前只读预览、原生大图笔刷增量检查点、GPU 自由变换快速预览及其准入范围）。
+
 最新扩展：[非破坏性设计第二批](docs/non-destructive-design.md)（共享／外链智能源、多层变换、贝塞尔网格、原生智能滤镜、七种调整层）。
 
 [合成与图层样式](docs/compositing-styles.md)（26 种混合、Fill、高级混合、常用样式、PSD 原生参数往返）。
@@ -210,6 +214,8 @@ Windows/Linux 实机、公开发行签名及公证尚未验收。P3 Worker 复�
 P1 解码、换页与预览性能优化见 [performance-p1.md](docs/performance-p1.md)：PSD 单次 ZIP 解压、TIFF 批量 LZW、有限内存条带拼块、批量磁盘事务、后台预览、持久预览缓存与 Haiyue 分块 GPU 合成。
 
 交互性能 P2（优化渲染架构）见 [render-p2.md](docs/render-p2.md)：GPU 常驻瓦片合成与缩小、纹理／参数池、呈现后批量回读、批量 IndexedDB 缓存，以及冷帧和连续操作的回归门槛。
+
+第二轮 P0 见 [interaction-p0.md](docs/interaction-p0.md)：当前视口与邻接瓦片优先、完整工作集预算、可取消的后台回读、Worker 压缩与独立缓存写入，以及分页 PSD 的导入缩略预览。
 
 交互性能 P0：选择、重命名和锁定等非画面变化不再重绘画布或改变预览缓存键；画布、局部刷新与缓存共用渲染字段定义。图层列表按 ID 更新，保留行节点、缩略图画布及键盘焦点。缩略图仅在面板可见区域计算，滚出面板、切换文档、删除图层或隐藏页面时撤销请求；多个视图共享任务，最后一个请求取消后终止 Worker，已完成的结果可复用。旧版预览缓存按版本失效，原始像素与工程格式不变。
 

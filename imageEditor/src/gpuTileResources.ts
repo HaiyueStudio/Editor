@@ -7,6 +7,8 @@ export class GpuTileResources {
  constructor(private device:GPUDevice,readonly budget:number,private retention:(key:string)=>number=()=>0){}
  stats(){return {bytes:this.bytes,budget:this.budget,textures:this.entries.size,allocations:this.allocations,hits:this.hits,reuses:this.reuses,evictions:this.evictions};}
  has(key:string){return this.keys.has(key);}
+ /** Re-rank existing entries as well as future allocations when the viewport changes. */
+ prioritize(retention:(key:string)=>number){this.retention=retention;for(const e of this.entries)e.rank=e.key?retention(e.key):0;}
  get(key:string){const e=this.keys.get(key);if(e){this.hits++;return this.lease(e);}}
  private lease(e:Entry):TextureLease{e.pins++;e.used=++this.clock;let released=false;return {texture:e.texture,width:e.width,height:e.height,bytes:e.bytes,release:()=>{if(!released){released=true;e.pins--;e.used=++this.clock;}}};}
  acquire(width:number,height:number,key?:string):TextureLease {

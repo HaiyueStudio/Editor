@@ -52,6 +52,6 @@ export function protectLayerChanges(before:ImageState,layers:readonly ImageLayer
    if((locks.all||mode!=='transform'&&locks.pixels)&&(bitmapChanged||contentChanged))throw Error('图层像素已锁定。');
    if(mode!=='transform'&&locks.transparency){if(contentChanged)throw Error('编辑原生内容前请解除透明像素锁定。');if(bitmapChanged)result=preserveLayerAlpha(prev,l);}
   }
-  return {...result,children:visit(result.children,x+result.x,y+result.y)};
+  const children=visit(result.children,x+result.x,y+result.y);return children.every((c,i)=>c===result.children[i])?result:{...result,children};
  });return visit(layers);
 }

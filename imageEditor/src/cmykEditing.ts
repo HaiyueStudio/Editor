@@ -32,7 +32,11 @@ export class CmykStroke {
  }
  private preview(rect:Rect){const b=this.layer.bitmap!,ink=new Float32Array(rect.width*rect.height*4),alpha=new Float32Array(rect.width*rect.height);for(let y=0;y<rect.height;y++)for(let x=0;x<rect.width;x++){const i=((y+rect.y)*b.width+x+rect.x)*4,j=y*rect.width+x;ink.set(b.cmyk!.subarray(i,i+4),j*4);alpha[j]=b.data[i+3]!;}const part=cmykBitmap(rect.width,rect.height,ink,alpha,(this.state.bitDepth??8) as 8|16,this.profile);for(let y=0;y<rect.height;y++)b.data.set(part.data.subarray(y*rect.width*4,(y+1)*rect.width*4),((y+rect.y)*b.width+rect.x)*4);
  const a=this.dirty,x=Math.min(a?.x??rect.x,rect.x),y=Math.min(a?.y??rect.y,rect.y);this.dirty={x,y,width:Math.max(a?a.x+a.width:0,rect.x+rect.width)-x,height:Math.max(a?a.y+a.height:0,rect.y+rect.height)-y};}
- point(point:BrushPoint){this.coverage.point(point);const rect=this.coverage.takeDirty();if(!rect)return;const mask=this.coverage.layer.bitmap!;for(let y=rect.y;y<rect.y+rect.height;y++)for(let x=rect.x;x<rect.x+rect.width;x++){const i=(y*mask.width+x)*4;this.paint(i,mask.data[i+3]!/255);}this.preview(rect);}
+ checkpoint(){return this.coverage.checkpoint();}
+ restore(bitmap:Bitmap,coverage:Uint8Array){this.layer.bitmap!.data.set(bitmap.data);this.layer.bitmap!.cmyk!.set(bitmap.cmyk!);this.coverage.restore(this.coverage.layer.bitmap!,coverage);}
+ segment(a:BrushPoint,b:BrushPoint){this.coverage.segment(a,b);this.flush();}
+ point(point:BrushPoint){this.coverage.point(point);this.flush();}
+ private flush(){const rect=this.coverage.takeDirty();if(!rect)return;const mask=this.coverage.layer.bitmap!;for(let y=rect.y;y<rect.y+rect.height;y++)for(let x=rect.x;x<rect.x+rect.width;x++){const i=(y*mask.width+x)*4;this.paint(i,mask.data[i+3]!/255);}this.preview(rect);}
  fill(){const b=this.layer.bitmap!,p=parentOffset(this.state.layers,this.layer.id)!,bounds=this.state.selection??{x:0,y:0,width:this.state.width,height:this.state.height},r={...bounds,x:bounds.x-this.layer.x-p.x,y:bounds.y-this.layer.y-p.y};for(let y=0;y<bounds.height;y++)for(let x=0;x<bounds.width;x++)this.paint(((y+r.y)*b.width+x+r.x)*4,selectionWeight(this.state.selection,x+bounds.x,y+bounds.y)*(this.settings.opacity??1));this.preview(r);return this.layer;}
 }
 export const fillCmyk=(state:ImageState,id:string,settings:InkPaint)=>new CmykStroke(state,id,1,settings).fill();

@@ -61,7 +61,7 @@ $('viewport').addEventListener('image-preview',()=>{$('viewport').dispatchEvent(
 $('viewport').addEventListener('image-painted',()=>{const doc=workspace.active;if(!doc)return;const canvas=$<HTMLCanvasElement>('navigator-canvas'),ctx=canvas.getContext('2d')!,ratio=Math.min(220/doc.state.width,112/doc.state.height);ctx.clearRect(0,0,240,130);ctx.drawImage(view.displayCanvas,(240-doc.state.width*ratio)/2,(130-doc.state.height*ratio)/2,doc.state.width*ratio,doc.state.height*ratio);});
 $('viewport').addEventListener('image-render-error',event=>notice((event as CustomEvent).detail,true));
 const layerList = new LayerListView($('layer-list'), action => { void run(action, []); }, button, () => icon('folder'));
-const psdJobs = new PsdJobs((busy, label) => { $('psd-progress').hidden = !busy; $('psd-progress-label').textContent = label; },()=>!!projectJob);
+const psdJobs = new PsdJobs((busy, label) => { if(!busy||$('psd-progress').hidden)$('psd-early-preview').hidden=true; $('psd-progress').hidden = !busy; $('psd-progress-label').textContent = label; },()=>!!projectJob,bitmap=>{if(disposed)return;const canvas=$<HTMLCanvasElement>('psd-early-preview'),ctx=canvas.getContext('2d')!,scale=Math.min(canvas.width/bitmap.width,canvas.height/bitmap.height);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmapCanvas(bitmap),(canvas.width-bitmap.width*scale)/2,(canvas.height-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);canvas.hidden=false;});
 let projectJob:AbortController|undefined;
 async function projectTask<T>(label:string,work:(signal:AbortSignal,report:(p:{current:number;total:number})=>void)=>Promise<T>){
  if(projectJob||psdJobs.busy)throw Error('已有文件任务，请完成或取消后重试。');const job=new AbortController();projectJob=job;$('psd-progress').hidden=false;$('psd-progress-label').textContent=label;
@@ -197,8 +197,8 @@ async function openFiles(files: readonly File[], asLayer: boolean) {
         const result = file.size>64*1024*1024?await psdJobs.importFile(file):await psdJobs.import(new Uint8Array(await file.arrayBuffer()), file.name, true);
         if (disposed) return;
         const preview = $<HTMLCanvasElement>('psd-import-preview'), context = preview.getContext('2d')!;
-        context.clearRect(0,0,preview.width,preview.height); preview.hidden = !result.flattened;
-        const bitmap = result.flattened?.layers[0]?.bitmap;
+        const bitmap = result.preview ?? result.flattened?.layers[0]?.bitmap;
+        context.clearRect(0,0,preview.width,preview.height); preview.hidden = !bitmap;
         if (bitmap) { const scale = Math.min(320 / bitmap.width,180 / bitmap.height); context.drawImage(bitmapCanvas(bitmap),(320-bitmap.width*scale)/2,(180-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale); }
         pendingPsd = result; const colorSource=result.layered??result.flattened;$('psd-color-summary').textContent=colorSource?(()=>{const info=iccDocumentInfo(colorSource);return info.working?`源 ICC：${info.working.name} · ${info.reason||'默认保留原配置'}`:info.colorMode==='cmyk'?'源文档未标记 CMYK 配置；预览为近似，转换前需先指定源配置。':'源文档未嵌入 ICC；默认保留未标记状态，转换时按 sRGB（32 位按线性 sRGB）解释。';})():'';$<HTMLSelectElement>('psd-color-policy').value='preserve';$<HTMLSelectElement>('psd-color-preset').value='srgb';$<HTMLInputElement>('psd-color-file').value=''; $('psd-source-name').textContent = result.sourceName;
         $('psd-import-summary').textContent = result.layered ? (result.warnings.length?`可以分层编辑，有 ${result.warnings.length} 项内容需留意。`:'可以分层编辑，未发现已知兼容问题。') : result.memory.compositeOnly ? (result.flattened ? '分层解码超出内存预算，可打开合并图副本。' : '分层解码超出内存预算，原件也没有可用的合并图。') : '包含未支持的特性，无法安全地分层编辑。';

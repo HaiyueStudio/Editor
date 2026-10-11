@@ -1,3 +1,4 @@
+import {abortable} from './renderWork.js';
 import type { PreviewCache } from './previewCache.js';
 import { pixelArray, pixelBytesView, pixelsFromBytes, withPixels, type BitDepth } from './pixelFormat.js';
 import type { Bitmap } from './document.js';
@@ -27,7 +28,7 @@ export class DisplayPyramid {
   const step=2**level,w=Math.min(DISPLAY_TILE,Math.ceil(this.width/step)-x*DISPLAY_TILE),h=Math.min(DISPLAY_TILE,Math.ceil(this.height/step)-y*DISPLAY_TILE);
   if(w<1||h<1)throw Error('预览瓦片超出文档。');const saved=this.disk.get(key);
   if(saved)return this.remember(key,{width:w,height:h,depth:this.depth,data:pixelsFromBytes(inflateBounded(await diskPager.blob(saved,signal),w*h*4*(this.depth===8?1:4)),this.depth)});
-  if(level>0&&this.persistent){const bytes=await this.persistent.read(key);signal?.throwIfAborted();if(bytes)try{const data=pixelsFromBytes(inflateBounded(bytes,w*h*4*(this.depth===8?1:4)),this.depth);this.persistentHits++;return this.remember(key,{width:w,height:h,depth:this.depth,data});}catch{/* Rebuild corrupt disposable previews from native pixels. */}}
+  if(level>0&&this.persistent){const pending=this.persistent.read(key),bytes=await (signal?abortable(pending,signal):pending);signal?.throwIfAborted();if(bytes)try{const data=pixelsFromBytes(inflateBounded(bytes,w*h*4*(this.depth===8?1:4)),this.depth);this.persistentHits++;return this.remember(key,{width:w,height:h,depth:this.depth,data});}catch{/* Rebuild corrupt disposable previews from native pixels. */}}
   if(level===0)return this.remember(key,await this.read({x:x*DISPLAY_TILE,y:y*DISPLAY_TILE,width:w,height:h},signal));
   const data=pixelArray(w*h*4,this.depth);
   for(let cy=0;cy<2;cy++)for(let cx=0;cx<2;cx++){
@@ -38,7 +39,7 @@ export class DisplayPyramid {
     const i=((cy*128+yy/2)*w+cx*128+xx/2)*4;data[i]=a?r/a:0;data[i+1]=a?g/a:0;data[i+2]=a?b/a:0;data[i+3]=a/n;
    }
   }
-  signal?.throwIfAborted();const bytes=deflate(pixelBytesView(withPixels(w,h,data,this.depth)));if(!await this.persistent?.write(key,bytes))this.disk.set(key,await diskPager.write(bytes,signal));signal?.throwIfAborted();return this.remember(key,{width:w,height:h,depth:this.depth,data});
+  signal?.throwIfAborted();const bytes=deflate(pixelBytesView(withPixels(w,h,data,this.depth)));const pending=this.persistent?.write(key,bytes)??Promise.resolve(false);if(!await (signal?abortable(pending,signal):pending))this.disk.set(key,await diskPager.write(bytes,signal));signal?.throwIfAborted();return this.remember(key,{width:w,height:h,depth:this.depth,data});
  }
  /** One-pixel neighbor gutter prevents bilinear seams, including transparent edges. */
  async bordered(a:TileAddress,signal?:AbortSignal):Promise<Bitmap>{

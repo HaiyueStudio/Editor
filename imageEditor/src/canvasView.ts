@@ -141,7 +141,8 @@ export class CanvasView {
   private tiled:TiledViewportRenderer;
   private viewFrame:number|undefined;
   private fallbackValid=false;
-  get displayCanvas(){if(this.state&&needsTiledView(this.state))return this.tiled.overview;return this.gpu.canvas.hidden?this.canvas:this.gpu.canvas;}
+  private transformPreview:{state:ImageState;matrices:import('./gpuImageRenderer.js').PreviewMatrices}|undefined;
+  get displayCanvas(){if(this.transformPreview)return this.gpu.canvas;if(this.state&&needsTiledView(this.state))return this.tiled.overview;return this.gpu.canvas.hidden?this.canvas:this.gpu.canvas;}
   private paint(state:ImageState,dirty?:CompositeRect,mutable=false){
     if(dirty?.width===0&&this.canvas.dataset.painting==='true')return;
     // Damage is relative to the previous request. If it was canceled, rebuild from the complete state.
@@ -149,6 +150,7 @@ export class CanvasView {
     this.painting?.abort();this.painting=new AbortController();const signal=this.painting.signal;
     this.canvas.dataset.painting="true";
     void (async()=>{
+      if(this.transformPreview){const p=this.transformPreview;this.tiled.hide();this.hdr.hide();if(!await this.gpu.render(p.state,undefined,signal,false,p.matrices))throw Error('GPU 变换预览不可用，请取消后重试。');signal.throwIfAborted();this.canvas.dataset.painting='false';this.viewport.dispatchEvent(new CustomEvent('image-painted'));return;}
       if(needsTiledView(state)){this.gpu.hide();this.hdr.hide();const c=this.camera,dpr=window.devicePixelRatio||1,w=this.viewport.clientWidth,h=this.viewport.clientHeight;await this.tiled.render(state,{x:state.width/2-(w/2+c.x)/c.zoom,y:state.height/2-(h/2+c.y)/c.zoom,width:Math.max(1,Math.round(w*dpr)),height:Math.max(1,Math.round(h*dpr)),scale:c.zoom*dpr},signal,mutable);signal.throwIfAborted();this.canvas.dataset.painting='false';this.viewport.dispatchEvent(new CustomEvent('image-painted'));return;}
       this.tiled.hide();const gpu=await this.gpu.render(state,dirty,signal,mutable);signal.throwIfAborted();
       if(!gpu){await paintDocumentAsync(this.canvas,state,this.fallbackValid?dirty:undefined,signal);signal.throwIfAborted();this.gpu.hide();this.fallbackValid=true;}else this.fallbackValid=false;
@@ -189,6 +191,7 @@ export class CanvasView {
   private get camera() { return this.cameras.get(this.state!.id)!; }
   setDocument(state: ImageState | undefined) {
     const previous = this.state;
+    if(previous!==state)this.transformPreview=undefined;
     const samePixels = previous && state && previous.id === state.id && sameRenderState(previous, state);
     if (this.state?.id !== state?.id) {clearBitmapCache();this.tiled.reset();}
     this.state = state; this.artboard.hidden = !state;
@@ -203,7 +206,8 @@ export class CanvasView {
     const rect = this.artboard.getBoundingClientRect();
     return { x: (event.clientX - rect.left) / this.camera.zoom, y: (event.clientY - rect.top) / this.camera.zoom };
   }
-  preview(state?: ImageState,dirty?:CompositeRect,mutable=false) { const value=state??this.state;if(value){this.paint(value,dirty,mutable);} }
+  previewTransform(state:ImageState,matrices:import('./gpuImageRenderer.js').PreviewMatrices){this.transformPreview={state,matrices};this.paint(state);}
+  preview(state?: ImageState,dirty?:CompositeRect,mutable=false) { this.transformPreview=undefined; const value=state??this.state;if(value){this.paint(value,dirty,mutable);} }
   forget(id: string) { forgetImagePreview(id);this.cameras.delete(id); clearBitmapCache(); }
   fit(repaint = true) {
     if (!this.state) return;

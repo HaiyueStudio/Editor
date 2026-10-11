@@ -1,3 +1,4 @@
+import { TiledStrokeSession, incrementalStrokeFits } from './tiledStrokeSession.js';
 import {tiledRetouch} from './tiledRetouch.js';
 import {brushUiValues} from './brushPanel.js';
 import { tiledColorSelection } from './tiledSelection.js';
@@ -30,7 +31,7 @@ export type Tool = 'hand' | 'move' | 'brush' | 'eraser' | 'select' | 'ellipse' |
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const names: Record<Tool, string> = { path:'贝塞尔路径',clone:'仿制图章',heal:'修复画笔',eyedropper: '吸管', gradient: '渐变', hand: '画布浏览', move: '移动图层', brush: '画笔', eraser: '橡皮擦', select: '矩形选区', ellipse:'椭圆选区', lasso:'套索', polygon:'多边形套索', wand:'魔术棒', range:'颜色范围', crop: '裁剪画布' };
 const hints: Record<Tool, string> = { path:'单击加锚点 · 拖出控制柄 · Enter 应用 / Esc 取消',clone:'Alt 单击取样 · 拖动仿制 · Esc 取消',heal:'Alt 单击取样 · 保留纹理并匹配局部色调',eyedropper: '点击画布设置前景色 · 全部可见图层取样', gradient: '拖动绘制渐变 · Esc 取消', hand: '拖动平移 · 滚轮缩放', move: '拖动选中图层 · 方向键微调', brush: '拖动绘制 · Esc 取消笔画', eraser: '拖动擦除 · Esc 取消笔画', select: '拖动选择 · Shift 加选 / Alt 减选', ellipse:'拖动选择 · Shift 加选 / Alt 减选', lasso:'自由绘制闭合区域 · Esc 取消', polygon:'逐点单击 · Enter / 双击闭合 · 退格撤点', wand:'点击相近颜色 · 可选连续区域', range:'点击取样，选择全图相近颜色', crop: '拖动裁剪区域 · Enter 确认' };
-interface Gesture { tiledPoints?:import('./pixelTools.js').BrushPoint[]; retouch?:{sourceId:string;offset:Point;kind:'clone'|'heal';radius:number}; tiledSettings?:import('./brushDynamics.js').ExtendedBrush & {size:number;opacity:number;color:readonly [number,number,number];erase:boolean;hardness:number;pressure:'none';target?:'layer'|'filter';ink?:import('./cmykEditing.js').InkPaint}; doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; gradient?: ImageLayer; end?: Point; stroke?: PixelStroke|CmykStroke; maskLayer?: ImageLayer; maskTarget?:'layer'|'filter'; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
+interface Gesture { tiledSession?:TiledStrokeSession; tiledAbort?:AbortController; tiledWork?:Promise<void>; tiledApplied?:number; tiledLayer?:ImageLayer; tiledPoints?:import('./pixelTools.js').BrushPoint[]; retouch?:{sourceId:string;offset:Point;kind:'clone'|'heal';radius:number}; tiledSettings?:import('./brushDynamics.js').ExtendedBrush & {size:number;opacity:number;color:readonly [number,number,number];erase:boolean;hardness:number;pressure:'none';target?:'layer'|'filter';ink?:import('./cmykEditing.js').InkPaint}; doc: ImageDocument; before: ImageState; start: Point; pointer: number; layer?: ImageLayer; gradient?: ImageLayer; end?: Point; stroke?: PixelStroke|CmykStroke; maskLayer?: ImageLayer; maskTarget?:'layer'|'filter'; rect?: Rect | null; delta?: Point; points?: Point[]; mode?: SelectionMode }
 export class EditingTools {
   tool: Tool = 'hand';
   readonly freeTransform: FreeTransform;
@@ -49,8 +50,7 @@ export class EditingTools {
   private abort = new AbortController();
   private space = false;
   private activeId: string | undefined;
-  private tiledPreviewAbort:AbortController|undefined;
-  private tiledPreviewTimer:ReturnType<typeof setTimeout>|undefined;
+  private committing:Gesture|undefined;
   private previewFrame: number | undefined;
   constructor(private active: () => ImageDocument | undefined, private view: CanvasView, private notify: (message: string, error?: boolean) => void) {
     this.freeTransform = new FreeTransform(active, view, notify);
@@ -76,7 +76,7 @@ export class EditingTools {
       if ((event.metaKey || event.ctrlKey) && ['c', 'v', 't'].includes(event.key.toLowerCase())) { event.preventDefault(); this.guard(() => event.key.toLowerCase() === 'c' ? this.copy() : event.key.toLowerCase() === 'v' ? this.paste() : this.startTransform()); return; }
       if (this.freeTransform.busy) return;
       if (event.code === 'Space') { this.space = true; event.preventDefault(); }
-      if (event.key === 'Escape') { event.preventDefault(); if (this.gesture || this.polygon) this.cancel(); else this.active()?.setSelection(null); }
+      if (event.key === 'Escape') { event.preventDefault(); if (this.gesture || this.committing || this.polygon) this.cancel(); else this.active()?.setSelection(null); }
       if (this.polygon && (event.key === 'Enter' || event.key === 'Backspace')) { event.preventDefault(); this.guard(() => { if(event.key === 'Enter')this.finishPolygon();else {this.polygon!.points.pop();this.showPath(this.polygon!.points);} }); return; }
       if (this.gesture) return;
       if (event.key === 'Enter' && this.tool === 'crop') { event.preventDefault(); this.guard(() => this.crop()); }
@@ -98,9 +98,9 @@ export class EditingTools {
   private isInput() { return Boolean(document.querySelector('dialog[open]')) || isControlFocused(); }
   private diskInput:Promise<void>=Promise.resolve();
   private guard(action: () => void | Promise<void>) {const doc=this.active();if(doc&&hasDiskPixels(doc.state)){
-    const state=doc.state;this.diskInput=this.diskInput.then(async()=>{if(this.active()!==doc)return;if(tiledEditing(state)){await action();return;}if(doc.state!==state)return;await withDiskPages(this.tool==='crop'||this.tool==='eyedropper'?state:[doc.selected,...((this.tool==='clone'||this.tool==='heal')&&this.retouchSource?.docId===doc.identity.id?[findLayer(state.layers,this.retouchSource.layerId)]:[])],()=>{if(this.active()===doc&&doc.state===state)return action();},this.abort.signal);}).catch(error=>{this.cancel();this.notify(error instanceof Error?error.message:String(error),true);});return;
-  }try { const result=action();if(result)void result.catch(error=>{this.cancel();this.notify(String(error),true);}); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
-  get busy() { return Boolean(this.gesture || this.polygon || this.freeTransform.busy); }
+    const state=doc.state;this.diskInput=this.diskInput.then(async()=>{if(this.active()!==doc)return;if(tiledEditing(state)){await action();return;}if(doc.state!==state)return;await withDiskPages(this.tool==='crop'||this.tool==='eyedropper'?state:[doc.selected,...((this.tool==='clone'||this.tool==='heal')&&this.retouchSource?.docId===doc.identity.id?[findLayer(state.layers,this.retouchSource.layerId)]:[])],()=>{if(this.active()===doc&&doc.state===state)return action();},this.abort.signal);}).catch(error=>{if(error instanceof DOMException&&error.name==='AbortError')return;this.cancel();this.notify(error instanceof Error?error.message:String(error),true);});return;
+  }try { const result=action();if(result)void result.catch(error=>{if(error instanceof DOMException&&error.name==='AbortError')return;this.cancel();this.notify(String(error),true);}); } catch (error) { this.cancel(); this.notify(error instanceof Error ? error.message : String(error), true); } }
+  get busy() { return Boolean(this.gesture || this.committing || this.polygon || this.freeTransform.busy); }
   get color() { return hexColor($<HTMLInputElement>('paint-color').value); }
   get opacity() { return Number($<HTMLInputElement>('paint-opacity').value) / 100; }
   setTool(tool: Tool) {
@@ -116,6 +116,7 @@ export class EditingTools {
     const doc = this.active();
     if (this.polygon && (this.polygon.doc !== doc || this.polygon.before !== doc?.state)) this.cancel();
     if (this.gesture && (this.gesture.doc !== doc || this.gesture.before !== doc?.state)) this.cancel();
+    if(this.committing&&(this.committing.doc!==doc||this.committing.before!==doc?.state))this.cancel();
     if (this.maskEditing && !(this.maskTarget==='filter'?doc?.selected?.filterMask:doc?.selected?.mask)) this.maskEditing=false;
     const indicator=document.getElementById('mask-editing-status');if(indicator)indicator.textContent=this.maskEditing?`正在绘制${this.maskTarget==='filter'?'滤镜':'图层'}蒙版 · 白色显示／黑色隐藏`:'正在编辑图层像素';
     if (this.activeId !== doc?.identity.id) { this.maskEditing=false; this.cancel(); this.activeId = doc?.identity.id; }
@@ -134,7 +135,7 @@ export class EditingTools {
     }
   }
   private async begin(event: PointerEvent) {
-    const doc = this.active(); if (!doc || this.freeTransform.busy || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button, hy-button')) return;
+    const doc = this.active(); if (!doc || this.committing || this.freeTransform.busy || this.gesture || this.view.canPan(event) || event.button !== 0 || (event.target as HTMLElement).closest('button, hy-button')) return;
     const point = this.view.point(event);
     if (point.x < 0 || point.y < 0 || point.x >= doc.state.width || point.y >= doc.state.height) return;
     // Focus commits pending property inputs synchronously. Capture the gesture's
@@ -173,7 +174,7 @@ export class EditingTools {
     if (gesture.doc !== this.active() || gesture.doc.state !== gesture.before) { this.cancel(); return; }
     const point = this.view.point(event);
     if (this.tool === 'gradient') gesture.end = point;
-    else if(gesture.tiledPoints){if(gesture.tiledPoints.length<8192)gesture.tiledPoints.push({...point,pressure:this.pressure(event)});}
+    else if(gesture.tiledPoints){const events=event.getCoalescedEvents?.()??[];for(const e of events.length?events:[event])if(gesture.tiledPoints.length<8192)gesture.tiledPoints.push({...this.view.point(e),pressure:this.pressure(e)});}
     else if (gesture.stroke){const coalesced=event.getCoalescedEvents?.()??[];for(const p of coalesced.length?coalesced:[event])gesture.stroke.point({...this.view.point(p),pressure:this.pressure(p)});}
     else if (gesture.layer) {const delta={x:Math.round(point.x-gesture.start.x),y:Math.round(point.y-gesture.start.y)};gesture.delta=event.altKey?delta:snapMove(gesture.before,gesture.doc.selectedIds,delta,this.view.scale);}
     else if(gesture.points){if(gesture.points.length<8192&&Math.hypot(point.x-gesture.points.at(-1)!.x,point.y-gesture.points.at(-1)!.y)>=.5)gesture.points.push(point);}
@@ -184,7 +185,7 @@ export class EditingTools {
     if (this.previewFrame !== undefined) return;
     this.previewFrame = requestAnimationFrame(() => {
       this.previewFrame = undefined; const g = this.gesture; if (!g) return;
-      if(g.tiledPoints){this.showPath(g.tiledPoints);this.tiledPreviewAbort?.abort();clearTimeout(this.tiledPreviewTimer);const controller=new AbortController();this.tiledPreviewAbort=controller;const points=g.tiledPoints.slice(),v=g.tiledSettings!;this.tiledPreviewTimer=setTimeout(()=>{void (async()=>{let layer:ImageLayer;if(v.target){const mask=await editTiledMask(g.before,g.before.selectedId!,v.target,v.color,v.opacity,{points,size:v.size,dynamics:{...v,hardness:v.hardness,pressure:v.pressure}},controller.signal);const original=findLayer(g.before.layers,g.before.selectedId!)!;layer={...original,[v.target==='filter'?'filterMask':'mask']:mask};}else layer=v.ink?await tiledCmykStroke(g.before,g.before.selectedId!,points,v.size,v.ink,{...v,hardness:v.hardness,pressure:v.pressure},controller.signal):await tiledStroke(g.before,g.before.selectedId!,points,v.size,v.opacity,v.color,v.erase,{...v,hardness:v.hardness,pressure:v.pressure},controller.signal);if(this.gesture===g&&!controller.signal.aborted)this.view.preview({...g.before,layers:replacePixel(g.before.layers,layer.id,layer)});})().catch(error=>{if(!controller.signal.aborted)this.notify(String(error),true);});},80);return;}
+      if(g.tiledPoints){void this.pumpTiled(g).catch(error=>{if(!g.tiledAbort?.signal.aborted){this.cancel();this.notify(String(error),true);}});return;}
       if(this.tool==='gradient'&&tiledEditing(g.before)){this.showPath([g.start,g.end??g.start]);return;}
       if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) this.guard(() => { g.gradient = this.gradientLayer(g); this.view.preview({ ...g.before, layers: replacePixel(g.before.layers, g.gradient.id, g.gradient) }); }); return; }
       if (g.layer) { let layers = g.before.layers; for (const layer of selectedRoots(g.before, g.before.selectedIds ?? [g.layer.id])) layers = replacePixel(layers, layer.id, { ...layer, x: layer.x + (g.delta?.x ?? 0), y: layer.y + (g.delta?.y ?? 0) }); this.view.preview({ ...g.before, layers }); return; }
@@ -198,11 +199,11 @@ export class EditingTools {
   private async finish(event: PointerEvent) {
     const g = this.gesture; if (!g || g.pointer !== event.pointerId) return;
     this.update(event); if (this.gesture !== g) return;
-    this.tiledPreviewAbort?.abort();clearTimeout(this.tiledPreviewTimer);this.gesture = undefined; if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
+    this.gesture = undefined; if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
     if (this.view.viewport.hasPointerCapture(event.pointerId)) this.view.viewport.releasePointerCapture(event.pointerId);
     if(g.stroke)refreshBitmap(g.stroke.layer.bitmap!,g.stroke.takeDirty());
     try {
-    if(g.tiledPoints){const v=g.tiledSettings!;this.notify('正在提交分块笔画…');if(v.target){const mask=await editTiledMask(g.before,g.before.selectedId!,v.target,v.color,v.opacity,{points:g.tiledPoints,size:v.size,dynamics:{...v,hardness:v.hardness,pressure:v.pressure}});if(g.doc.state!==g.before)throw Error('文档已变化，笔画已取消。');g.doc.setMask(g.before.selectedId!,mask,v.target);}else{const layer=g.retouch?await tiledRetouch(g.before,g.before.selectedId!,g.retouch.sourceId,g.retouch.offset,g.retouch.kind,g.tiledPoints,v.size,v.opacity,{...v,hardness:v.hardness,pressure:v.pressure},g.retouch.radius):v.ink?await tiledCmykStroke(g.before,g.before.selectedId!,g.tiledPoints,v.size,v.ink,{...v,hardness:v.hardness,pressure:v.pressure}):await tiledStroke(g.before,g.before.selectedId!,g.tiledPoints,v.size,v.opacity,v.color,v.erase,{...v,hardness:v.hardness,pressure:v.pressure});g.doc.replaceLayerPixels(layer.id,layer,'分块笔画',g.before.revision);}this.showRect(g.doc.state.selection??null);}
+    if(g.tiledPoints){this.committing=g;this.notify('正在提交分块笔画…');await this.pumpTiled(g);g.tiledAbort!.signal.throwIfAborted();if(this.active()!==g.doc||g.doc.state!==g.before)throw Error('文档已变化，笔画已取消。');const layer=g.tiledLayer!,v=g.tiledSettings!;this.committing=undefined;if(v.target)g.doc.setMask(layer.id,(v.target==='filter'?layer.filterMask:layer.mask)!,v.target);else if(layer!==findLayer(g.before.layers,layer.id))g.doc.replaceLayerPixels(layer.id,layer,'分块笔画',g.before.revision);this.showRect(g.doc.state.selection??null);}
     else if(this.tool==='gradient'&&tiledEditing(g.before)){if(g.end){const layer=await tiledGradient(g.before,g.before.selectedId!,g.start,g.end,this.color,hexColor($<HTMLInputElement>('gradient-color').value),$<HTMLSelectElement>('gradient-kind').value as 'linear'|'radial',this.opacity);g.doc.replaceLayerPixels(layer.id,layer,'渐变',g.before.revision);}this.showRect(g.doc.state.selection??null);}
     else if (this.tool === 'gradient') { if (g.end && Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) >= .5) { const layer = this.gradientLayer(g); g.doc.replaceLayerPixels(layer.id, layer, '渐变', g.before.revision); } }
     else if(g.stroke?.changed&&g.maskLayer)g.doc.setMask(g.maskLayer.id,maskFromStroke(g.maskLayer,g.stroke.layer,g.maskTarget),g.maskTarget);
@@ -213,14 +214,29 @@ export class EditingTools {
       if(selected)g.doc.setSelection(combineSelection(g.before.selection,selected,this.tool==='crop'?'replace':g.mode!,g.before.width,g.before.height));
       else if(g.mode==='replace')g.doc.setSelection(null);
     }
-    }finally{if(g.doc.state===g.before&&(g.stroke||g.layer||this.tool==='gradient'))this.view.preview();}
+    }finally{if(this.committing===g)this.committing=undefined;g.tiledSession?.cancel();if(!this.gesture&&!this.committing&&this.active()===g.doc&&g.doc.state===g.before&&(g.stroke||g.tiledPoints||g.layer||this.tool==='gradient'))this.view.preview();}
     this.sync();
+  }
+  private async pumpTiled(g:Gesture):Promise<void>{
+    if(g.tiledWork)return g.tiledWork;
+    const v=g.tiledSettings!,controller=g.tiledAbort??=new AbortController();
+    if(!v.target&&!g.retouch&&incrementalStrokeFits(g.before,g.before.selectedId!))g.tiledSession??=new TiledStrokeSession(g.before,g.before.selectedId!,v);
+    const work=(async()=>{while((g.tiledApplied??0)<g.tiledPoints!.length){
+      controller.signal.throwIfAborted();const points=g.tiledPoints!.slice();let layer:ImageLayer;
+      if(g.tiledSession)layer=await g.tiledSession.update(points);
+      else if(v.target){const mask=await editTiledMask(g.before,g.before.selectedId!,v.target,v.color,v.opacity,{points,size:v.size,dynamics:v},controller.signal);layer={...findLayer(g.before.layers,g.before.selectedId!)!,[v.target==='filter'?'filterMask':'mask']:mask};}
+      else if(g.retouch){const r=g.retouch;layer=await tiledRetouch(g.before,g.before.selectedId!,r.sourceId,r.offset,r.kind,points,v.size,v.opacity,v,r.radius,controller.signal);}
+      else layer=v.ink?await tiledCmykStroke(g.before,g.before.selectedId!,points,v.size,v.ink,v,controller.signal):await tiledStroke(g.before,g.before.selectedId!,points,v.size,v.opacity,v.color,v.erase,v,controller.signal);
+      controller.signal.throwIfAborted();g.tiledLayer=layer;g.tiledApplied=points.length;
+      if(this.gesture===g&&this.active()===g.doc&&g.doc.state===g.before)this.view.preview({...g.before,layers:replacePixel(g.before.layers,layer.id,layer)});
+      if(g.tiledSession)this.view.canvas.dataset.stroke=JSON.stringify(g.tiledSession.stats());
+    }})();g.tiledWork=work;
+    return work.finally(()=>{if(g.tiledWork===work)delete g.tiledWork;});
   }
   private gradientLayer(g: Gesture) { return gradientPixels(g.before, g.before.selectedId!, g.start, g.end!, this.color, hexColor($<HTMLInputElement>('gradient-color').value), $<HTMLSelectElement>('gradient-kind').value as 'linear' | 'radial', this.opacity); }
   cancel() {
-    this.tiledPreviewAbort?.abort();clearTimeout(this.tiledPreviewTimer);
     this.freeTransform?.cancel();
-    const g = this.gesture; this.gesture = undefined; this.polygon=undefined; this.shown=undefined;
+    const g = this.gesture??this.committing; this.gesture = undefined;this.committing=undefined;g?.tiledAbort?.abort();g?.tiledSession?.cancel(); this.polygon=undefined; this.shown=undefined;
     if (this.previewFrame !== undefined) cancelAnimationFrame(this.previewFrame); this.previewFrame = undefined;
     if (g) { if (this.view.viewport.hasPointerCapture(g.pointer)) this.view.viewport.releasePointerCapture(g.pointer); const dirty=g.stroke?.changedBounds;const local=!g.maskLayer&&dirty&&this.active()===g.doc&&g.doc.state===g.before?compositeDamage({...g.before,layers:replacePixel(g.before.layers,g.stroke!.layer.id,g.stroke!.layer)},g.stroke!.layer.id,dirty):undefined;if(g.stroke||g.tiledPoints||g.layer||this.tool==='gradient')this.view.preview(undefined,local); }
     this.showRect(this.active()?.state.selection ?? null);

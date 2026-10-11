@@ -1,5 +1,7 @@
 # P2：渲染架构
 
+后续的视口缓存优先级与后台调度已由 [第二轮 P0](interaction-p0.md) 改进；多图层、蒙版、剪贴组及缓存结构已由 [第二轮 P2](interaction-p2.md) 扩展；下方适用范围与耗时为原 P2 验收记录。
+
 ## 已实现
 
 - 在 Haiyue Engine 的同一 WebGPU 设备上连接 RGB8 区域合成、颜色显示转换、金字塔缩小和视口呈现。合成结果以 straight alpha 保持在 GPU，缩小时按 Alpha 加权，最终带邻接像素的瓦片再转为 premultiplied alpha。避免每个叶瓦片的 GPU→CPU→GPU 往返。

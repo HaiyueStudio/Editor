@@ -14,6 +14,9 @@ class StrokeCoverage {
  private tiles=new Map<number,Uint8Array>();
  constructor(private width:number){}
  get bytes(){return this.tiles.size*16384;}
+ save(height:number){const out=new Uint8Array(this.width*height),cols=Math.ceil(this.width/128);for(const [key,tile] of this.tiles){const ox=key%cols*128,oy=Math.floor(key/cols)*128;for(let y=0;y<Math.min(128,height-oy);y++)out.set(tile.subarray(y*128,y*128+Math.min(128,this.width-ox)),(oy+y)*this.width+ox);}return out;}
+ restore(bytes:Uint8Array){this.tiles.clear();for(let i=0;i<bytes.length;i++)if(bytes[i])this.increase(i%this.width,Math.floor(i/this.width),bytes[i]!);}
+
  increase(x:number,y:number,value:number,accumulate=false){const columns=Math.ceil(this.width/128),key=Math.floor(y/128)*columns+Math.floor(x/128),i=(y%128)*128+x%128;let tile=this.tiles.get(key);if(!tile){if(!value)return false;tile=new Uint8Array(16384);this.tiles.set(key,tile);}if(accumulate)value=Math.min(255,Math.round(tile[i]!+(255-tile[i]!)*value/255));if(value<=tile[i]!)return 0;tile[i]=value;return value;}
 }
 export interface Rect extends Point { width: number; height: number }
@@ -44,6 +47,25 @@ export function hexColor(hex: string): Color {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) throw new Error('颜色无效。');
   return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 }
+/** A single deterministic path generator shared by every touched disk tile. */
+export class BrushPath {
+ private previous:BrushPoint|undefined;
+ private stampIndex=0;private remainder=0;private advanced:boolean;
+ constructor(private size:number,private dynamics:BrushDynamics={}){validateBrush(dynamics);this.advanced=advancedBrush(dynamics);}
+  point(point: BrushPoint,emit:(a:BrushPoint,b:BrushPoint)=>void) {
+    if (![point.x, point.y].every(Number.isFinite)||!Number.isFinite(point.pressure??1)||(point.pressure??1)<0||(point.pressure??1)>1) throw new Error('画笔坐标或笔压无效。');
+    const a=this.previous??point,b={...point};
+    if(this.advanced){
+      const smooth=this.dynamics.smoothing??0;if(this.previous){b.x=a.x+(b.x-a.x)*(1-smooth);b.y=a.y+(b.y-a.y)*(1-smooth);}
+      const stamp=(p:BrushPoint)=>{const seed=++this.stampIndex,noise=(k:number)=>{let n=Math.imul(seed+k,1597334677);n^=n>>>16;return (n>>>0)/4294967296-.5;},spread=(this.dynamics.scatter??0)*this.size,q={...p,x:p.x+noise(0)*spread,y:p.y+noise(971)*spread};emit(q,q);};
+      if(!this.previous)stamp(b);else{const length=Math.hypot(b.x-a.x,b.y-a.y),spacing=Math.max(.5,this.size*(this.dynamics.spacing??.15));let distance=spacing-this.remainder;for(;distance<=length;distance+=spacing){const t=distance/length;stamp({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});}this.remainder=(this.remainder+length)%spacing;}this.previous=b;return;
+    }
+    this.previous=b;
+    // Short segments avoid scanning the empty bounding rectangle of long diagonal strokes.
+    const pieces=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/Math.max(8,this.size/2)));
+    for(let k=0;k<pieces;k++){const at=(t:number):BrushPoint=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});emit(at(k/pieces),at((k+1)/pieces));}
+  }
+}
 /** A stroke owns its buffers. Coverage is accumulated once, independent of pointer event frequency. */
 export class PixelStroke {
   readonly layer: ImageLayer;
@@ -54,8 +76,8 @@ export class PixelStroke {
   private readonly bounds: Rect;
   private readonly selection: Selection | null | undefined;
   private readonly origin: Point;
-  private previous: BrushPoint | undefined;
-  private readonly advanced:boolean;private stampIndex=0;private remainder=0;
+  private path:BrushPath;
+  private readonly advanced:boolean;
   changed = false;
   private dirty: Rect | undefined;
   changedBounds: Rect | undefined;
@@ -63,7 +85,7 @@ export class PixelStroke {
   constructor(state: ImageState, id: string, private size: number, private opacity: number, private color: Color, private erase = false, private dynamics:BrushDynamics = {}) {
     if (!Number.isFinite(size) || size < 1 || size > 512 || !Number.isFinite(opacity) || opacity <= 0 || opacity > 1) throw new Error('画笔大小或不透明度无效。');
     if(!Number.isFinite(dynamics.hardness??1)||(dynamics.hardness??1)<0||(dynamics.hardness??1)>1||!['none','size','opacity','both'].includes(dynamics.pressure??'none'))throw new Error('画笔硬度或笔压模式无效。');
-    validateBrush(dynamics);this.advanced=advancedBrush(dynamics);
+    validateBrush(dynamics);this.advanced=advancedBrush(dynamics);this.path=new BrushPath(size,dynamics);
     this.color=pixelColor(color,state.bitDepth??8) as unknown as Color;
     const layer = editablePixel(state, id), parent = parentOffset(state.layers, id)!;
     this.alphaLocked=!dynamics.coverageOnly&&layerLocked(state.layers,id,'transparency');
@@ -83,20 +105,10 @@ export class PixelStroke {
     this.layer = { ...layer, x: left, y: top, bitmap: withPixels(width,height,data,state.bitDepth??8) };
     this.original = layer.bitmap && layer.bitmap.width === width && layer.bitmap.height === height && layer.x === left && layer.y === top ? layer.bitmap.data : data.slice(); this.coverage = new StrokeCoverage(width); this.origin = { x: left + parent.x, y: top + parent.y };
   }
-  point(point: BrushPoint) {
-    if (![point.x, point.y].every(Number.isFinite)||!Number.isFinite(point.pressure??1)||(point.pressure??1)<0||(point.pressure??1)>1) throw new Error('画笔坐标或笔压无效。');
-    const a=this.previous??point,b={...point};
-    if(this.advanced){
-      const smooth=this.dynamics.smoothing??0;if(this.previous){b.x=a.x+(b.x-a.x)*(1-smooth);b.y=a.y+(b.y-a.y)*(1-smooth);}
-      const stamp=(p:BrushPoint)=>{const seed=++this.stampIndex,noise=(k:number)=>{let n=Math.imul(seed+k,1597334677);n^=n>>>16;return (n>>>0)/4294967296-.5;},spread=(this.dynamics.scatter??0)*this.size,q={...p,x:p.x+noise(0)*spread,y:p.y+noise(971)*spread};this.segment(q,q);};
-      if(!this.previous)stamp(b);else{const length=Math.hypot(b.x-a.x,b.y-a.y),spacing=Math.max(.5,this.size*(this.dynamics.spacing??.15));let distance=spacing-this.remainder;for(;distance<=length;distance+=spacing){const t=distance/length;stamp({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});}this.remainder=(this.remainder+length)%spacing;}this.previous=b;return;
-    }
-    this.previous=b;
-    // Short segments avoid scanning the empty bounding rectangle of long diagonal strokes.
-    const pieces=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/Math.max(8,this.size/2)));
-    for(let k=0;k<pieces;k++){const at=(t:number):BrushPoint=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,pressure:(a.pressure??1)+((b.pressure??1)-(a.pressure??1))*t});this.segment(at(k/pieces),at((k+1)/pieces));}
-  }
-  private segment(a:BrushPoint,b:BrushPoint) {
+  point(point:BrushPoint){this.path.point(point,(a,b)=>this.segment(a,b));}
+  checkpoint(){return this.coverage.save(this.layer.bitmap!.height);}
+  restore(bitmap:Bitmap,coverage:Uint8Array){this.layer.bitmap!.data.set(bitmap.data);this.coverage.restore(coverage);}
+  segment(a:BrushPoint,b:BrushPoint) {
     const r = this.size / 2, bounds = this.bounds;
     const x0 = Math.max(bounds.x, Math.floor(Math.min(a.x, b.x) - r - 1)), x1 = Math.min(bounds.x + bounds.width, Math.ceil(Math.max(a.x, b.x) + r + 1));
     const y0 = Math.max(bounds.y, Math.floor(Math.min(a.y, b.y) - r - 1)), y1 = Math.min(bounds.y + bounds.height, Math.ceil(Math.max(a.y, b.y) + r + 1));

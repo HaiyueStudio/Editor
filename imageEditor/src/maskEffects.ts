@@ -29,3 +29,6 @@ function sparseFeather(mask:LayerMask,x:number,y:number):number {
   if(cache.size>=64)cache.delete(cache.keys().next().value!);cache.set(key,data);
  }return 1-(mask.density??1)*(1-data[(y-ty)*size+x-tx]!);
 }
+
+/** Bounded feather tiles for GPU mask uploads; avoids a full dense feather surface. */
+export function regionalMaskWeight(mask:LayerMask,x:number,y:number){return mask.disabled?1:mask.feather?sparseFeather(mask,x,y):effectiveMaskWeight(mask,x,y);}
