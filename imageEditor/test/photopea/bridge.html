@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>Haiyue PSD interoperability test</title><style>body{margin:0}iframe{width:100vw;height:100vh;border:0}</style>
+<iframe id="pp"></iframe><script>
+const origin='https://www.photopea.com',frame=document.getElementById('pp');globalThis.ready=false;let pending;globalThis.buffers=[];
+addEventListener('message',e=>{if(e.origin!==origin||e.source!==frame.contentWindow)return;if(!pending){if(e.data==='done')ready=true;return;}if(e.data==='done'){const p=pending;pending=undefined;clearTimeout(p.timer);p.resolve(p.messages);}else if(e.data instanceof ArrayBuffer){buffers.push(new Uint8Array(e.data));pending.messages.push({buffer:buffers.length-1,bytes:e.data.byteLength});}else pending.messages.push(e.data);});
+globalThis.send=message=>new Promise((resolve,reject)=>{if(pending)return reject(Error('Photopea operation already pending'));pending={resolve,reject,messages:[],timer:setTimeout(()=>{pending=undefined;reject(Error('Photopea operation timed out'));},90000)};frame.contentWindow.postMessage(message,origin);});
+globalThis.openFile=async url=>{const r=await fetch(url);if(!r.ok)throw Error('Input file unavailable');return send(await r.arrayBuffer());};
+globalThis.readChunk=(index,start)=>{const b=buffers[index].subarray(start,start+262144);let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(s);};
+frame.src=origin+'/#'+encodeURIComponent(JSON.stringify({environment:{intro:false}}));
+</script>

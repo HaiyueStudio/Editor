@@ -25,6 +25,9 @@ export async function runEditorBrowserScenario({
   downloadDirectory,
   failureScreenshotPath,
   timeoutMs = 90_000,
+  headless = true,
+  gpuTestFlags = true,
+  crossOriginIsolated = true,
   readinessExpression,
   scenario,
 }) {
@@ -33,7 +36,7 @@ export async function runEditorBrowserScenario({
     throw new Error(`Editor browser E2E requires Chrome. Set CHROME_PATH (looked for ${chrome}).`);
   }
 
-  const server = createStaticServer(root);
+  const server = createStaticServer(root, crossOriginIsolated);
   await new Promise((resolveListen, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolveListen);
@@ -45,13 +48,12 @@ export async function runEditorBrowserScenario({
   const url = `http://127.0.0.1:${address.port}/${route.replace(/^\/+/, '')}`;
   const angleBackend = process.env.WEBGPU_ANGLE_BACKEND ?? defaultWebGpuAngleBackend();
   const child = spawn(chrome, [
-    '--headless=new',
+    ...(headless ? ['--headless=new'] : []),
     '--no-sandbox',
     '--disable-gpu-sandbox',
-    '--enable-unsafe-webgpu',
-    `--use-angle=${angleBackend}`,
+    ...(gpuTestFlags ? ['--enable-unsafe-webgpu', `--use-angle=${angleBackend}`] : []),
     '--window-size=1440,1000',
-    '--force-device-scale-factor=1',
+    ...(headless ? ['--force-device-scale-factor=1'] : []),
     '--remote-debugging-port=0',
     `--user-data-dir=${profile}`,
     'about:blank',
@@ -173,7 +175,9 @@ export async function runEditorBrowserScenario({
         ...driver,
         url,
         chrome,
-        angleBackend,
+        angleBackend: gpuTestFlags ? angleBackend : 'browser-default',
+        headless,
+        gpuTestFlags,
         getBrowserErrors: () => browserErrors.slice(),
       });
     } catch (error) {
@@ -275,10 +279,14 @@ function createBrowserDriver(cdp, defaultTimeoutMs, browserErrors) {
     await click(expression, { label: `text input ${expression}` });
     const selected = await evaluate(`
       (() => {
-        const input = (${expression});
+        const host = (${expression});
+        const input = host instanceof HTMLInputElement || host instanceof HTMLTextAreaElement
+          ? host : host?.shadowRoot?.querySelector('input, textarea');
         if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return false;
         input.select();
-        return document.activeElement === input;
+        let focused = document.activeElement;
+        while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+        return focused === input;
       })()
     `);
     if (!selected) throw new Error(`Could not select the current value of ${expression}.`);
@@ -475,7 +483,7 @@ function modifierBits(modifiers = []) {
   return bits;
 }
 
-function createStaticServer(root) {
+function createStaticServer(root, isolated) {
   const normalizedRoot = resolve(root);
   return createServer((request, response) => {
     try {
@@ -489,8 +497,7 @@ function createStaticServer(root) {
       response.writeHead(200, {
         'content-type': contentType(path),
         'cache-control': 'no-store',
-        'cross-origin-opener-policy': 'same-origin',
-        'cross-origin-embedder-policy': 'require-corp',
+        ...(isolated ? { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' } : {}),
       });
       response.end(readFileSync(path));
     } catch {

@@ -1,0 +1,110 @@
+import {readSmartPlacement,readSmartLink} from './psdSmartPlacement.js';
+import {readSmartFilters,writeSmartFilters} from './psdSmartFilters.js';
+import {isDesignAdjustment,readDesignAdjustment,writeDesignAdjustment} from './designAdjustments.js';
+import {writeStyles as effects} from './psdStyles.js';
+import {writeAdvancedBlend} from './advancedBlend.js';
+import { readPdfSmart } from './pdfSmart.js';
+import { mapQuadPoint } from './projective.js';
+import { readHueSaturation, writeHueSaturation } from './hueSaturation.js';
+import {readEditableText,writeEditableText} from './psdText.js';
+import { writeHighPsd } from './highDepthPsd.js';
+import { readSmartSource } from './smartSource.js';
+import { concatBytes, psdSections, rawCompositeData } from './psdResources.js';
+import { readPsd, writePsdUint8Array, type Layer, type Psd, type Color, type BezierKnot, type LayerEffectsInfo, type LinkedFile } from 'ag-psd';
+import { checkSize, uid, type ImageLayer } from './document.js';
+import { validateContent, validateStyles, type LayerContent, type ShapeContent, type PathContent, type LayerStyles, type SmartContent, type Levels, type AdjustmentContent } from './layerFeatures.js';
+const units=(value:number)=>({units:'Pixels' as const,value});
+const rgb=(hex:string)=>({r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)});
+function hex(c:Color|undefined):string {if(!c||!('r' in c)||'a' in c&&c.a!==1)throw new Error('仅支持不透明 RGB 颜色。');return '#'+[c.r,c.g,c.b].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');}
+const near=(a:number,b:number)=>Math.abs(a-b)<.02;
+export function shapeKnots(c:ShapeContent,x:number,y:number):BezierKnot[] {
+ const pad=Math.min(c.strokeWidth/2,c.width/2,c.height/2),l=x+pad,t=y+pad,r=x+c.width-pad,b=y+c.height-pad,k=.5522847498307936;
+ const knot=(ax:number,ay:number,ix=ax,iy=ay,ox=ax,oy=ay):BezierKnot=>({linked:true,points:[ix,iy,ax,ay,ox,oy]});
+ if(c.shape==='line')return [knot(l,t),knot(r,b)];
+ if(c.shape==='ellipse'){const cx=(l+r)/2,cy=(t+b)/2,rx=(r-l)/2,ry=(b-t)/2;return [knot(cx,t,cx-rx*k,t,cx+rx*k,t),knot(r,cy,r,cy-ry*k,r,cy+ry*k),knot(cx,b,cx+rx*k,b,cx-rx*k,b),knot(l,cy,l,cy+ry*k,l,cy-ry*k)];}
+ const radius=Math.min(c.radius,(r-l)/2,(b-t)/2);if(!radius)return [knot(l,t),knot(r,t),knot(r,b),knot(l,b)];
+ const a=radius*(1-k);return [knot(l+radius,t,l+a,t),knot(r-radius,t,r-radius,t,r-a,t),knot(r,t+radius,r,t+a),knot(r,b-radius,r,b-radius,r,b-a),knot(r-radius,b,r-a,b),knot(l+radius,b,l+radius,b,l+a,b),knot(l,b-radius,l,b-a),knot(l,t+radius,l,t+radius,l,t+a)];
+}
+export {readExtendedStyles as readStyles} from './psdStyles.js';
+export function nativeFields(layer:ImageLayer,x:number,y:number,linked:LinkedFile[]):Partial<Layer> {
+ const c=layer.content,result:Partial<Layer>={...writeAdvancedBlend(layer),clipping:Boolean(layer.clipping),...(layer.styles?{effects:effects(layer.styles)}:{})};
+ if(layer.mask?.vector){result.vectorMask=structuredClone(layer.mask.vector);result.vectorMask.disable=layer.mask.disabled;for(const path of result.vectorMask.paths)for(const knot of path.knots)knot.points=knot.points.map((v,i)=>v+(i%2?y:x)) as typeof knot.points;}
+ if(!c)return result;
+ if(c.type==='text'){
+  const pad=Math.ceil(c.size*.5),anchor=c.align==='left'?pad:c.align==='right'?layer.bitmap!.width-pad:layer.bitmap!.width/2;
+  result.text={text:c.text,transform:[1,0,0,1,x+anchor,y+pad+c.size*.8],left:0,top:0,right:layer.bitmap!.width,bottom:layer.bitmap!.height,orientation:'horizontal',shapeType:'point',pointBase:[0,0],antiAlias:'smooth',style:{font:{name:c.fontName??(c.family==='serif'?'TimesNewRomanPSMT':c.family==='monospace'?'CourierNewPSMT':'ArialMT')},fontSize:c.size,fauxBold:c.bold,fauxItalic:c.italic,fillColor:rgb(c.color),autoLeading:false,leading:c.size*1.4},paragraphStyle:{justification:c.align}};
+  if(c.layout&&result.text){result.text.transform=[c.layout.scaleX??1,0,0,c.layout.scaleY??1,x+c.layout.x,y+c.layout.y];result.text.style!.leading=c.layout.leading;if(c.layout.tracking!==undefined)result.text.style!.tracking=c.layout.tracking;result.text=writeEditableText(c,result.text,x,y);}
+ }else if(c.type==='path'){
+  result.vectorFill={type:'color',color:rgb(c.fill??'#000000')};result.vectorMask={paths:[{...c,operation:'combine' as const},...(c.contours??[])].map(p=>({open:!p.closed,...(p.operation==='combine'?{operation:'combine' as const}:{}),fillRule:p.fillRule==='evenodd'?'even-odd' as const:'non-zero' as const,knots:p.nodes.map(n=>({linked:false,points:[x+n.inX,y+n.inY,x+n.x,y+n.y,x+n.outX,y+n.outY] as BezierKnot['points']}))}))};result.vectorStroke={strokeEnabled:c.strokeWidth>0,fillEnabled:!!c.fill,lineWidth:units(c.strokeWidth),lineAlignment:c.strokeAlignment??'center',lineCapType:'butt',lineJoinType:'miter',opacity:1,blendMode:'normal',content:{type:'color',color:rgb(c.stroke)}};
+ }else if(c.type==='shape'){
+  result.vectorFill={type:'color',color:rgb(c.fill)};result.vectorMask={paths:[{open:c.shape==='line',operation:'combine',fillRule:'non-zero',knots:shapeKnots(c,x,y)}]};
+  result.vectorStroke={strokeEnabled:c.strokeWidth>0,fillEnabled:c.shape!=='line',lineWidth:units(c.strokeWidth),lineAlignment:'center',lineCapType:'butt',lineJoinType:'miter',opacity:1,blendMode:'normal',content:{type:'color',color:rgb(c.stroke)}};
+ }else if(c.type==='adjustment'){
+  if(isDesignAdjustment(c.filter))result.adjustment=writeDesignAdjustment(c);
+  else if(c.filter==='hue-saturation')result.adjustment=writeHueSaturation(c.hueSaturation!);
+  else if(c.filter==='levels'){const record=(l:Levels)=>({shadowInput:l.black,highlightInput:l.white,midtoneInput:l.gamma,shadowOutput:l.outputBlack,highlightOutput:l.outputWhite});result.adjustment={type:'levels',rgb:record(c.levels!),...Object.fromEntries(Object.entries(c.channels??{}).map(([k,v])=>[k,record(v.levels!)]))};}
+  else if(c.filter==='curves')result.adjustment={type:'curves',rgb:c.curves!.map(p=>({...p})),...Object.fromEntries(Object.entries(c.channels??{}).map(([k,v])=>[k,v.curves!.map(p=>({...p}))]))};
+  else if(c.filter==='invert'&&c.amount===100)result.adjustment={type:'invert'};
+ }else{
+  const t=c.transform,angle=t.angle*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle),cx=x+layer.bitmap!.width/2,cy=y+layer.bitmap!.height/2;
+  const corners=[[-.5,-.5],[.5,-.5],[.5,.5],[-.5,.5]].flatMap(([a,b])=>{const dx=a!*t.width*(t.flipX?-1:1),dy=b!*t.height*(t.flipY?-1:1);return [cx+dx*cos-dy*sin,cy+dx*sin+dy*cos];});
+  if(c.sourcePdf){
+   const pdf=c.sourcePdf,q=t.quad?t.quad.map((v,i)=>v+(i%2?y:x)):corners,mapped=Array.from({length:4},(_,i)=>mapQuadPoint(q,pdf.quad[i*2]!/c.source.width,pdf.quad[i*2+1]!/c.source.height)).flat();
+   result.placedLayer={id:c.sourceId,type:'vector',pageNumber:pdf.pageNumber,totalPages:pdf.totalPages,transform:mapped,width:pdf.bounds[2]!-pdf.bounds[0]!,height:pdf.bounds[3]!-pdf.bounds[1]!,warp:{style:'none',value:0,perspective:0,perspectiveOther:0,rotate:'horizontal',uOrder:4,vOrder:4,bounds:{left:units(pdf.bounds[0]!),top:units(pdf.bounds[1]!),right:units(pdf.bounds[2]!),bottom:units(pdf.bounds[3]!)}}};
+   const existing=linked.find(f=>f.id===c.sourceId);if(existing){if(!existing.data||existing.data.length!==pdf.data.length||existing.data.some((v,i)=>v!==pdf.data[i]))throw Error('共享智能源 ID 对应了不同文件。');}else linked.push({id:c.sourceId,name:c.name,type:'PDF',data:pdf.data});
+   return result;
+  }
+  const placedId=c.sourceId;
+  result.placedLayer={id:placedId,type:'raster',warp:{style:'none'},width:c.source.width,height:c.source.height,transform:corners,resolution:{units:'Density',value:72}};
+  if(layer.smartFilters?.length)result.placedLayer.filter=writeSmartFilters(layer.smartFilters);
+  if(t.mesh)result.placedLayer.warp={style:'custom',value:0,perspective:0,perspectiveOther:0,rotate:'horizontal',uOrder:4,vOrder:4,bounds:{left:units(0),top:units(0),right:units(c.source.width),bottom:units(c.source.height)},customEnvelopeWarp:{meshPoints:t.mesh.map(p=>({x:p.x*c.source.width,y:p.y*c.source.height}))}};
+  if(t.quad)result.placedLayer.nonAffineTransform=t.quad.map((v,i)=>v+(i%2?y:x));
+  const sourcePsd={width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source};
+  const embedded=c.sourcePsd??((c.source.depth??8)!==8?writeHighPsd(sourcePsd,c.source.depth as 16|32):writePsdUint8Array({width:c.source.width,height:c.source.height,children:[{name:c.name,imageData:c.source}],imageData:c.source},{noBackground:true,compress:true}));
+  const psb=new DataView(embedded.buffer,embedded.byteOffset).getUint16(4)===2;
+  const previous=linked.findIndex(f=>f.id===placedId);if(previous>=0)linked.splice(previous,1);
+  linked.push({id:placedId,name:c.name.replace(/\.ps[db]$/i,'')+(psb?'.psb':'.psd'),type:psb?'8BPB':'8BPS',data:c.sourcePsd?(readSmartSource(c.sourcePsd,c.name),embedded):c.source.depth?embedded:concatBytes([embedded.subarray(0,psdSections(embedded).composite),rawCompositeData(embedded,c.source)])});
+ }
+ return result;
+}
+export function readNativeContent(layer:Layer,psd:Psd):LayerContent|undefined {
+ if(layer.placedLayer?.type==='vector'&&layer.imageData&&!(layer.imageData.data instanceof Uint8ClampedArray))throw Error('矢量智能对象像素缓存当前需要 RGB 8 位。');
+ if(layer.placedLayer?.type==='vector')return readPdfSmart(layer,psd,layer.imageData?{...layer.imageData,data:new Uint8ClampedArray(layer.imageData.data)}:null);
+ let result:LayerContent|undefined;
+ const present=[layer.text,layer.vectorMask||layer.vectorFill||layer.vectorStroke,layer.adjustment,layer.placedLayer].filter(Boolean);if(present.length>1)throw new Error('同一层包含多种原生内容，暂不能编辑。');
+ if(layer.adjustment){const a=layer.adjustment;
+  const extra=readDesignAdjustment(a);if(extra)result=extra;
+  else if(a.type==='hue/saturation')result={type:'adjustment',filter:'hue-saturation',amount:100,hueSaturation:readHueSaturation(a)};
+  else if(a.type==='invert')result={type:'adjustment',filter:'invert',amount:100};
+  else if(a.type==='levels'||a.type==='curves'){
+   const neutral={black:0,white:255,gamma:1,outputBlack:0,outputWhite:255},line=[{input:0,output:0},{input:255,output:255}];
+   const levels=(l:{shadowInput:number;highlightInput:number;midtoneInput:number;shadowOutput:number;highlightOutput:number}|undefined):Levels=>l?{black:l.shadowInput,white:l.highlightInput,gamma:l.midtoneInput,outputBlack:l.shadowOutput,outputWhite:l.highlightOutput}:neutral;
+   const channels:NonNullable<AdjustmentContent['channels']>={};
+   if(a.type==='levels'){result={type:'adjustment',filter:'levels',amount:100,levels:levels(a.rgb)};for(const k of ['red','green','blue'] as const){const l=levels(a[k]);if(JSON.stringify(l)!==JSON.stringify(neutral))channels[k]={levels:l};}}
+   else {result={type:'adjustment',filter:'curves',amount:100,curves:a.rgb??line};for(const k of ['red','green','blue'] as const)if(a[k]&&JSON.stringify(a[k])!==JSON.stringify(line))channels[k]={curves:a[k]!};}
+   if(Object.keys(channels).length)result.channels=channels;
+  }else throw new Error('此 Photoshop 调整类型暂未实现原生合成。');
+ }else if(layer.text&&(layer.text.shapeType==='box'||layer.text.styleRuns?.length||layer.text.transform?.[1]||layer.text.transform?.[2])){return readEditableText(layer.text,layer);
+ }else if(layer.text){const t=layer.text,s=t.style??{},matrix=t.transform??[1,0,0,1,0,0];
+  if(t.textPath||t.orientation==='vertical'||t.shapeType==='box'||t.warp?.style&&t.warp.style!=='none'||!matrix.slice(0,4).every((v,i)=>near(v,[1,0,0,1][i]!))||t.styleRuns?.some(r=>Object.keys(r.style).length)||t.paragraphStyleRuns?.some(r=>Object.keys(r.style).length))throw new Error('当前仅支持未变形的统一样式点文字。');
+  if(s.underline||s.strikethrough||s.tracking||s.baselineShift||s.strokeFlag||s.horizontalScale&&s.horizontalScale!==1||s.verticalScale&&s.verticalScale!==1)throw new Error('文字包含尚未支持的排版样式。');
+  const size=s.fontSize??12,pad=Math.ceil(size*.5),align=t.paragraphStyle?.justification??'left',anchor=align==='left'?pad:align==='right'?(layer.imageData?.width??0)-pad:(layer.imageData?.width??0)/2;
+  if(!near(matrix[4]!, (layer.left??0)+anchor)||!near(matrix[5]!, (layer.top??0)+pad+size*.8)||s.autoLeading!==false||!near(s.leading??0,size*1.4)||['firstLineIndent','startIndent','endIndent','spaceBefore','spaceAfter'].some(k=>Boolean((t.paragraphStyle as Record<string,unknown>|undefined)?.[k])))throw new Error('文字使用自定义原点／行距／段落缩进，暂不转换为基础点文字。');
+  const name=s.font?.name??'ArialMT';result={type:'text',text:t.text,size:s.fontSize??12,family:/Times|Serif/i.test(name)?'serif':/Courier|Mono/i.test(name)?'monospace':'sans-serif',fontName:name,bold:s.fauxBold??false,italic:s.fauxItalic??false,align:(t.paragraphStyle?.justification??'left') as 'left',color:hex(s.fillColor??{r:0,g:0,b:0})};
+ }else if(layer.vectorMask||layer.vectorFill||layer.vectorStroke){
+  const paths=layer.vectorMask?.paths,stroke=layer.vectorStroke;
+  if(!paths||!paths.length||layer.vectorMask?.disable||layer.vectorMask?.invert||layer.vectorMask?.fillStartsWithAllPixels||layer.vectorFill?.type!=='color'||stroke?.lineDashSet?.length||stroke?.lineCapType&&stroke.lineCapType!=='butt'||stroke?.lineJoinType&&stroke.lineJoinType!=='miter'||stroke?.lineAlignment&&!['center','inside'].includes(stroke.lineAlignment)||stroke?.opacity!==undefined&&stroke.opacity!==1||stroke?.blendMode&&stroke.blendMode!=='normal')throw new Error('当前仅支持纯色基础形状路径。');
+  const path=paths[0]!,b=layer.imageData;if(!b||paths.some(p=>p.operation&&p.operation!=='combine'))throw new Error('形状缺少像素缓存或含复合路径。');
+  const size=stroke?.strokeEnabled?(stroke.lineWidth?.value??0)*(stroke.lineWidth?.units==='Points'?(stroke.resolution??72)/72:1):0,x=layer.left??0,y=layer.top??0;
+  if(stroke?.lineWidth&&!['Pixels','Points'].includes(stroke.lineWidth.units))throw new Error('描边必须使用像素单位。');
+  const candidate:ShapeContent={type:'shape',shape:path.open?'line':path.knots.length===8?'rectangle':path.knots.some(k=>!near(k.points[0]!,k.points[2]!)||!near(k.points[1]!,k.points[3]!))?'ellipse':'rectangle',width:b.width,height:b.height,radius:0,fill:hex(layer.vectorFill.color),stroke:stroke?.content?.type==='color'?hex(stroke.content.color):'#000000',strokeWidth:size};
+  if(path.knots.length===8)candidate.radius=path.knots[0]!.points[2]!-x-Math.min(size/2,b.width/2,b.height/2);
+  const expected=shapeKnots(candidate,x,y);if(paths.length>1||stroke?.lineAlignment==='inside'||path.knots.some(k=>!k.linked)||expected.length!==path.knots.length||expected.some((k,i)=>k.points.some((n,j)=>!near(n,path.knots[i]!.points[j]!)))){result={type:'path',...(stroke?.lineAlignment==='inside'?{strokeAlignment:'inside'}:{}),width:b.width,height:b.height,closed:!path.open,fill:stroke?.fillEnabled===false?null:hex(layer.vectorFill.color),stroke:candidate.stroke,strokeWidth:size,fillRule:path.fillRule==='even-odd'?'evenodd':'nonzero',nodes:path.knots.map(k=>({inX:k.points[0]!-x,inY:k.points[1]!-y,x:k.points[2]!-x,y:k.points[3]!-y,outX:k.points[4]!-x,outY:k.points[5]!-y}))} as PathContent;if(paths.length>1)result.contours=paths.slice(1).map(p=>({closed:!p.open,fillRule:p.fillRule==='even-odd'?'evenodd':'nonzero',operation:p.operation==='combine'?'combine':'continue',nodes:p.knots.map(k=>({inX:k.points[0]!-x,inY:k.points[1]!-y,x:k.points[2]!-x,y:k.points[3]!-y,outX:k.points[4]!-x,outY:k.points[5]!-y}))}));}else result=candidate;
+ }else if(layer.placedLayer){const p=layer.placedLayer,file=psd.linkedFiles?.find(f=>f.id===p.id&&f.data);
+  if(p.type!=='raster'||!file?.data||file.data.byteLength>64*1024*1024)throw new Error('仅支持无滤镜／透视的嵌入式像素 PSD 智能对象。');
+  readSmartFilters(p.filter);
+  const embeddedState=readSmartSource(file.data,file.name),source=embeddedState.bitmap;
+  result={type:'smart',sourceId:p.id,name:file.name.slice(0,160),source:{...source,data:source.data.slice()},sourcePsd:file.data.slice(),...readSmartLink(psd,p.id),transform:readSmartPlacement(layer,source.width,source.height)};
+ }
+ if(result)validateContent(result);return result;
+}

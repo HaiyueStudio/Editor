@@ -8,6 +8,8 @@
   "include": [
     "src/main.ts",
     "src/psdWorker.ts",
-    "src/filterWorker.ts"
+    "src/filterWorker.ts",
+    "src/iccReferenceWorker.ts",
+    "src/**/*.d.ts"
   ]
 }

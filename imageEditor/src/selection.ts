@@ -1,15 +1,17 @@
+import { runWeight, runSelection, selectionRow, combineRows, type SelectionRuns } from './selectionRuns.js';
 import type { Bitmap } from './document.js';
 import type { Point, Rect, Color } from './pixelTools.js';
 /** Missing selection means unrestricted editing; an all-zero mask means explicitly empty. */
-export interface Selection extends Rect { readonly mask?: Uint8Array }
+export interface Selection extends Rect { readonly mask?: Uint8Array; readonly runs?: SelectionRuns }
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect';
 export function selectionWeight(selection: Selection | null | undefined, x: number, y: number): number {
   if (!selection) return 1;
   x = Math.floor(x) - selection.x; y = Math.floor(y) - selection.y;
   if (x < 0 || y < 0 || x >= selection.width || y >= selection.height) return 0;
-  return selection.mask ? selection.mask[y * selection.width + x]! / 255 : 1;
+  return selection.runs ? runWeight(selection.runs[y]!,x) : selection.mask ? selection.mask[y * selection.width + x]! / 255 : 1;
 }
 export function selectionCount(selection: Selection): number {
+  if(selection.runs)return selection.runs.reduce((n,r)=>{for(let i=0;i<r.length;i+=3)n+=r[i+1]!-r[i]!;return n;},0);
   return selection.mask ? selection.mask.reduce((n, value) => n + Number(value > 0), 0) : selection.width * selection.height;
 }
 export function maskSelection(mask: Uint8Array, width: number, height: number): Selection {
@@ -23,6 +25,7 @@ export function maskSelection(mask: Uint8Array, width: number, height: number): 
 }
 export function combineSelection(before: Selection | null | undefined, next: Selection, mode: SelectionMode, width: number, height: number): Selection {
   if (mode === 'replace') return next;
+  if(width*height>1048576||before?.runs||next.runs)return runSelection(width,height,y=>combineRows(before?selectionRow(before,y,0,width):mode==='intersect'?[0,width,255]:[],selectionRow(next,y,0,width),mode));
   const mask = new Uint8Array(width*height);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
     // No active region is empty for add/subtract, unrestricted for intersection.
@@ -32,17 +35,20 @@ export function combineSelection(before: Selection | null | undefined, next: Sel
   return maskSelection(mask,width,height);
 }
 export function invertSelection(selection: Selection | null | undefined, width: number,height: number): Selection {
+  if(width*height>1048576||selection?.runs)return runSelection(width,height,y=>combineRows([0,width,255],selectionRow(selection,y,0,width),'subtract'));
   const mask=new Uint8Array(width*height);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++)mask[y*width+x]=selection?255-Math.round(selectionWeight(selection,x,y)*255):255;
   return maskSelection(mask,width,height);
 }
 export function ellipseSelection(rect: Rect): Selection {
+  if(rect.width*rect.height>1048576){const s=runSelection(rect.width,rect.height,y=>{const half=rect.width/2*Math.sqrt(Math.max(0,1-((y+.5-rect.height/2)/(rect.height/2))**2)),a=Math.max(0,Math.ceil(rect.width/2-half-.5)),b=Math.min(rect.width,Math.floor(rect.width/2+half-.5)+1);return a<b?[a,b,255]:[];});return {...s,x:s.x+rect.x,y:s.y+rect.y};}
   const mask=new Uint8Array(rect.width*rect.height);
   for(let y=0;y<rect.height;y++)for(let x=0;x<rect.width;x++) if(((x+.5-rect.width/2)/(rect.width/2))**2+((y+.5-rect.height/2)/(rect.height/2))**2<=1)mask[y*rect.width+x]=255;
   return {...rect,mask};
 }
 /** Even/odd scanline fill; pixel centers define the edge of a freehand or polygonal lasso. */
 export function polygonSelection(points: readonly Point[], width:number,height:number): Selection {
+  if(width*height>1048576)return runSelection(width,height,y=>{if(points.length<3)return [];const hits:number[]=[];for(let i=0,j=points.length-1;i<points.length;j=i++){const a=points[i]!,b=points[j]!;if((a.y>y+.5)!==(b.y>y+.5))hits.push(a.x+(y+.5-a.y)*(b.x-a.x)/(b.y-a.y));}hits.sort((a,b)=>a-b);const row:number[]=[];for(let i=0;i+1<hits.length;i+=2){const a=Math.max(0,Math.ceil(hits[i]!-.5)),b=Math.min(width,Math.ceil(hits[i+1]!-.5));if(a<b)row.push(a,b,255);}return row;});
   const mask=new Uint8Array(width*height);
   if(points.length<3)return maskSelection(mask,width,height);
   const y0=Math.max(0,Math.floor(Math.min(...points.map(p=>p.y)))),y1=Math.min(height,Math.ceil(Math.max(...points.map(p=>p.y))));
@@ -72,8 +78,9 @@ export function colorSelection(bitmap: Bitmap, color: Color | readonly [number,n
   }
   return maskSelection(mask,width,height);
 }
-export function modifySelection(selection:Selection,width:number,height:number,kind:'feather'|'expand'|'contract',radius:number):Selection {
+export function modifySelection(selection:Selection,width:number,height:number,kind:'feather'|'expand'|'contract',radius:number,bounded=false):Selection {
   if(!Number.isInteger(radius)||radius<1||radius>64)throw new Error('选区半径应为 1–64 px。');
+  if(!bounded&&width*height>1048576){const rows:Uint16Array[]=[];for(let top=0;top<height;top+=32){const y0=Math.max(0,top-radius),bottom=Math.min(height,top+32+radius),h=bottom-y0,mask=new Uint8Array(width*h);for(let y=0;y<h;y++)for(let x=0;x<width;x++)mask[y*width+x]=Math.round(selectionWeight(selection,x,y+y0)*255);const part=modifySelection({x:0,y:0,width,height:h,mask},width,h,kind,radius,true);for(let y=top;y<Math.min(height,top+32);y++)rows.push(Uint16Array.from(selectionRow(part,y-y0,0,width)));if(rows.reduce((n,r)=>n+r.byteLength,0)>32*1024*1024)throw Error('选区复杂度超过预算。');}return runSelection(width,height,y=>Array.from(rows[y]!));}
   const source=new Uint8Array(width*height);for(let y=0;y<height;y++)for(let x=0;x<width;x++)source[y*width+x]=Math.round(selectionWeight(selection,x,y)*255);
   // Separable square dilation/erosion or box feather; O(pixel count), with zero beyond canvas.
   const pass=(input:Uint8Array,horizontal:boolean)=>{

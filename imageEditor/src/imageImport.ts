@@ -1,3 +1,12 @@
+import { needsTiledView } from './imageLimits.js';
+import { importLargePng } from './largeImageImport.js';
+import { diskPager, type DiskBlob } from './diskPager.js';
+import { pagedBitmap } from './pagedPixels.js';
+import { deflate } from 'pako';
+import { profileResource,srgbProfileBytes,embeddedProfile } from './colorManagement.js';
+import { transformBitmapIcc,linearSrgbProfile } from './iccEngine.js';
+import { convertDepth } from './pixelFormat.js';
+import type { ImageState } from './document.js';
 import { checkSize, type Bitmap, makeLayer, ImageDocument } from './document.js';
 
 export function inspectImageSize(bytes: Uint8Array) {
@@ -23,14 +32,16 @@ export function inspectImageSize(bytes: Uint8Array) {
       offset += length;
     }
   }
-  throw new Error('图片文件损坏或格式不支持。请选择 PNG、JPEG 或 .hyimage 工程，PSD 编辑导入尚未开放。');
+  throw new Error('图片文件损坏或格式不支持。请选择 PNG、JPEG 或 .hyimage 工程，PSD 请通过 PSD 导入流程打开。');
 }
 export async function decodeImage(file: File): Promise<Bitmap> {
   if (file.size > 32 * 1024 * 1024) throw new Error('PNG/JPEG 文件不能超过 32 MiB。');
-  inspectImageSize(new Uint8Array(await file.arrayBuffer()));
+  const bytes=new Uint8Array(await file.arrayBuffer()),size=inspectImageSize(bytes);
+  if(needsTiledView(size)&&bytes[0]===137)return importLargePng(bytes);
   let decoded: ImageBitmap | undefined;
   try {
     decoded = await createImageBitmap(file, { imageOrientation: 'from-image' }); checkSize(decoded.width, decoded.height);
+    if(needsTiledView(decoded)){const tiles:DiskBlob[]=[],canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true})!;try{for(let y=0;y<decoded.height;y+=256)for(let x=0;x<decoded.width;x+=256){canvas.width=Math.min(256,decoded.width-x);canvas.height=Math.min(256,decoded.height-y);ctx.drawImage(decoded,x,y,canvas.width,canvas.height,0,0,canvas.width,canvas.height);tiles.push(await diskPager.write(deflate(new Uint8Array(ctx.getImageData(0,0,canvas.width,canvas.height).data))));}return pagedBitmap(decoded.width,decoded.height,{kind:'disk',tiles});}finally{canvas.width=canvas.height=1;}}
     const canvas = document.createElement('canvas'); canvas.width = decoded.width; canvas.height = decoded.height;
     const context = canvas.getContext('2d', { willReadFrequently: true }); if (!context) throw new Error('无法解码图片。');
     context.drawImage(decoded, 0, 0);
@@ -39,11 +50,17 @@ export async function decodeImage(file: File): Promise<Bitmap> {
     return { width: decoded.width, height: decoded.height, data };
   } finally { decoded?.close(); }
 }
+/** Canvas decode returns sRGB samples; importing into another RGB working space must convert them. */
+export function rasterForDocument(bitmap:Bitmap,state:ImageState):Bitmap {
+ if(state.colorMode==='cmyk')return bitmap;
+ const depth=state.bitDepth??8,b=convertDepth(bitmap,depth),target=embeddedProfile(state);
+ return target?transformBitmapIcc(b,depth===32?linearSrgbProfile():srgbProfileBytes(),target,{intent:state.icc?.intent??1,bpc:state.icc?.bpc??true}):b;
+}
 export function imageDocument(name: string, bitmap: Bitmap) {
   const doc = ImageDocument.create(name, bitmap.width, bitmap.height);
   // Build the initial imported state once, without an empty layer in its undo history.
   const layer = makeLayer(name, bitmap);
-  const result = new ImageDocument({ ...doc.state, layers: [layer], selectedId: layer.id }); doc.dispose(); return result;
+  const result = new ImageDocument({ ...doc.state, psdOrigin:{sourceName:name,flattened:true,resources:profileResource(srgbProfileBytes())},layers: [layer], selectedId: layer.id, selectedIds: [layer.id] }); doc.dispose(); return result;
 }
 /** Deterministic, independently editable layers for the bundled moonrise example. */
 export function createDemo(): ImageDocument {
@@ -114,5 +131,5 @@ export function createDemo(): ImageDocument {
     ctx.fillStyle = '#799da9'; ctx.font = '11px sans-serif'; ctx.fillText('01 — A QUIET STUDY OF LIGHT & WATER', 78, 765);
   });
   const doc = ImageDocument.create('海上生明月 · 示例', width, height);
-  const result = new ImageDocument({ ...doc.state, layers: [background, moon, sea, title], selectedId: title.id }); doc.dispose(); return result;
+  const result = new ImageDocument({ ...doc.state, layers: [background, moon, sea, title], selectedId: title.id, selectedIds: [title.id] }); doc.dispose(); return result;
 }

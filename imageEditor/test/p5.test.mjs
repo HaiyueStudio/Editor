@@ -54,9 +54,9 @@ test('PSD retains simple raster mask bytes, offsets, default fill and disabled f
  const d=doc();d.updateLayer(d.selected.id,{x:1,y:1});d.setMask(d.selected.id,{...mask(),x:-1,y:0,defaultColor:255});
  const bytes=exportPsd(d.state).bytes,opened=importPsd(bytes,'mask.psd');assert(opened.layered,opened.blockers.join('\n'));assert.deepEqual(opened.layered.layers[1].mask,d.selected.mask);assert.deepEqual(compositeState(opened.layered).data,compositeState(d.state).data);d.dispose();
 });
-test('PSD content loss requires explicit consent and adjustments export a matching composite',()=>{
- const d=doc();d.setContent(d.selected.id,shape,bitmap());assert(psdExportWarnings(d.state).some(s=>s.includes('形状')));assert.throws(()=>exportPsd(d.state),/确认/);const raster=importPsd(exportPsd(d.state,true).bytes,'shape.psd');assert(raster.layered);assert.equal(raster.layered.layers[1].content,undefined);
- d.addLayer({...makeLayer('invert'),kind:'adjustment',content:{type:'adjustment',filter:'invert',amount:100}},false);assert.throws(()=>exportPsd(d.state),/合并/);const merged=importPsd(exportPsd(d.state,true).bytes,'adjustment.psd');assert(merged.layered);assert.equal(merged.layered.layers.length,1);assert.deepEqual(compositeState(merged.layered).data,compositeState(d.state).data);assert.equal(d.selected.kind,'adjustment');d.dispose();
+test('basic shapes now export natively; unsupported adjustments still require flattening consent',()=>{
+ const d=doc();d.setContent(d.selected.id,shape,bitmap());assert.deepEqual(psdExportWarnings(d.state),[]);const raster=importPsd(exportPsd(d.state).bytes,'shape.psd');assert(raster.layered,raster.blockers.join('\n'));assert.deepEqual(raster.layered.layers[1].content,shape);
+ d.addLayer({...makeLayer('brightness'),kind:'adjustment',content:{type:'adjustment',filter:'brightness',amount:30}},false);assert.throws(()=>exportPsd(d.state),/合并/);const merged=importPsd(exportPsd(d.state,true).bytes,'adjustment.psd');assert(merged.layered);assert.equal(merged.layered.layers.length,1);assert.deepEqual(compositeState(merged.layered).data,compositeState(d.state).data);assert.equal(d.selected.kind,'adjustment');d.dispose();
 });
 
 test('applying a mask bakes alpha exactly and undo restores editable mask',()=>{

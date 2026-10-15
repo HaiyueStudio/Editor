@@ -1,3 +1,7 @@
+import { tiledEditing } from './tiledEditing.js';
+import { diskPager, diskRefs } from './diskPager.js';
+import type { EditorOperationContext, EditorOperationDefinition, EditorJsonValue } from '@haiyue/editor-plugin-sdk';
+import { findLayer } from './document.js';
 import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import { BrowserEditorShell } from '@haiyue/editor-shell';
 import { defineEditorPlugin, defineEditorProduct, EDITOR_PLUGIN_API_VERSION } from '@haiyue/editor-plugin-sdk';
@@ -20,8 +24,25 @@ export class ImageWorkspace {
   private items = new Map<string, ImageDocument>();
   private subscriptions = new Map<string, () => void>();
   private listeners = new Set<() => void>();
+  registerOperation<P extends EditorJsonValue,T,R extends EditorJsonValue>(definition:EditorOperationDefinition<P,T,R>){
+    return this.platform.operations.register({...definition,
+      prepare:async(params:P,context:EditorOperationContext)=>{const doc=this.documents.find(d=>d.identity.id===context.document?.id),id=params&&typeof params==='object'&&!Array.isArray(params)&&typeof (params as Record<string,EditorJsonValue>).layerId==='string'?(params as Record<string,EditorJsonValue>).layerId as string:undefined;
+        const metadata=/^image\.(artboard\.|spot\.|import\.|export\.|document\.(query|rename|crop|display)|histogram\.query|history\.|storage\.|layers\.(select|align|move)|layer\.(update|create|opacity|reorder|import)|selection\.(all|clear|invert|rectangle|ellipse|polygon|modify)|content\.create|icc\.query)/.test(definition.descriptor.id)||(definition.descriptor.id==='image.document.export'&&(params as Record<string,EditorJsonValue>)?.format!=='psd');
+        const ids=params&&typeof params==='object'&&!Array.isArray(params)?(params as Record<string,EditorJsonValue>).layerIds:undefined;
+        const sourceId=params&&typeof params==='object'&&!Array.isArray(params)?(params as Record<string,EditorJsonValue>).sourceLayerId:undefined;
+        const scope=id&&doc?[findLayer(doc.state.layers,id),...(typeof sourceId==='string'?[findLayer(doc.state.layers,sourceId)]:[])]:Array.isArray(ids)&&doc?ids.map(id=>findLayer(doc.state.layers,String(id))):doc?.state;
+        const regionAware=/^image\.(retouch\.(patch|content-aware|denoise|lens|liquify|decontaminate)|selection\.fine)$/.test(definition.descriptor.id)||doc&&tiledEditing(doc.state)&&/^image\.(retouch.stroke|layers.merge|document.depth|hdr.exposure|icc\.(assign|remove|convert)|filter.apply|smart\.(convert|filters)|cmyk\.(fill|stroke|sample|mode)|pixels\.(fill|stroke|gradient|copy)|color.sample|layer\.(transform|mask.apply)|mask\.(update|settings)|selection\.|document.export)/.test(definition.descriptor.id);
+        const release=await diskPager.lease(metadata||regionAware?[]:diskRefs(scope),context.signal);
+        try{return {value:await definition.prepare(params,context),release};}catch(error){release();throw error;}
+      },
+      commit:(prepared,context)=>{try{return definition.commit(prepared.value,context);}finally{prepared.release();}},
+      rollback:async(prepared,context,error)=>{try{await definition.rollback?.(prepared?.value,context,error);}finally{prepared?.release();}},
+    });
+  }
   async start() {
+    if(typeof indexedDB!=='undefined')await (await import('./pageLifecycle.js')).pageAccess.enter();
     await this.platform.start(product);
+    diskPager.requestCollection();
     if (!this.operationBindings) this.operationBindings = (await import('./operations.js')).registerImageOperations(this);
   }
   get documents() { return [...this.items.values()]; }

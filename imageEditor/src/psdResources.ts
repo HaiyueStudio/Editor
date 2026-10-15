@@ -1,3 +1,5 @@
+export const PSB_WIDE_KEYS=new Set(['LMsk','Lr16','Lr32','Layr','Mt16','Mt32','Mtrn','Alph','FMsk','lnk2','FEid','FXid','PxSD','cinf']);
+export function psdLength(v:DataView,at:number,wide=false){const n=wide?Number(v.getBigUint64(at)):v.getUint32(at);if(!Number.isSafeInteger(n)||n<0)throw Error('PSD／PSB 区段长度无效。');return n;}
 export const MAX_PSD_RESOURCES = 16 * 1024 * 1024;
 export interface ResourceBlock { id: number; bytes: Uint8Array }
 export function resourceBlocks(bytes: Uint8Array): ResourceBlock[] {
@@ -21,12 +23,12 @@ export function concatBytes(parts: readonly Uint8Array[]) {
 export function psdSections(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let p = 26;
-  const section = () => {
-    if (p + 4 > bytes.length) throw new Error('PSD 区段截断。');
-    const size = view.getUint32(p), start = p; p += 4 + size;
-    if (p > bytes.length) throw new Error('PSD 区段长度无效。'); return { start, data: start + 4, end: p };
+  const section = (wide=false) => {
+    const prefix=wide?8:4;if (p + prefix > bytes.length) throw new Error('PSD 区段截断。');
+    const size = psdLength(view,p,wide), start = p; p += prefix + size;
+    if (p > bytes.length) throw new Error('PSD 区段长度无效。'); return { start, data: start + prefix, end: p };
   };
-  const color = section(), resources = section(), layers = section();
+  const color = section(), resources = section(), layers = section(view.getUint16(4)===2);
   if (p + 2 > bytes.length) throw new Error('PSD 缺少合成数据。');
   return { color, resources, layers, composite: p };
 }
@@ -36,6 +38,7 @@ export const DERIVED_RESOURCE_IDS = new Set([1024, 1026, 1033, 1036, 1045, 1053,
 /** Inspect extra-information keys independently: unimplemented codec keys must not disappear silently. */
 export function additionalInfoKeys(bytes: Uint8Array): string[] {
   const section=psdSections(bytes).layers, view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), keys=new Set<string>();
+  const large=view.getUint16(4)===2,ls=large?8:4;let parsingLayers=false;
   const string=(p:number)=>String.fromCharCode(...bytes.subarray(p,p+4));
   const need=(p:number,n:number,end:number)=>{if(p+n>end)throw new Error('PSD 图层附加区段截断。');};
   const info=(from:number,end:number)=>{
@@ -45,20 +48,22 @@ export function additionalInfoKeys(bytes: Uint8Array): string[] {
       if(p===end)break;
       need(p,12,end);
       const signature=string(p);if(signature!=='8BIM'&&signature!=='8B64')throw new Error('PSD 附加信息签名无效。');
-      keys.add(string(p+4)); const header=signature==='8B64'?16:12; need(p,header,end);
-      const size=signature==='8B64'?Number(view.getBigUint64(p+8)):view.getUint32(p+8);need(p+header,size,end);p+=header+size+size%2;
+      const key=string(p+4);keys.add(key); const wide=signature==='8B64'||large&&PSB_WIDE_KEYS.has(key),header=wide?16:12; need(p,header,end);
+      const size=psdLength(view,p+8,wide);need(p+header,size,end);if(key==='knko'&&(size!==4||bytes[p+header]!>1))throw Error('PSD 深层／未知挖空设置尚未支持。');if(key==='Lr16'||key==='Lr32'){if(parsingLayers)throw Error('嵌套 PSD 图层信息无效。');layerInfo(p+header,p+header+size);}p+=header+size+size%2;
     }
   };
-  if(section.end===section.data)return [];
-  let p=section.data;need(p,4,section.end);const length=view.getUint32(p);p+=4;const layerEnd=p+length;need(p,length,section.end);
-  if(length){need(p,2,layerEnd);const count=Math.abs(view.getInt16(p));p+=2;
+  const layerInfo=(from:number,layerEnd:number)=>{parsingLayers=true;let p=from;
+    need(p,2,layerEnd);const count=Math.abs(view.getInt16(p));p+=2;
     for(let i=0;i<count;i++){
-      need(p,18,layerEnd);const channels=view.getUint16(p+16);p+=18;need(p,channels*6+16,layerEnd);p+=channels*6+12;
+      need(p,18,layerEnd);const channels=view.getUint16(p+16);p+=18;need(p,channels*(large?10:6)+16,layerEnd);p+=channels*(large?10:6)+12;
       const extraLength=view.getUint32(p);p+=4;const end=p+extraLength;need(p,extraLength,layerEnd);
       for(let j=0;j<2;j++){need(p,4,end);const size=view.getUint32(p);p+=4;need(p,size,end);p+=size;}
       need(p,1,end);const nameLength=bytes[p]!+1;p+=nameLength+(4-nameLength%4)%4;need(p,0,end);info(p,end);p=end;
-    }
-  }
+    }parsingLayers=false;
+  };
+  if(section.end===section.data)return [];
+  let p=section.data;need(p,ls,section.end);const length=psdLength(view,p,large);p+=ls;const layerEnd=p+length;need(p,length,section.end);
+  if(length)layerInfo(p,layerEnd);
   p=layerEnd;if(p===section.end)return [...keys];need(p,4,section.end);const maskSize=view.getUint32(p);p+=4;need(p,maskSize,section.end);p+=maskSize;info(p,section.end);
   return [...keys];
 }
@@ -75,4 +80,19 @@ export function validateCompositeBytes(bytes: Uint8Array) {
     while(p<end){const n=bytes[p++]!;if(n<128){p+=n+1;decoded+=n+1;}else if(n>128){p++;decoded+=257-n;}if(p>end||decoded>width)throw new Error('PSD 合成行编码无效。');}
     if(decoded!==width)throw new Error('PSD 合成行像素不完整。');
   }
+}
+
+/** PSD raw planar composite, with the specified white matte for partial RGB alpha. */
+export function rawCompositeData(encoded:Uint8Array,image:{width:number;height:number;data:ArrayLike<number>}):Uint8Array {
+ const channels=new DataView(encoded.buffer,encoded.byteOffset,encoded.byteLength).getUint16(12),n=image.width*image.height,raw=new Uint8Array(2+n*channels);
+ for(let c=0;c<channels;c++)for(let i=0;i<n;i++){const a=image.data[i*4+3]!,value=image.data[i*4+c]!;raw[2+c*n+i]=c<3&&a>0&&a<255?Math.round(value*a/255+255-a):value;}
+ return raw;
+}
+
+/** Keep unreferenced pattern presets that the codec does not expose in its object model. */
+export function preservePatternBlocks(encoded:Uint8Array,original:Uint8Array):Uint8Array {
+ const source=psdSections(original),v=new DataView(original.buffer,original.byteOffset,original.byteLength);let p=source.layers.data;
+ const large=v.getUint16(4)===2,ls=large?8:4;if(p+ls>source.layers.end)return encoded;p+=ls+psdLength(v,p,large);if(p+4>source.layers.end)return encoded;p+=4+v.getUint32(p);
+ const keep:Uint8Array[]=[];while(p+12<=source.layers.end){while(p<source.layers.end&&original[p]===0)p++;if(p+12>source.layers.end)break;const wide=v.getUint32(p)===0x38423634||large&&PSB_WIDE_KEYS.has(String.fromCharCode(...original.subarray(p+4,p+8))),header=wide?16:12;if(p+header>source.layers.end)throw Error('PSD 原生预设块截断。');const length=wide?Number(v.getBigUint64(p+8)):v.getUint32(p+8),end=p+header+length+length%2;if(!Number.isSafeInteger(end)||end>source.layers.end)throw Error('PSD 原生预设块长度无效。');const key=String.fromCharCode(...original.subarray(p+4,p+8));if(['Patt','Pat2','Pat3'].includes(key))keep.push(original.subarray(p,end));p=end;}
+ if(!keep.length)return encoded;const s=psdSections(encoded),body=concatBytes([encoded.subarray(s.layers.data,s.layers.end),...keep]),size=new Uint8Array(new DataView(encoded.buffer,encoded.byteOffset).getUint16(4)===2?8:4);if(size.length===8)new DataView(size.buffer).setBigUint64(0,BigInt(body.length));else new DataView(size.buffer).setUint32(0,body.length);return concatBytes([encoded.subarray(0,s.layers.start),size,body,encoded.subarray(s.composite)]);
 }

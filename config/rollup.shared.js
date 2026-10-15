@@ -15,6 +15,9 @@ export function haiyuePlugins({
   commonjsInterop = true,
   minify = false,
   mangle = false,
+  keepFunctionNames = true,
+  keepClassNames = true,
+  minifyModule = false,
   extra = [],
 } = {}) {
   return [
@@ -25,10 +28,11 @@ export function haiyuePlugins({
     commonjsInterop ? commonjs() : null,
     typescript({ tsconfig, ...(declaration === undefined ? {} : { declaration }) }),
     minify ? terser({
+      module: minifyModule,
       compress: { passes: 2 },
       mangle,
-      keep_classnames: true,
-      keep_fnames: true,
+      keep_classnames: keepClassNames,
+      keep_fnames: keepFunctionNames,
       format: { comments: false },
     }) : null,
     ...extra,

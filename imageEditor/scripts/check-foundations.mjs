@@ -1,0 +1,14 @@
+import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {deserializeProject} from '../dist/projectFile.js';
+import {compositeState} from '../dist/compositor.js';
+const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'imageEditor/artifacts/foundations'),hash=b=>createHash('sha256').update(b).digest('hex');
+const browser=JSON.parse(readFileSync(resolve(out,'browser.json'))),build=JSON.parse(readFileSync(resolve(root,'imageEditor/app-dist/app-manifest.json')));
+if(browser.status!=='passed'||browser.buildHash!==build.buildHash)throw Error('Current foundation browser evidence required.');for(const [file,sha] of Object.entries(browser.sourceFingerprints))if(hash(readFileSync(resolve(root,file)))!==sha)throw Error('Stale browser evidence: '+file);
+const state=deserializeProject(readFileSync(resolve(out,'multilayer.hyimage'),'utf8')),smart=state.layers.find(l=>l.content?.sourcePsd).content;writeFileSync(resolve(out,'expected.rgba'),compositeState(state).data);writeFileSync(resolve(out,'source.psd'),smart.sourcePsd);writeFileSync(resolve(out,'source.rgba'),smart.source.data);
+const inputs=Object.fromEntries(['generation1.psd','generation2.psd','source.psd','source.rgba','expected.rgba'].map(f=>[f,hash(readFileSync(resolve(out,f)))]));writeFileSync(resolve(out,'inputs.json'),JSON.stringify({width:state.width,height:state.height,sourceWidth:smart.source.width,sourceHeight:smart.source.height,inputs},null,2));
+if(!process.env.PSD_NATIVE_PYTHON)throw Error('Set PSD_NATIVE_PYTHON to the psd-tools environment.');
+execFileSync(process.env.PSD_NATIVE_PYTHON,[resolve(root,'imageEditor/scripts/independent-foundations.py'),out],{stdio:'inherit',timeout:120000});
+const report={schemaVersion:1,status:'passed',generatedAt:new Date().toISOString(),buildHash:build.buildHash,revision:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),dirty:!!execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim(),runner:{node:process.version,platform:process.platform,arch:process.arch},inputs,sourceFingerprints:Object.fromEntries([...readdirSync(resolve(root,'imageEditor/src')).map(f=>'imageEditor/src/'+f),'imageEditor/scripts/check-foundations.mjs','imageEditor/scripts/independent-foundations.py','imageEditor/app/descriptor.json','imageEditor/rollup.config.js'].map(f=>[f,hash(readFileSync(resolve(root,f)))])),independent:JSON.parse(readFileSync(resolve(out,'independent.json'))),photoshop:'pending-manual-acceptance'};writeFileSync(resolve(out,'codec.json'),JSON.stringify(report,null,2));

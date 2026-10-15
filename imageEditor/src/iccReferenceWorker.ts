@@ -1,0 +1,2 @@
+import { executeReference, type IccReferenceRequest, type ReferenceFactory } from './iccReference.js';
+self.onmessage=async(e:MessageEvent<IccReferenceRequest>)=>{try{const path=new URL(e.data.mode==='validate'?'./iccDumpProfile.mjs':'./iccApplyNamedCmm.mjs',import.meta.url).href;const {default:factory}=await import(/* @vite-ignore */ path) as {default:ReferenceFactory};self.postMessage({ok:true,value:await executeReference(e.data,factory)});}catch(e){self.postMessage({ok:false,error:e instanceof Error?e.message:String(e)});}};

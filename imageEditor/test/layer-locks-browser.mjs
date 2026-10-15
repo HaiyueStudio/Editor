@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {runEditorBrowserScenario} from '../../scripts/editor-e2e/browserDriver.mjs';
+const file=process.argv[2];if(!file)throw Error('Provide the local alpha-locked PSD fixture path.');
+const root=resolve(import.meta.dirname,'../..'),out=resolve(root,'imageEditor/artifacts/layer-locks');mkdirSync(out,{recursive:true});
+const report=await runEditorBrowserScenario({root,route:'imageEditor/app-dist/index.html',downloadDirectory:out,timeoutMs:180000,readinessExpression:`Boolean(globalThis.haiyueEditor&&document.querySelector('#app')?.getAttribute('aria-busy')==='false')`,failureScreenshotPath:resolve(out,'failure.png'),scenario:async d=>{
+ const {evaluate,click,waitFor,setFileInputFiles,cdp}=d,e=s=>`document.querySelector(${JSON.stringify(s)})`;
+ await setFileInputFiles('#open-input',[resolve(file)]);await waitFor(()=>evaluate(e('#psd-import-dialog')+'.open'),'import');
+ const warning=await evaluate(e('#psd-import-details')+'.textContent');assert(!warning.includes('部分锁定'));assert(!await evaluate(e('#psd-import-layers')+'.disabled'));
+ await click(e('#psd-import-layers'));await waitFor(()=>evaluate(`haiyueEditor.listDocuments().documents.length===1&&document.querySelector('#image-canvas').dataset.painting==='false'`),'paint',60000);
+ await evaluate(`globalThis.seq=0;globalThis.call=async(operation,params={})=>{const list=haiyueEditor.listDocuments(),d=list.documents.find(d=>d.identity.id===list.activeId),r=await haiyueEditor.execute({apiVersion:'1',requestId:'locks-'+(++seq),operation:'image.'+operation,params,documentId:d.identity.id,expectedRevision:d.revision});if(r.status!=='completed')throw Error(JSON.stringify(r));return r.value;};`);
+ const call=(op,p={})=>evaluate(`call(${JSON.stringify(op)},${JSON.stringify(p)})`),query=await call('document.query'),layer=query.layers.find(l=>l.name==='L1');assert(layer);assert.equal(layer.locked,false);assert.equal(layer.locks.transparency,true);
+ assert(await evaluate(e('#lock-transparency')+'.checked'));assert(!await evaluate(e('#lock-all')+'.checked'));assert(!await evaluate(e('#layer-x')+'.disabled'));
+ await call('layer.update',{layerId:layer.id,patch:{x:layer.x+5}});assert.equal((await call('document.query')).layers.find(l=>l.id===layer.id).x,layer.x+5);await call('history.undo');
+ await evaluate(e('#lock-position')+".scrollIntoView({block:'center'})");await click(e('#lock-position'));await waitFor(()=>evaluate(e('#layer-x')+'.disabled'),'position lock',10000);assert.equal((await call('document.query')).layers.find(l=>l.id===layer.id).locks.position,true);await call('history.undo');
+ assert(!await evaluate(e('#layer-x')+'.disabled'));assert(await evaluate(e('#lock-transparency')+'.checked'));
+ await call('layer.update',{layerId:layer.id,patch:{locks:{pixels:true}}});const locked=(await call('document.query')).layers.find(l=>l.id===layer.id);assert(locked.locks.pixels&&locked.locks.transparency);const failed=await evaluate(`call('pixels.fill',{layerId:${JSON.stringify(layer.id)},color:'#ff0000'}).then(()=>false,()=>true)`);assert(failed);await call('history.undo');
+ await call('selection.set',{shape:'rectangle',x:4,y:4,width:8,height:8});await call('pixels.fill',{layerId:layer.id,color:'#f47f4b'});await call('history.undo');
+ const exported=await call('document.export',{format:'psd'});assert(exported.resourceId);
+ await waitFor(()=>evaluate(`document.querySelector('#image-canvas').dataset.painting==='false'`),'final paint',60000);const shot=await cdp.call('Page.captureScreenshot',{format:'png'});writeFileSync(resolve(out,'sample-locks.png'),Buffer.from(shot.result.data,'base64'));d.assertNoBrowserErrors();return {status:'passed',source:resolve(file),layer:layer.name,locks:layer.locks,warning,checks:['import','UI alpha lock','move and undo','UI position lock and undo','API pixel lock rejects fill','alpha-locked fill and undo','PSD export']};
+}});writeFileSync(resolve(out,'browser.json'),JSON.stringify({...report,buildHash:JSON.parse(readFileSync(resolve(root,'imageEditor/app-dist/app-manifest.json'))).buildHash},null,2));console.log(report);

@@ -1,3 +1,6 @@
+import { isLayerLocked, preserveLayerAlpha } from './layerLocks.js';
+import { pixelArray, withPixels, type PixelArray } from './pixelFormat.js';
+import { gaussianBlur, unsharpMask } from './qualityFilters.js';
 import { type Bitmap, type ImageLayer, type ImageState } from './document.js';
 import { editablePixel, parentOffset } from './pixelTools.js';
 import { selectionWeight } from './selection.js';
@@ -12,15 +15,17 @@ export const FILTERS = {
   threshold:{name:'阈值',min:0,max:255,value:128,unit:''},
   posterize:{name:'色调分离',min:2,max:32,value:6,unit:'级'},
   blur:{name:'柔化模糊',min:1,max:32,value:4,unit:'px'},
+  gaussian:{name:'高斯模糊',min:0.1,max:32,value:2,unit:'σ px',step:0.1},
+  usm:{name:'USM 锐化',min:0,max:500,value:100,unit:'%',parameters:{radius:{min:0.1,max:32,value:2,unit:'σ px'},threshold:{min:0,max:255,value:0,unit:'色阶'}}},
   sharpen:{name:'锐化',min:0,max:100,value:40,unit:'%'},
   emboss:{name:'浮雕',min:0,max:100,value:100,unit:'%'},
   pixelate:{name:'马赛克',min:2,max:64,value:8,unit:'px'},
 } as const;
 export type FilterKind = keyof typeof FILTERS;
-export interface FilterSettings { kind:FilterKind; amount:number }
+export interface FilterSettings { kind:FilterKind; amount:number; radius?:number; threshold?:number }
 /** Sliding box blur on associated RGBA avoids dark/colored halos from hidden RGB. */
-function blur(source:Bitmap,radius:number):Uint8ClampedArray {
-  const {width:w,height:h,data}=source,n=w*h,out=new Uint8ClampedArray(data.length),a=new Float32Array(n),b=new Float32Array(n);
+function blur(source:Bitmap,radius:number):PixelArray {
+  const {width:w,height:h,data}=source,n=w*h,out=pixelArray(data.length,source),a=new Float32Array(n),b=new Float32Array(n);
   for(const channel of [3,0,1,2]) {
     for(let i=0;i<n;i++)a[i]=channel===3?data[i*4+3]!:data[i*4+channel]!*data[i*4+3]!/255;
     for(let y=0;y<h;y++){let sum=0;for(let x=-radius;x<=radius;x++)sum+=a[y*w+Math.max(0,Math.min(w-1,x))]!;
@@ -30,9 +35,16 @@ function blur(source:Bitmap,radius:number):Uint8ClampedArray {
     for(let i=0;i<n;i++)out[i*4+channel]=channel===3?a[i]!:out[i*4+3]?a[i]!*255/out[i*4+3]!:data[i*4+channel]!;
   }return out;
 }
+export function validateFilterSettings(settings:FilterSettings) {
+ const {kind,amount,radius,threshold}=settings,config=FILTERS[kind];
+ if(!Object.hasOwn(FILTERS,kind)||!config||!Number.isFinite(amount)||(kind!=='gaussian'&&!Number.isInteger(amount))||amount<config.min||amount>config.max)throw new Error('滤镜参数无效。');
+ if(kind!=='usm'&&(radius!==undefined||threshold!==undefined))throw new Error('半径和阈值仅用于 USM 锐化。');
+ if(radius!==undefined&&(!Number.isFinite(radius)||radius<.1||radius>32)||threshold!==undefined&&(!Number.isInteger(threshold)||threshold<0||threshold>255))throw new Error('USM 半径或阈值无效。');
+}
 export function filterBitmap(source:Bitmap,settings:FilterSettings):Bitmap {
-  const {kind,amount}=settings,config=FILTERS[kind];
-  if(!config||!Number.isFinite(amount)||!Number.isInteger(amount)||amount<config.min||amount>config.max)throw new Error('滤镜参数无效。');
+  validateFilterSettings(settings);const {kind,amount}=settings;
+  if(kind==='gaussian')return gaussianBlur(source,amount);
+  if(kind==='usm')return unsharpMask(source,amount,settings.radius??2,settings.threshold??0);
   const {width:w,height:h,data}=source,out=kind==='blur'?blur(source,amount):data.slice();
   if(kind==='pixelate') {
     for(let y=0;y<h;y+=amount)for(let x=0;x<w;x+=amount){const sums=[0,0,0,0];let count=0;
@@ -62,11 +74,14 @@ export function filterBitmap(source:Bitmap,settings:FilterSettings):Bitmap {
       if(data[i+3])for(let c=0;c<3;c++)out[i+c]=color[c]!;
     }
   }
-  return {width:w,height:h,data:out};
+  return withPixels(w,h,out,source);
 }
 export function filterLayer(state:ImageState,id:string,settings:FilterSettings):ImageLayer {
   const layer=editablePixel(state,id);if(!layer.bitmap)throw new Error('请选择含像素的图层。');
-  const filtered=filterBitmap(layer.bitmap,settings),offset=parentOffset(state.layers,id)!,source=layer.bitmap.data;
+  return applyFilteredLayer(state,id,filterBitmap(layer.bitmap,settings));
+}
+export function applyFilteredLayer(state:ImageState,id:string,filtered:Bitmap):ImageLayer {
+  const layer=editablePixel(state,id),offset=parentOffset(state.layers,id)!,source=layer.bitmap!.data;
   for(let y=0;y<filtered.height;y++)for(let x=0;x<filtered.width;x++){
     const weight=selectionWeight(state.selection,x+layer.x+offset.x,y+layer.y+offset.y),i=(y*filtered.width+x)*4;
     if(weight===1)continue;
@@ -75,5 +90,5 @@ export function filterLayer(state:ImageState,id:string,settings:FilterSettings):
     for(let c=0;c<3;c++)filtered.data[i+c]=alpha?(source[i+c]!*a*(1-weight)+filtered.data[i+c]!*b*weight)/alpha:source[i+c]!;
     filtered.data[i+3]=alpha*255;
   }
-  return {...layer,bitmap:filtered};
+  const result={...layer,bitmap:filtered};return isLayerLocked(state.layers,id,'transparency')?preserveLayerAlpha(layer,result):result;
 }
