@@ -102,7 +102,7 @@ const report=await runEditorBrowserScenario({root,route:'shaderEditor/app-dist/i
   checks.push('1D/2D/3D noise lattice continuity and repeatability; heightfield columns, genuine cave overhangs, threshold occupancy and axis/edge/corner DDA ray hits verified on GPU');
   await shot('tutorial-scene-lab.png');
   await nav("nav-gallery");
-  await waitFor(()=>evaluate('document.querySelectorAll("#examples .card-art img").length===5'),'gallery still renders');
+  await waitFor(()=>evaluate('document.querySelectorAll("#examples .card-art img").length===6'),'gallery still renders');
   assert.equal(await evaluate('document.querySelectorAll("#saved-projects .card").length'),0,'tutorials never auto-save');
   checks.push('All 65 independent WGSL exercises compile and produce expected uniform/nonuniform real GPU output, including Buffer feedback; Gallery remains intact and no automatic saving occurs');
   driver.assertNoBrowserErrors();return {status:'passed',checks,pixels};

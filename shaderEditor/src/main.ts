@@ -7,16 +7,19 @@ import type { BufferPreview } from './bufferPreviews.js';
 import { CodeEditor, GlslEditor, WgslPreview } from './codeEditor.js';
 import { GalleryStore, type GalleryItem } from './storage.js';
 import { examples } from './examples.js';
-import { createProject, codeOf, codeTabs, passOf, parseProject, PASS_IDS, PASS_LABELS, LIMITS, CUBE_FACES, CUBE_FACE_LABELS, channelTypes, type CodeId, type PassId, type PreviewMode, type PreviewMesh, type ShaderProject } from './model.js';
+import { createProject, codeOf, codeTabs, passOf, parseProject, PASS_IDS, PASS_LABELS, LIMITS, CUBE_FACES, CUBE_FACE_LABELS, channelTypes, type CodeId, type ShaderLanguage, type PassId, type PreviewMode, type PreviewMesh, type ShaderProject } from './model.js';
 import { BUILTIN_TEXTURES, builtinTexture, type BuiltinTextureId } from './builtinTextures.js';
 import { TutorialPage } from './tutorialPage.js';
 import { findTutorial } from './tutorialContent.js';
 import { createCubeUploader } from './cubeUpload.js';
+import { languageOf, sourceOf } from './sourceLanguage.js';
 import { projectTranslationOptions } from './glslProject.js';
 import { translateGlsl } from './glsl.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const disposeUI = initializeUI();
+$<GESelect>('code-language').options = [{ value: 'wgsl', label: 'WGSL' }, { value: 'glsl', label: 'GLSL' }];
+$<GECheckbox>('detect-language').checked = true;
 $<GESelect>('preview-scale').options = [{ value: '1', label: '100%' }, { value: '0.5', label: '50%' }, { value: '0.25', label: '25%' }];
 $<GESelect>('sound-duration').options = [1, 4, 8, 16, 30, 60, 120].map(value => ({ value: String(value), label: `${value} 秒` }));
 $<GESelect>('sound-volume').options = [0, 0.1, 0.25, 0.5, 1].map(value => ({ value: String(value), label: `${value * 100}%` }));
@@ -34,7 +37,8 @@ let saveQueue: Promise<unknown> = Promise.resolve(), uploadIndex = 0, translatio
 let controlSignature = '', compileSequence = 0;
 let editorReturnRoute = 'gallery';
 let bufferPreviews: BufferPreview[] = [];
-const editor = new CodeEditor($('code-editor'), (pass, code) => { void run(() => workspace.document.setCode(pass, code)); }, () => { void run(compile); });
+const editor = new CodeEditor($('code-editor'), (pass, code, language) => { void run(() => workspace.document.setSource(pass, code, language)); }, () => { void run(compile); });
+const generatedPreview = new WgslPreview($('generated-code'), '运行用 WGSL');
 const wgslPreview = new WgslPreview($('glsl-result'));
 const glslEditor = new GlslEditor($('glsl-source'), () => {
   translation = null; $<HTMLButtonElement>('apply-glsl').disabled = true;
@@ -102,19 +106,33 @@ async function compile() {
     if (!compiled && !workspace.diagnostics.length) $('compile-state').textContent = '代码已变化，请重新运行';
   } finally { if (sequence === compileSequence) $<HTMLButtonElement>('compile').disabled = false; }
 }
+function showGenerated(pass: CodeId, line = 1) {
+  const project = workspace.document.state;
+  const result = languageOf(project, pass) === 'glsl' ? translateGlsl(sourceOf(project, pass), projectTranslationOptions(project as ShaderProject, pass)) : null;
+  generatedPreview.show(result ? result.code ?? '' : codeOf(project, pass));
+  $('generated-message').textContent = result?.code === null ? result.diagnostics.map(d => `${d.line}:${d.column} ${d.message}`).join('\n') : '只读预览 · ' + PASS_LABELS[pass] + ' · 可选择复制';
+  const notes = $<HTMLDetailsElement>('generated-notes');
+  notes.hidden = !result?.warnings.length; notes.open = false;
+  notes.querySelector('p')!.textContent = result?.warnings.join('\n') ?? '';
+  $<HTMLDialogElement>('generated-dialog').showModal();
+  const target = generatedPreview.view.state.doc.line(Math.max(1, Math.min(line, generatedPreview.view.state.doc.lines)));
+  generatedPreview.view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true }); generatedPreview.view.focus();
+}
 function renderDiagnostics() {
   const diagnostics = workspace.diagnostics, list = $('diagnostics'); list.replaceChildren();
   $('diagnostics-count').textContent = `${diagnostics.filter(d => d.severity === 'error').length} 个错误 · ${diagnostics.filter(d => d.severity === 'warning').length} 个警告`;
   if (!diagnostics.length) { const p = document.createElement('p'); p.className = 'diagnostics-empty'; p.textContent = workspace.compiledRevision ? '✓ 编译成功 · Haiyue WebGPU' : '点击运行，查看你的 Shader。'; list.append(p); }
-  for (const diagnostic of diagnostics) list.append(button(`${PASS_LABELS[diagnostic.pass]}:${diagnostic.line}:${diagnostic.column}  ${diagnostic.message}`, () => { selectPass(diagnostic.pass); editor.focusLine(diagnostic.line); }, `diagnostic ${diagnostic.severity}`));
+  for (const diagnostic of diagnostics) list.append(button(`${PASS_LABELS[diagnostic.pass]}:${diagnostic.line}:${diagnostic.column} · ${(diagnostic.language ?? 'wgsl').toUpperCase()}  ${diagnostic.message}`, () => { if (languageOf(workspace.document.state, diagnostic.pass) === 'glsl' && diagnostic.language !== 'glsl') showGenerated(diagnostic.pass, diagnostic.line); else { selectPass(diagnostic.pass); editor.focusLine(diagnostic.line); } }, `diagnostic ${diagnostic.severity}`));
   editor.diagnostics(diagnostics);
   $('compile-state').textContent = diagnostics.some(d => d.severity === 'error') ? '编译失败 · 保留上次预览' : workspace.compiledRevision === workspace.document.revision ? '● 已编译' : '● 代码已修改';
 }
-function selectPass(pass: CodeId) { currentPass = pass; editor.show(pass, codeOf(workspace.document.state, pass)); controlSignature = ''; sync(); renderDiagnostics(); }
+function selectPass(pass: CodeId) { currentPass = pass; editor.show(pass, sourceOf(workspace.document.state, pass), languageOf(workspace.document.state, pass)); controlSignature = ''; sync(); renderDiagnostics(); }
 function sync() {
-  const p = workspace.document.state, source = codeOf(p, currentPass);
+  const p = workspace.document.state, language = languageOf(p, currentPass), source = sourceOf(p, currentPass);
+  $<GESelect>('code-language').value = language;
+  $('view-wgsl').hidden = language !== 'glsl';
   if (document.activeElement !== $('project-name')) $<HTMLInputElement>('project-name').value = p.name;
-  if (editor.view.state.doc.toString() !== source) editor.show(currentPass, source);
+  if (editor.view.state.doc.toString() !== source || editor.language !== language) editor.show(currentPass, source, language);
   $<GESelect>('preview-scale').value = String(p.preview.scale);
   $<GESelect>('mesh-select').value = p.preview.mesh;
   $('mode-canvas').setAttribute('aria-pressed', String(p.preview.mode === 'canvas'));
@@ -127,7 +145,7 @@ function sync() {
     select.value = String(value);
   }
   const visibleTabs = codeTabs(p);
-  const signature = JSON.stringify([currentPass, visibleTabs, Boolean(workspace.runtime), p.sound.enabled, p.sound.channels, p.passes.map(item => [item.id, item.enabled, item.channels]), p.assets.map(a => [a.id, a.name])]);
+  const signature = JSON.stringify([currentPass, language, visibleTabs, Boolean(workspace.runtime), p.sound.enabled, p.sound.channels, p.passes.map(item => [item.id, item.enabled, item.channels]), p.assets.map(a => [a.id, a.name])]);
   if (signature !== controlSignature) {
     controlSignature = signature; const tabs = $('pass-tabs'); tabs.replaceChildren();
     for (const id of visibleTabs) {
@@ -140,7 +158,7 @@ function sync() {
     $('pass-enable-label').hidden = currentPass === 'image' || currentPass === 'common';
     $<GECheckbox>('pass-enabled').checked = currentPass === 'common' || passOf(p as ShaderProject, currentPass).enabled;
     $('common-help').hidden = currentPass !== 'common';
-    $('code-entry-label').textContent = currentPass === 'common' ? '共享函数 · 常量 · 结构体' : currentPass === 'sound' ? 'mainSound → vec2f · 44100 Hz' : 'mainImage → vec4f';
+    $('code-entry-label').textContent = currentPass === 'common' ? '共享函数 · 常量 · 结构体' : currentPass === 'sound' ? (language === 'glsl' ? 'mainSound → vec2 · GLSL' : 'mainSound → vec2f · WGSL') : (language === 'glsl' ? 'mainImage(out vec4, in vec2) · GLSL' : 'mainImage → vec4f · WGSL');
     $<HTMLButtonElement>('glsl-button').disabled = false;
     $('glsl-button').title = currentPass === 'common' ? 'GLSL → WGSL 公共定义（无需入口）' : 'GLSL → WGSL';
     $('channel-pass-label').textContent = PASS_LABELS[currentPass].toUpperCase();
@@ -323,7 +341,7 @@ async function start() {
     opened = true; openedRevision = workspace.document.revision; ++openSequence;
     const stored = saved.find(item => item.project.id === workspace.document.state.id);
     if (stored && JSON.stringify(stored.project) === JSON.stringify(workspace.document.state)) workspace.document.markSaved();
-    currentPass = 'image'; editor.reset(); editor.show(currentPass, passOf(workspace.document.state as ShaderProject, currentPass).code);
+    currentPass = 'image'; editor.reset(); editor.show(currentPass, sourceOf(workspace.document.state, currentPass), languageOf(workspace.document.state, currentPass));
     controlSignature = ''; revision = 0; setRoute('editor'); changed();
     openPromise = (async () => { await run(compile); })();
   };
@@ -383,6 +401,12 @@ async function start() {
     event.preventDefault(); $<GEDropdown>('add-pass-menu').show();
     $<GEDropdown>('add-pass-menu').shadowRoot?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
   });
+  $('code-language').addEventListener('value-change', () => { void run(() => {
+    try { workspace.setLanguage(currentPass, $<GESelect>('code-language').value as ShaderLanguage); }
+    finally { sync(); renderDiagnostics(); }
+  }); });
+  $('detect-language').addEventListener('checked-change', () => { editor.autoDetect = $<GECheckbox>('detect-language').checked; });
+  bind('view-wgsl', () => showGenerated(currentPass));
   bind('compile', compile);
   $('auto-run').addEventListener('checked-change', () => { if ($<GECheckbox>('auto-run').checked) void run(compile); else if (autoTimer) clearTimeout(autoTimer); });
   const mode = (mode: PreviewMode) => { workspace.preview(mode, $<GESelect>('mesh-select').value as PreviewMesh); };
@@ -431,11 +455,11 @@ async function start() {
     $<HTMLDialogElement>('glsl-dialog').showModal(); glslEditor.focus();
   });
   bind('translate-glsl', translateSource);
-  bind('apply-glsl', async () => { if (!translation) return; workspace.applyGlsl(currentPass, glslEditor.value); editor.show(currentPass, codeOf(workspace.document.state, currentPass)); $<HTMLDialogElement>('glsl-dialog').close(); await compile(); });
+  bind('apply-glsl', async () => { if (!translation) return; workspace.applyGlsl(currentPass, glslEditor.value); editor.show(currentPass, sourceOf(workspace.document.state, currentPass), languageOf(workspace.document.state, currentPass)); $<HTMLDialogElement>('glsl-dialog').close(); await compile(); });
   bind('gpu-retry', () => location.reload());
   window.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void run(save); } });
   window.addEventListener('beforeunload', event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; } });
-  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); tutorial.dispose(); wgslPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
+  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); tutorial.dispose(); wgslPreview.destroy(); generatedPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
   window.haiyueEditorHost?.onSaveAndClose(async () => { try { await save(); return !workspace.document.dirty; } catch { return false; } });
   try { saved = await store.list(); } catch (error) { notice(`无法读取 Gallery：${String(error)}。原有数据保留，可导入工程继续创作。`, true); }
   const initialRoute = location.hash.slice(1); renderGallery(); $('app').setAttribute('aria-busy', 'false');

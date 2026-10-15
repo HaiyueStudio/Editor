@@ -1,11 +1,13 @@
 import { basicSetup } from 'codemirror';
-import { EditorState, Prec } from '@codemirror/state';
+import { invertedEffects } from '@codemirror/commands';
+import { EditorState, Prec, Compartment, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, type StreamParser } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { setDiagnostics } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
-import type { CodeId, ShaderDiagnostic } from './model.js';
+import type { CodeId, ShaderDiagnostic, ShaderLanguage } from './model.js';
+import { detectShaderLanguage } from './sourceLanguage.js';
 import { glslParser } from './glslLanguage.js';
 
 export const BUILTINS = ['iResolution', 'iTime', 'iTimeDelta', 'iFrame', 'iFrameRate', 'iMouse', 'iDate', 'iSampleRate', 'iChannelResolution', 'iChannelTime', 'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3', 'iSampler', 'channel0', 'channel1', 'channel2', 'channel3'];
@@ -35,36 +37,56 @@ const colors = HighlightStyle.define([
   { tag: [tags.meta, tags.macroName], color: '#e6a0b5' }, { tag: tags.string, color: '#b5d68b' },
 ]);
 const editorTheme = EditorView.theme({ '&': { height: '100%', backgroundColor: '#13161d', color: '#d4dbe5', fontSize: '13px' }, '.cm-scroller': { fontFamily: '"Cascadia Code", "SFMono-Regular", Consolas, monospace', lineHeight: '1.85' }, '.cm-gutters': { backgroundColor: '#13161d', color: '#505d70', border: 'none' }, '.cm-activeLineGutter': { backgroundColor: '#202630', color: '#b5ef6b' }, '.cm-activeLine': { backgroundColor: '#1b202a80' }, '.cm-cursor': { borderLeftColor: '#b5ef6b' }, '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#354251' }, '.cm-content': { padding: '16px 0' }, '.cm-line': { padding: '0 20px' }, '.cm-tooltip': { backgroundColor: '#202630', color: '#d4dbe5', borderColor: '#3a4552' } }, { dark: true });
+const languageEffect = StateEffect.define<ShaderLanguage>();
+const languageState = StateField.define<ShaderLanguage>({ create: () => 'wgsl', update: (value, tr) => {
+  for (const effect of tr.effects) if (effect.is(languageEffect)) value = effect.value;
+  return value;
+} });
+const languageExtensions = (language: ShaderLanguage) => [
+  language === 'glsl' ? StreamLanguage.define(glslParser) : StreamLanguage.define(wgslParser),
+  EditorView.contentAttributes.of({ 'aria-label': language.toUpperCase() + ' 代码编辑器', spellcheck: 'false' }),
+];
 export class CodeEditor {
   readonly view: EditorView;
   private pass: CodeId = 'image';
-  private states = new Map<CodeId, EditorState>();
+  private states = new Map<string, EditorState>();
+  private readonly languageConfig = new Compartment();
+  autoDetect = true;
+  get language() { return this.view.state.field(languageState); }
   private replacing = false;
-  constructor(parent: HTMLElement, onChange: (pass: CodeId, code: string) => void, compile: () => void) {
+  constructor(parent: HTMLElement, onChange: (pass: CodeId, code: string, language: ShaderLanguage) => void, compile: () => void) {
     // Split panes use slots. Mount styles in the actual DOM root, not the split's
     // composed ShadowRoot, whose styles cannot reach slotted editor descendants.
     this.view = new EditorView({ parent, root: parent.getRootNode() as Document | ShadowRoot, state: this.createState('', onChange, compile) });
     this.onChange = onChange; this.compile = compile;
   }
-  private readonly onChange: (pass: CodeId, code: string) => void;
+  private readonly onChange: (pass: CodeId, code: string, language: ShaderLanguage) => void;
   private readonly compile: () => void;
-  private createState(code: string, onChange: (pass: CodeId, code: string) => void, compile: () => void) {
-    return EditorState.create({ doc: code, extensions: [basicSetup, StreamLanguage.define(wgslParser), syntaxHighlighting(colors),
-      autocompletion({ override: [context => { const word = context.matchBefore(/\w*/); return !word || word.from === word.to && !context.explicit ? null : { from: word.from, options: [...BUILTINS, 'vec2f', 'vec3f', 'vec4f', 'mainImage', 'mainSound', 'sin', 'cos', 'tanh', 'mix', 'smoothstep', 'length', 'normalize', 'dot', 'textureSampleLevel'].map(label => ({ label, type: label.startsWith('i') ? 'variable' : 'function' })) }; }] }),
+  private createState(code: string, onChange: (pass: CodeId, code: string, language: ShaderLanguage) => void, compile: () => void, language: ShaderLanguage = 'wgsl') {
+    return EditorState.create({ doc: code, extensions: [basicSetup, languageState.init(() => language), this.languageConfig.of(languageExtensions(language)), syntaxHighlighting(colors),
+      invertedEffects.of(tr => tr.effects.some(effect => effect.is(languageEffect)) ? [
+        languageEffect.of(tr.startState.field(languageState)),
+        this.languageConfig.reconfigure(languageExtensions(tr.startState.field(languageState))),
+      ] : []),
+      EditorState.transactionExtender.of(tr => {
+        if (!this.autoDetect || !tr.docChanged || !tr.isUserEvent('input.paste')) return null;
+        const detected = detectShaderLanguage(tr.newDoc.toString());
+        return detected && detected !== tr.startState.field(languageState) ? { effects: [languageEffect.of(detected), this.languageConfig.reconfigure(languageExtensions(detected))] } : null;
+      }),
+      autocompletion({ override: [context => { const word = context.matchBefore(/\w*/); return !word || word.from === word.to && !context.explicit ? null : { from: word.from, options: [...BUILTINS, ...(context.state.field(languageState) === 'glsl' ? ['vec2', 'vec3', 'vec4', 'float', 'int', 'texture', 'void'] : ['vec2f', 'vec3f', 'vec4f', 'textureSampleLevel']), 'mainImage', 'mainSound', 'sin', 'cos', 'tanh', 'mix', 'smoothstep', 'length', 'normalize', 'dot'].map(label => ({ label, type: label.startsWith('i') ? 'variable' : 'function' })) }; }] }),
       Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => { compile(); return true; } }])),
-      EditorView.contentAttributes.of({ 'aria-label': 'WGSL 代码编辑器', spellcheck: 'false' }),
-      EditorView.updateListener.of(update => { if (update.docChanged && !this.replacing) onChange(this.pass, update.state.doc.toString()); }),
+      EditorView.updateListener.of(update => { if (update.docChanged && !this.replacing) onChange(this.pass, update.state.doc.toString(), update.state.field(languageState)); }),
       editorTheme] });
   }
-  show(pass: CodeId, code: string) {
-    this.states.set(this.pass, this.view.state); this.pass = pass;
-    let state = this.states.get(pass);
-    if (!state || state.doc.toString() !== code) state = this.createState(code, this.onChange, this.compile);
+  show(pass: CodeId, code: string, language: ShaderLanguage = 'wgsl') {
+    this.states.set(this.pass + ':' + this.language, this.view.state); this.pass = pass;
+    let state = this.states.get(pass + ':' + language);
+    if (!state || state.doc.toString() !== code) state = this.createState(code, this.onChange, this.compile, language);
     this.replacing = true; this.view.setState(state); this.replacing = false;
   }
   reset() { this.states.clear(); this.replacing = true; this.view.setState(this.createState('', this.onChange, this.compile)); this.replacing = false; }
   diagnostics(diagnostics: ShaderDiagnostic[]) {
-    this.view.dispatch(setDiagnostics(this.view.state, diagnostics.filter(d => d.pass === this.pass).map(d => {
+    this.view.dispatch(setDiagnostics(this.view.state, diagnostics.filter(d => d.pass === this.pass && (d.language ?? 'wgsl') === this.language).map(d => {
       const line = this.view.state.doc.line(Math.max(1, Math.min(this.view.state.doc.lines, d.line)));
       const from = Math.min(line.to, line.from + d.column - 1);
       return { from, to: Math.min(line.to, from + 1), severity: d.severity, message: d.message };

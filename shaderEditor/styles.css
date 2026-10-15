@@ -201,3 +201,14 @@ ge-select, ge-checkbox { color-scheme:dark; }
 #add-pass { width:30px; height:30px; padding:0; border:1px solid var(--line); border-radius:5px; color:var(--lime); font-size:22px; }
 #add-pass:hover { background:#283321; }
 #pass-enable-label { flex-shrink:0; }
+.code-language-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#code-language { width:86px; font-size:12px; }
+.code-column > .panel-title { flex-wrap:wrap; height:auto; min-height:54px; gap:10px; }
+.language-options { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; padding:8px 16px; border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; flex-shrink:0; }
+.language-options ge-checkbox { font-size:12px; }
+#generated-dialog { width:min(980px,92vw); }
+#generated-message { white-space:pre-wrap; max-height:110px; overflow:auto; line-height:1.6; }
+#generated-code { height:min(60vh,650px); min-height:200px; overflow:hidden; border:1px solid var(--line); border-radius:6px; }
+.generated-notes { margin:0 0 14px; color:var(--muted); font-size:12px; line-height:1.7; }
+.generated-notes summary { cursor:pointer; }
+.generated-notes p { max-height:140px; overflow:auto; white-space:pre-wrap; }

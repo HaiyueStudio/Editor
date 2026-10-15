@@ -1,9 +1,10 @@
 import { EditorPlatform, createEditorAutomationAPI } from '@haiyue/editor-platform';
 import type { EditorDocumentAdapter, EditorJsonValue, EditorOperationSchema } from '@haiyue/editor-plugin-sdk';
-import { createProject, codeOf, codeTabs, revealCodeTab, passOf, parseProject, validateProject, LIMITS, PASS_IDS, CUBE_FACES, type CubeFace, type CodeId, type RenderPassId, type PassId, type Channel, type PreviewMode, type PreviewMesh, type ShaderProject, type ShaderDiagnostic } from './model.js';
+import { createProject, codeOf, codeTabs, revealCodeTab, passOf, parseProject, validateProject, LIMITS, PASS_IDS, CUBE_FACES, type CubeFace, type CodeId, type ShaderLanguage, type RenderPassId, type PassId, type Channel, type PreviewMode, type PreviewMesh, type ShaderProject, type ShaderDiagnostic } from './model.js';
 import { BUILTIN_TEXTURES } from './builtinTextures.js';
 import { uploadVideo, uploadImage, uploadCubemap, type FaceUpload } from './textureUpload.js';
 import { projectTranslationOptions, refreshProjectGlsl } from './glslProject.js';
+import { languageOf, sourceOf, defaultGlsl } from './sourceLanguage.js';
 import { translateGlsl } from './glsl.js';
 import { CompileError, type ShaderRuntime, type PreparedShader } from './runtime.js';
 
@@ -22,7 +23,7 @@ export class ShaderDocument implements EditorDocumentAdapter<ShaderProject> {
   setCode(pass: CodeId, code: string) {
     if (typeof code !== 'string' || code.length > LIMITS.code) throw new Error('单个 Pass 代码不能超过 100 KB。');
     if (codeOf(this.project, pass) === code) return;
-    this.project = { ...this.project }; revealCodeTab(this.project, pass);
+    this.project = { ...this.project, editorLanguages: { ...this.project.editorLanguages, [pass]: 'wgsl' } }; revealCodeTab(this.project, pass);
     if (pass === 'common' || pass === 'sound') {
       this.project = { ...this.project, ...(pass === 'common' ? { common: code } : { sound: { ...this.project.sound, code } }), updatedAt: new Date().toISOString() };
       if (pass === 'common') delete this.project.commonGlsl; else delete this.project.sound.glsl;
@@ -30,6 +31,21 @@ export class ShaderDocument implements EditorDocumentAdapter<ShaderProject> {
     }
     this.project = { ...this.project, updatedAt: new Date().toISOString(), passes: this.project.passes.map(p => p.id === pass ? (({ glsl, ...native }) => ({ ...native, code }))(p) : p) };
     this.revision++; this.emit();
+  }
+  setSource(pass: CodeId, code: string, language: ShaderLanguage) {
+    if (typeof code !== 'string' || code.length > LIMITS.code) throw new Error('单个 Pass 代码不能超过 100 KB。');
+    if (!['glsl', 'wgsl'].includes(language)) throw new Error('不支持的代码语言。');
+    if (languageOf(this.project, pass) === language && sourceOf(this.project, pass) === code) return;
+    // Keystrokes only replace source metadata; large image/video assets stay shared.
+    const next = { ...this.project, editorLanguages: { ...this.project.editorLanguages, [pass]: language }, updatedAt: new Date().toISOString() };
+    revealCodeTab(next, pass);
+    if (pass === 'common') { if (language === 'glsl') next.commonGlsl = code; else next.common = code; }
+    else {
+      const target = { ...passOf(next, pass), [language === 'glsl' ? 'glsl' : 'code']: code };
+      if (target.id === 'sound') next.sound = target;
+      else next.passes = next.passes.map(item => item.id === pass ? target : item);
+    }
+    this.project = next; this.revision++; this.emit();
   }
   markSaved(revision = this.revision) { this.savedRevision = Math.min(revision, this.revision); this.emit(); }
   subscribe(listener: () => void) { this.listeners.add(listener); return { dispose: () => { this.listeners.delete(listener); } }; }
@@ -47,11 +63,21 @@ export class ShaderWorkspace {
   onCompiled: (() => void) | undefined;
   onOpen: (() => void) | undefined;
   private lastRevision = 0;
+  setLanguage(pass: CodeId, language: ShaderLanguage) {
+    if (language === languageOf(this.document.state, pass)) return;
+    if (language === 'glsl') {
+      const project = this.document.state;
+      const saved = pass === 'common' ? project.commonGlsl : passOf(project as ShaderProject, pass).glsl;
+      this.document.setSource(pass, saved ?? defaultGlsl(pass), 'glsl');
+    } else {
+      this.document.setSource(pass, codeOf(this.document.state, pass), 'wgsl');
+    }
+  }
   applyGlsl(pass: CodeId, source: string) {
     const next = this.document.serialize();
     const result = translateGlsl(source, projectTranslationOptions(next, pass));
     if (result.code === null) throw new Error(result.diagnostics.map(d => `${d.source === 'common' ? 'Common ' : ''}${d.line}:${d.column} ${d.message}`).join('\n'));
-    revealCodeTab(next, pass);
+    revealCodeTab(next, pass); next.editorLanguages = { ...next.editorLanguages, [pass]: 'glsl' };
     if (pass === 'common') { next.commonGlsl = source; next.common = result.code; }
     else { const target = passOf(next, pass); target.glsl = source; target.code = result.code; }
     const diagnostics = refreshProjectGlsl(next);
@@ -122,7 +148,8 @@ export class ShaderWorkspace {
       this.platform.operations.register({ ownerId: 'shader.core', descriptor: { id: `shader.${id}`, version: 1, title: id, target: 'document', documentKinds: ['haiyue.shader'], access, input, output: { type: 'json' } }, prepare, commit, rollback: value => rollback?.(value) });
     };
     register('query', empty, 'read', () => null, () => json({ project: { id: this.document.state.id, name: this.document.state.name }, revision: this.document.revision, compiledRevision: this.compiledRevision,
-      tabs: codeTabs(this.document.state), common: this.document.state.common, commonGlsl: this.document.state.commonGlsl ?? null, sound: this.document.state.sound, passes: this.document.state.passes, assets: this.document.state.assets.map(asset => ({ id: asset.id, name: asset.name, kind: asset.kind ?? 'image' })), preview: this.document.state.preview, diagnostics: this.diagnostics, runtime: this.runtime?.status() ?? null }));
+      tabs: codeTabs(this.document.state), editorLanguages: Object.fromEntries(['common', 'sound', ...PASS_IDS].map(id => [id, languageOf(this.document.state, id as CodeId)])), common: this.document.state.common, commonGlsl: this.document.state.commonGlsl ?? null, sound: this.document.state.sound, passes: this.document.state.passes, assets: this.document.state.assets.map(asset => ({ id: asset.id, name: asset.name, kind: asset.kind ?? 'image' })), preview: this.document.state.preview, diagnostics: this.diagnostics, runtime: this.runtime?.status() ?? null }));
+    register('source.set', { type: 'object', properties: { pass: { type: 'string', enum: ['common', 'sound', ...PASS_IDS] }, code, language: { type: 'string', enum: ['glsl', 'wgsl'] } }, required: ['pass', 'code', 'language'] }, 'write', p => p, p => { this.document.setSource(p.pass as CodeId, p.code as string, p.language as ShaderLanguage); return { revision: this.document.revision }; });
     register('code.set', { type: 'object', properties: { pass: { type: 'string', enum: ['common', 'sound', ...PASS_IDS] }, code }, required: ['pass', 'code'] }, 'write', p => p, p => { this.document.setCode(p.pass as CodeId, p.code as string); return { revision: this.document.revision }; });
     register('pass.add', { type: 'object', properties: { pass: { type: 'string', enum: ['common', 'sound', ...PASS_IDS.filter(id => id !== 'image')] } }, required: ['pass'] }, 'write', p => p, p => { this.addPass(p.pass as CodeId); return { revision: this.document.revision }; });
     register('pass.enable', { type: 'object', properties: { pass, enabled: { type: 'boolean' } }, required: ['pass', 'enabled'] }, 'write', p => p, p => { this.setEnabled(p.pass as RenderPassId, p.enabled as boolean); return { revision: this.document.revision }; });
@@ -138,7 +165,7 @@ export class ShaderWorkspace {
     register('project.open', { type: 'object', properties: { resourceId: short }, required: ['resourceId'] }, 'write', p => parseProject(new TextDecoder('utf-8', { fatal: true }).decode(this.platform.resources.read(p.resourceId as string))), p => { this.open(p); return { projectId: p.id, revision: this.document.revision }; });
     const glslPass = { type: 'string', enum: ['common', 'sound', ...PASS_IDS] } as const;
     register('glsl.translate', { type: 'object', properties: { code, pass: glslPass }, required: ['code'] }, 'read', p => translateGlsl(p.code as string,
-      p.pass ? projectTranslationOptions(this.document.state as ShaderProject, p.pass as CodeId) : this.document.state.commonGlsl === undefined ? {} : { common: this.document.state.commonGlsl }), result => json(result));
+      p.pass ? projectTranslationOptions(this.document.state as ShaderProject, p.pass as CodeId) : this.document.state.commonGlsl === undefined || languageOf(this.document.state, 'common') !== 'glsl' ? {} : { common: this.document.state.commonGlsl }), result => json(result));
     register('glsl.apply', { type: 'object', properties: { code, pass: glslPass }, required: ['code', 'pass'] }, 'write', p => p,
       p => json(this.applyGlsl(p.pass as CodeId, p.code as string)));
     register('texture.upload', { type: 'object', properties: { resourceId: short, name: short, mimeType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp'] } }, required: ['resourceId', 'name', 'mimeType'] }, 'write', async p => {

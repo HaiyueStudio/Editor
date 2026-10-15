@@ -4,6 +4,7 @@ export const PASS_IDS = ['buffer-a', 'buffer-b', 'buffer-c', 'buffer-d', 'image'
 export type PassId = typeof PASS_IDS[number];
 export type RenderPassId = PassId | 'sound';
 export type CodeId = RenderPassId | 'common';
+export type ShaderLanguage = 'glsl' | 'wgsl';
 export interface SoundPass { glsl?: string; id: 'sound'; enabled: boolean; code: string; channels: Channel[]; duration: number; volume: number }
 export type RenderPass = ShaderPass | SoundPass;
 export type BufferId = Exclude<PassId, 'image'>;
@@ -21,10 +22,10 @@ export type TextureAsset = ImageAsset | CubeAsset | VideoAsset;
 export const channelTypes = (channels: readonly Channel[]) => channels.map(c => c.kind === 'none' ? null : c.kind === 'cubemap' ? 'cube' as const : '2d' as const);
 export interface ShaderProject {
   format: 'haiyue-shader'; version: 1; id: string; name: string; description: string;
-  updatedAt: string; tabs?: CodeId[]; common: string; commonGlsl?: string; sound: SoundPass; passes: ShaderPass[]; assets: TextureAsset[];
+  updatedAt: string; editorLanguages?: Partial<Record<CodeId, ShaderLanguage>>; tabs?: CodeId[]; common: string; commonGlsl?: string; sound: SoundPass; passes: ShaderPass[]; assets: TextureAsset[];
   preview: { mode: PreviewMode; mesh: PreviewMesh; scale: number };
 }
-export interface ShaderDiagnostic { pass: CodeId; severity: 'error' | 'warning' | 'info'; message: string; line: number; column: number }
+export interface ShaderDiagnostic { language?: ShaderLanguage; pass: CodeId; severity: 'error' | 'warning' | 'info'; message: string; line: number; column: number }
 export const LIMITS = { code: 100_000, imageBytes: 8 * 1024 * 1024, videoBytes: 24 * 1024 * 1024, projectBytes: 48 * 1024 * 1024, assets: 16, dimension: 4096 } as const;
 export const PASS_LABELS: Record<CodeId, string> = { sound: 'Sound', common: 'Common', image: 'Image', 'buffer-a': 'Buffer A', 'buffer-b': 'Buffer B', 'buffer-c': 'Buffer C', 'buffer-d': 'Buffer D' };
 export const DEFAULT_CODE = `// fragCoord: 像素坐标，原点在左下角
@@ -84,6 +85,7 @@ export function validateProject(value: unknown): ShaderProject {
     }
   }
   assert(imageCharacters < LIMITS.projectBytes - 1_000_000, '工程图片总量超过限制。');
+  assert(p.editorLanguages === undefined || (p.editorLanguages !== null && typeof p.editorLanguages === 'object' && !Array.isArray(p.editorLanguages) && Object.entries(p.editorLanguages).every(([id, language]) => ['common', 'sound', ...PASS_IDS].includes(id) && ['glsl', 'wgsl'].includes(language))), '代码语言设置无效。');
   assert(p.tabs === undefined || (Array.isArray(p.tabs) && p.tabs.length <= 7 && p.tabs.includes('image') && new Set(p.tabs).size === p.tabs.length && p.tabs.every(id => ['common', 'sound', ...PASS_IDS].includes(id))), '代码页签无效或重复。');
   assert(p.common === undefined || (typeof p.common === 'string' && p.common.length <= LIMITS.code), 'Common 代码不能超过 100 KB。');
   assert(p.commonGlsl === undefined || (typeof p.commonGlsl === 'string' && p.commonGlsl.length <= LIMITS.code), 'Common GLSL 不能超过 100 KB。');
@@ -108,6 +110,10 @@ export function validateProject(value: unknown): ShaderProject {
       }
       if (c.kind === 'buffer') assert(PASS_IDS.includes(c.pass) && c.pass !== ('image' as string) && p.passes.some(b => b.id === c.pass && b.enabled), '通道引用的 Buffer 必须启用。');
     }
+  }
+  for (const [id, language] of Object.entries(p.editorLanguages ?? {})) {
+    const source = id === 'common' ? p.commonGlsl : id === 'sound' ? sound.glsl : p.passes.find(pass => pass.id === id)?.glsl;
+    assert(language !== 'glsl' || typeof source === 'string', 'GLSL 语言设置需要对应源码。');
   }
   assert(p.preview && ['canvas', 'scene'].includes(p.preview.mode) && ['sphere', 'box', 'torus'].includes(p.preview.mesh) && [0.25, 0.5, 1].includes(p.preview.scale), '预览设置无效。');
   const clean = structuredClone(p);

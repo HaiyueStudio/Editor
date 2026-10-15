@@ -1,4 +1,5 @@
 import { createProject, passOf, type ShaderProject } from './model.js';
+import { puzzleExample } from './puzzleExample.js';
 
 export interface Example { id: string; label: string; category: string; accent: string; project: ShaderProject }
 const make = (id: string, name: string, description: string, code: string): ShaderProject => {
@@ -109,5 +110,6 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
     { id: 'tunnel', label: '03', category: 'COORDINATES', accent: 'neon', project: tunnel },
     { id: 'feedback', label: '04', category: 'MULTIPASS', accent: 'feedback', project: feedback },
     { id: 'keyboard', label: '05', category: 'KEYBOARD · MSDF', accent: 'keyboard', project: keyboard },
+    { id: 'puzzle', label: '06', category: 'GAME · MULTIPASS', accent: 'puzzle', project: puzzleExample() },
   ];
 }

@@ -1,6 +1,6 @@
 # Haiyue Shader Editor
 
-独立的 Shadertoy 风格编辑器产品。首页 Gallery 和 WGSL 编辑页共享一个工程；渲染使用
+独立的 Shadertoy 风格编辑器产品。首页 Gallery 和双语言代码编辑页共享一个工程；渲染使用
 `@haiyue/engine` 的 WebGPU 设备、画布、帧循环、Scene、BasicMaterial 和 OrbitControl。
 只使用公开包导出，不依赖相邻仓库源码。Web/PWA 与 Electron 通过 Editor App Kit 使用同一构建产物。
 
@@ -29,12 +29,18 @@ npm run release:artifact:check
 
 ## 创作与保存
 
-- Gallery 包含五个可编辑示例：Aurora ribbons、Liquid chrome、Neon passage、Afterglow、Key light。
+- Gallery 包含六个可编辑示例：Aurora ribbons、Liquid chrome、Neon passage、Afterglow、Key light、Sliding city。
   缩略图在进入 Gallery 时通过真实 Haiyue GPU 渲染生成，直接加载编辑页后返回也会生成。
   生成中或失败时显示状态占位；单个示例失败不会阻塞其他预览，重试只补齐缺失的截图。
   页面切换复用正在进行的任务和已成功的截图。打开示例会创建独立副本。
-- CodeMirror 提供 WGSL 高亮、行号、撤销/重做、查找、括号匹配、补全与行内诊断。
-  Ctrl/⌘+Enter 编译所有已启用 Pass；可以选择自动编译。
+- 主代码编辑器可按页签选择 GLSL / WGSL，两种语言都有高亮、行号、撤销/重做、查找、括号匹配、补全与行内诊断。
+  默认在粘贴时识别语言；注释、短片段或混合语法无法明确判断时保持当前语言，也可关闭自动识别。
+  Ctrl/⌘+Enter 编译所有已启用 Pass；GLSL 在运行时自动转换为 WGSL，保留原始 GLSL。转换错误定位到原文。
+  「查看 WGSL」提供带高亮的只读转换结果；GPU 报错可跳转到该预览对应行。可以选择自动编译。
+  每个页签分别保存语言和两种源码，切换会恢复对应草稿；首次选择 GLSL 使用入门模板，Common 为空。
+  选择 WGSL 恢复该页签已有 WGSL；需要继续修改转换结果时，可从「查看 WGSL」复制后粘贴到编辑器。
+  工程保存/导出保留 `editorLanguages`；旧工程有 GLSL 原文时优先显示 GLSL。
+  API `shader.source.set({pass, code, language})` 写入当前源码，`shader.query` 返回各页签语言。
 - Common 标签页编辑共享 WGSL 函数、常量、结构体和私有变量；编译时加入所有启用的 Buffer / Image。入口 `mainImage` 留在各个 Pass。Common 没有自己的纹理通道，其函数读取调用 Pass 的内置变量和绑定；私有变量按像素/Pass 独立，跨 Pass 通信仍使用 Buffer。错误会定位到 Common 或原 Pass 行号。Afterglow 示例演示共用坐标函数。
 - 工程增加 `common` 字符串（最多 100,000 字符）；旧 version 1 工程缺省为空，保存/导出/重新打开均保留公共代码。
 - 每个 Pass 定义 `fn mainImage(fragCoord: vec2f) -> vec4f`。坐标以像素计，原点在左下角。
@@ -510,3 +516,18 @@ Sound 的 `iResolution` 为合成块大小 1024×64；鼠标、日期和 iFrame 
 GLSL 导入支持右结合的连续赋值（如 `a = b = value`、`q.x = q.x = 26-q.x`）以及赋值表达式。内层赋值返回实际写入的值，右侧调用与动态索引仅求值一次；可用于声明初值、函数参数、返回值、条件与循环。三元分支和短路逻辑中的赋值保持惰性求值。
 
 GLSL 的 `texture(sampler, uv, bias)`、`texture2D(..., bias)`、`textureCube(..., bias)` 支持可选的第三个 float 参数，包括 `-100.0`。按 [GLSL ES 规范](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html)，bias 是隐式 mip 层级的偏移。当前 Shader Editor 为图片、Buffer、视频与 Cubemap 分配单个 mip 层，因此生成的辅助函数在完整求值坐标和 bias 后，以 `textureSampleLevel(..., 0.0)` 采样；转换提示会注明这一限制。它不等同于 `textureLod(..., bias)`，也不提供多级 mipmap 的偏移过滤效果。
+
+## Sliding city 拼图示例
+
+Gallery 中打开 Sliding city，先点击预览画布使其获得键盘焦点。
+方向键或 WASD 按箭头方向移动相邻图片块（不是移动空位）；一次按下走一步，长按不连发。
+R 重新打乱并清零步数，按住空格临时显示完整原图。完成后边框变绿并显示 SOLVED。
+
+- Common：`PUZZLE_ROWS` 设置行数，`PUZZLE_COLUMNS` 设置列数，均支持 2–8；另有打乱步数、种子和编号显示开关。修改后点击运行。0 步为完成状态，适合观察移动规则。
+- Buffer A：图片输入，默认内置未来城市；替换它的 iChannel0 可使用自己的图片。
+- Buffer B：自身反馈保存每格的块编号、空位、移动次数和完成状态，使用 `textureLoad` 避免过滤污染数据。右下角的原图块始终作为空位。
+- Buffer C：键盘纹理转为带序号的指令，B 读取上一帧 C 并只消费一次，因而有一帧输入延迟。空格状态供 Image 显示参考图。
+- Image：组合 A/B/C 与 MSDF，绘制拼图、编号、参考图、操作提示、步数和完成提示。所有游戏逻辑在 Shader 内完成。
+
+打乱从已完成棋盘开始执行合法移动，保证可解，并避免非零打乱步数直接回到完成状态。
+运行、重置时间、改变画布渲染尺寸或重新打开工程会重建棋盘；工程保存的是代码与参数，不包含当前游戏进度。
