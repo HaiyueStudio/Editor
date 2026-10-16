@@ -15,6 +15,8 @@ import { createCubeUploader } from './cubeUpload.js';
 import { languageOf, sourceOf } from './sourceLanguage.js';
 import { projectTranslationOptions } from './glslProject.js';
 import { translateGlsl } from './glsl.js';
+import { translateWgsl } from './wgsl.js';
+import { exportShadertoy, exportShadertoyPass } from './shadertoyExport.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const disposeUI = initializeUI();
@@ -39,6 +41,32 @@ let editorReturnRoute = 'gallery';
 let bufferPreviews: BufferPreview[] = [];
 const editor = new CodeEditor($('code-editor'), (pass, code, language) => { void run(() => workspace.document.setSource(pass, code, language)); }, () => { void run(compile); });
 const generatedPreview = new WgslPreview($('generated-code'), '运行用 WGSL');
+const shadertoyPreview = new WgslPreview($('shadertoy-code'), 'Shadertoy GLSL 导出预览', 'glsl');
+let shadertoyBundle: Awaited<ReturnType<typeof exportShadertoy>> | undefined;
+function renderShadertoyExport() {
+  const result = shadertoyBundle?.passes.find(p => p.pass === $<GESelect>('shadertoy-pass').value);
+  shadertoyPreview.show(result?.code ?? '');
+  $('shadertoy-message').textContent = !result ? '正在转换…' : result.code === null ? result.diagnostics.map(d => `${d.source === 'common' ? 'Common ' : ''}${d.line}:${d.column} ${d.message}`).join('\n') : result.warnings.join('\n');
+  $('shadertoy-message').classList.toggle('error', result?.code === null);
+  $('shadertoy-channels').replaceChildren();
+  for (const channel of result?.channels ?? []) {
+    const row = document.createElement('li'); row.textContent = `iChannel${channel.index} → ${channel.source}`; $('shadertoy-channels').append(row);
+  }
+  $<HTMLButtonElement>('copy-shadertoy').disabled = !result?.code;
+  $<HTMLButtonElement>('download-shadertoy').disabled = !result?.code;
+  $<HTMLButtonElement>('download-shadertoy-all').disabled = !shadertoyBundle || shadertoyBundle.passes.some(p => p.code === null);
+  shadertoyPreview.view.requestMeasure();
+}
+async function showShadertoyExport() {
+  const snapshot = workspace.document.serialize(), pass = currentPass === 'common' ? 'image' : currentPass;
+  shadertoyBundle = undefined; renderShadertoyExport();
+  $<HTMLDialogElement>('shadertoy-dialog').showModal();
+  shadertoyBundle = await exportShadertoy(snapshot);
+  if (!shadertoyBundle.passes.some(p => p.pass === pass)) shadertoyBundle.passes.push(await exportShadertoyPass(snapshot, pass));
+  $<GESelect>('shadertoy-pass').options = shadertoyBundle.passes.map(p => ({ value: p.pass, label: p.label + (p.code === null ? ' · 转换失败' : '') }));
+  $<GESelect>('shadertoy-pass').value = pass;
+  renderShadertoyExport();
+}
 const wgslPreview = new WgslPreview($('glsl-result'));
 const glslEditor = new GlslEditor($('glsl-source'), () => {
   translation = null; $<HTMLButtonElement>('apply-glsl').disabled = true;
@@ -315,7 +343,7 @@ function generateExampleThumbnails(): Promise<void> {
       for (const sample of missing) {
         if (disposed) break;
         try {
-          const prepared = await runtime.prepare(sample.project); runtime.commit(prepared);
+          const prepared = await runtime.prepare(sample.previewProject ?? sample.project); runtime.commit(prepared);
           for (let frame = 0; frame < (sample.id === 'feedback' ? 80 : 1); frame++) runtime.step();
           thumbnails.set(sample.id, imageDataUrl(await runtime.readImage()));
         } catch { thumbnailFailures.add(sample.id); }
@@ -348,7 +376,7 @@ async function start() {
   workspace.document.subscribe(changed);
   Object.defineProperty(window, 'shaderEditor', { value: Object.freeze({
     open: (project: ShaderProject) => open(project), create: () => open(createProject()), compile,
-    translateGlsl, getProject: () => workspace.document.serialize(), getStatus: () => workspace.runtime?.status() ?? null,
+    translateGlsl, translateWgsl, exportShadertoy: () => exportShadertoy(workspace.document.serialize()), getProject: () => workspace.document.serialize(), getStatus: () => workspace.runtime?.status() ?? null,
   }), configurable: true });
   bind('dismiss-notice', () => { $('notice').hidden = true; });
   bind('new-project', () => open(createProject())); bind('empty-new', () => open(createProject()));
@@ -407,6 +435,19 @@ async function start() {
   }); });
   $('detect-language').addEventListener('checked-change', () => { editor.autoDetect = $<GECheckbox>('detect-language').checked; });
   bind('view-wgsl', () => showGenerated(currentPass));
+  bind('shadertoy-button', showShadertoyExport);
+  $('shadertoy-pass').addEventListener('value-change', renderShadertoyExport);
+  bind('copy-shadertoy', async () => {
+    const result = shadertoyBundle?.passes.find(p => p.pass === $<GESelect>('shadertoy-pass').value);
+    if (!result?.code) return;
+    try { await navigator.clipboard.writeText(result.code); notice(result.label + ' GLSL 已复制。'); }
+    catch { shadertoyPreview.view.dispatch({ selection: { anchor: 0, head: shadertoyPreview.view.state.doc.length } }); shadertoyPreview.view.focus(); notice('请按 Ctrl / ⌘ + C 复制已选中的代码。'); }
+  });
+  bind('download-shadertoy', () => {
+    const result = shadertoyBundle?.passes.find(p => p.pass === $<GESelect>('shadertoy-pass').value);
+    if (result?.code) download(result.code, `${basename()}-${result.pass}.glsl`, 'text/plain');
+  });
+  bind('download-shadertoy-all', () => { if (shadertoyBundle) download(JSON.stringify(shadertoyBundle, null, 2), `${basename()}-shadertoy.json`, 'application/json'); });
   bind('compile', compile);
   $('auto-run').addEventListener('checked-change', () => { if ($<GECheckbox>('auto-run').checked) void run(compile); else if (autoTimer) clearTimeout(autoTimer); });
   const mode = (mode: PreviewMode) => { workspace.preview(mode, $<GESelect>('mesh-select').value as PreviewMesh); };
@@ -459,7 +500,7 @@ async function start() {
   bind('gpu-retry', () => location.reload());
   window.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void run(save); } });
   window.addEventListener('beforeunload', event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; } });
-  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); tutorial.dispose(); wgslPreview.destroy(); generatedPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
+  window.addEventListener('pagehide', () => { disposed = true; if (autoTimer) clearTimeout(autoTimer); disposeUI(); tutorial.dispose(); wgslPreview.destroy(); generatedPreview.destroy(); shadertoyPreview.destroy(); glslEditor.destroy(); editor.destroy(); void workspace.dispose(); void store.close(); }, { once: true });
   window.haiyueEditorHost?.onSaveAndClose(async () => { try { await save(); return !workspace.document.dirty; } catch { return false; } });
   try { saved = await store.list(); } catch (error) { notice(`无法读取 Gallery：${String(error)}。原有数据保留，可导入工程继续创作。`, true); }
   const initialRoute = location.hash.slice(1); renderGallery(); $('app').setAttribute('aria-busy', 'false');

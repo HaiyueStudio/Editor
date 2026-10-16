@@ -1,7 +1,9 @@
 import { createProject, passOf, type ShaderProject } from './model.js';
 import { puzzleExample } from './puzzleExample.js';
+import { minesweeperExample } from './minesweeperExample.js';
+import { clockExample } from './clockExample.js';
 
-export interface Example { id: string; label: string; category: string; accent: string; project: ShaderProject }
+export interface Example { id: string; label: string; category: string; accent: string; project: ShaderProject; previewProject?: ShaderProject }
 const make = (id: string, name: string, description: string, code: string): ShaderProject => {
   const p = createProject(name); p.id = `example-${id}`; p.description = description; passOf(p, 'image').code = code; return p;
 };
@@ -111,5 +113,7 @@ fn mainImage(fragCoord: vec2f) -> vec4f {
     { id: 'feedback', label: '04', category: 'MULTIPASS', accent: 'feedback', project: feedback },
     { id: 'keyboard', label: '05', category: 'KEYBOARD · MSDF', accent: 'keyboard', project: keyboard },
     { id: 'puzzle', label: '06', category: 'GAME · MULTIPASS', accent: 'puzzle', project: puzzleExample() },
+    { id: 'minesweeper', label: '07', category: 'GAME · FEEDBACK', accent: 'minesweeper', project: minesweeperExample() },
+    { id: 'clock', label: '08', category: 'CLOCK · SDF', accent: 'clock', project: clockExample(), previewProject: clockExample(10*3600+8*60+30) },
   ];
 }

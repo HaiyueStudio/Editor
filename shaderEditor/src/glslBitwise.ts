@@ -9,6 +9,15 @@ const lanes = (type: string) => type.startsWith('vec') ? Number(type[3]) : 1;
 const unsigned = (type: string) => type === 'u32' || type.endsWith('u');
 const concrete = (expr: Expression) => expr.type === 'number' ? `i32(${expr.code})` : expr.code;
 const literal = (value: number, type: string) => unsigned(type) ? `${value}u` : `i32(${value})`;
+export const BITCAST_FUNCTIONS = new Set(['floatBitsToInt', 'floatBitsToUint', 'intBitsToFloat', 'uintBitsToFloat']);
+export function bitcastCall(token: Token, args: Expression[]): Expression {
+  const floating = token.value.startsWith('float'), input = floating ? 'f' : token.value.startsWith('uint') ? 'u' : 'i';
+  if (args.length !== 1 || !(args[0]!.type === input + '32' || input === 'i' && args[0]!.type === 'number' || new RegExp(`^vec[234]${input}$`).test(args[0]!.type)))
+    throw new TranslationError(token, `${token.value} 需要一个匹配类型的标量或向量参数。`);
+  const arg = args[0]!, scalar = floating ? token.value.endsWith('Uint') ? 'u' : 'i' : 'f';
+  const type = arg.type.startsWith('vec') ? `vec${arg.type[3]}${scalar}` : scalar + '32';
+  return { code: `bitcast<${type}>(${arg.type === 'number' ? `i32(${arg.code})` : arg.code})`, type, eagerSafe: arg.eagerSafe };
+}
 
 export function bitwiseUnary(token: Token, expr: Expression): Expression {
   if (!integer(expr.type)) throw new TranslationError(token, '~ 仅支持 int / uint 标量或整数向量。');

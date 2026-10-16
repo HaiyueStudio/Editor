@@ -212,3 +212,12 @@ ge-select, ge-checkbox { color-scheme:dark; }
 .generated-notes { margin:0 0 14px; color:var(--muted); font-size:12px; line-height:1.7; }
 .generated-notes summary { cursor:pointer; }
 .generated-notes p { max-height:140px; overflow:auto; white-space:pre-wrap; }
+
+#shadertoy-dialog { width:min(1000px,92vw); }
+.shadertoy-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:14px 0; }
+.shadertoy-toolbar label { display:flex; align-items:center; gap:8px; }
+#shadertoy-pass { width:170px; }
+#shadertoy-message { max-height:180px; overflow:auto; margin-bottom:14px; }
+#shadertoy-channels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 24px; padding-left:20px; }
+#shadertoy-code { height:48vh; min-height:200px; overflow:hidden; border:1px solid var(--line); border-radius:6px; }
+@media(max-width:600px) { #shadertoy-channels { grid-template-columns:1fr; } }

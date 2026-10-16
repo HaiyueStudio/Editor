@@ -8,7 +8,7 @@ import { Conditionals, type LocalBinding } from './glslConditionals.js';
 import { OutputCalls, outputParameter, hasOutputs, outputLocal, outputType, outputDeclaration, outputReturn } from './glslOutputs.js';
 import { lowerSwitch, type SwitchCase, type SwitchScope } from './glslSwitches.js';
 import { constantCast, constantUnary, constantBinary, constantBuiltin, type ScalarConstant } from './glslConstants.js';
-import { bitwiseBinary, bitwiseUnary, BITWISE_BINARY, BITWISE_ASSIGNMENT } from './glslBitwise.js';
+import { bitwiseBinary, bitwiseUnary, bitcastCall, BITCAST_FUNCTIONS, BITWISE_BINARY, BITWISE_ASSIGNMENT } from './glslBitwise.js';
 import { predicate, booleanVector, PREDICATE_FUNCTIONS } from './glslPredicates.js';
 import { Structures, type StructField } from './glslStructs.js';
 import { arrayInfo, arrayType, fixedArray, inferArray, constructArray } from './glslArrays.js';
@@ -24,7 +24,8 @@ const vector = (type: string) => /^vec[234][fiu]$/.test(type) || booleanVector(t
 const scalar = (type: string) => booleanVector(type) ? 'bool' : type.endsWith('i') ? 'i32' : type.endsWith('u') ? 'u32' : 'f32';
 const vectorType = (size: string | number, element: string) => element === 'bool' ? `vec${size}<bool>` : `vec${size}${element[0]}`;
 const MATH_FUNCTIONS = new Set('sin cos tan tanh asin acos atan abs sign floor ceil round trunc fract exp exp2 log log2 sqrt inversesqrt normalize length distance dot cross reflect refract min max pow clamp mix smoothstep step mod dFdx dFdy fwidth radians degrees'.split(' '));
-for (const name of [...MATRIX_FUNCTIONS, ...PREDICATE_FUNCTIONS]) MATH_FUNCTIONS.add(name);
+for (const name of [...MATRIX_FUNCTIONS, ...PREDICATE_FUNCTIONS, ...BITCAST_FUNCTIONS]) MATH_FUNCTIONS.add(name);
+MATH_FUNCTIONS.add('roundEven');
 class Parser {
   private index = 0;
   private locals = new Map<string, LocalBinding>();
@@ -629,6 +630,7 @@ class Parser {
     if ((TEXTURE_FUNCTIONS.has(name) || PREDICATE_FUNCTIONS.has(name)) && args.some(a => this.structures.has(a.type))) throw new TranslationError(token, `函数 ${name} 不接受结构体参数。`);
     if (TEXTURE_FUNCTIONS.has(name)) return this.textures.call(token, args);
     if (PREDICATE_FUNCTIONS.has(name)) return predicate(token, args);
+    if (BITCAST_FUNCTIONS.has(name)) return bitcastCall(token, args);
     const inferred = this.functions.samplerArguments(name, args.map(a => a.type), args.map(a => builtinChannel(a) !== undefined));
     if (inferred) inferred.forEach((type, i) => {
       const index = builtinChannel(args[i]!);
@@ -643,8 +645,8 @@ class Parser {
     if (MATRIX_FUNCTIONS.has(name)) return this.matrices.call(token, args, this.constantInitializer);
     if (args.some(a => matrix(a.type))) throw new TranslationError(token, `函数 ${name} 不接受矩阵参数。`);
     if (!MATH_FUNCTIONS.has(name) || !args.length) throw new TranslationError(token, `暂不支持或未声明函数 “${name}”，请先定义辅助函数或声明其原型。`);
-    if (name === 'tanh' && (args.length !== 1 || !['number', 'f32', 'vec2f', 'vec3f', 'vec4f'].includes(args[0]!.type)))
-      throw new TranslationError(token, 'tanh 需要一个 float 或 vec2/vec3/vec4 参数。');
+    if (['tanh', 'roundEven'].includes(name) && (args.length !== 1 || !['number', 'f32', 'vec2f', 'vec3f', 'vec4f'].includes(args[0]!.type)))
+      throw new TranslationError(token, `${name} 需要一个 float 或 vec2/vec3/vec4 参数。`);
     const type = args.find(a => vector(a.type))?.type ?? args.find(a => a.type !== 'number')?.type ?? (['abs', 'sign', 'min', 'max', 'clamp'].includes(name) ? 'i32' : 'f32');
     if (name === 'mod') {
       if (args.length !== 2) this.fail('mod 需要两个参数。');
@@ -653,7 +655,7 @@ class Parser {
       this.helpers.set(helper, `fn ${helper}(x: ${type}, y: ${type}) -> ${type} {\n  return x - y * floor(x / y);\n}`);
       return { code: `${helper}(${x}, ${y})`, type };
     }
-    const mapped = ({ inversesqrt: 'inverseSqrt', dFdx: 'dpdx', dFdy: 'dpdy' } as Record<string, string>)[name] ?? (name === 'atan' && args.length === 2 ? 'atan2' : name);
+    const mapped = ({ inversesqrt: 'inverseSqrt', roundEven: 'round', dFdx: 'dpdx', dFdy: 'dpdy' } as Record<string, string>)[name] ?? (name === 'atan' && args.length === 2 ? 'atan2' : name);
     const scalarResult = ['length', 'distance', 'dot'].includes(name);
     const call = `${mapped}(${args.map((a, i) => name === 'refract' && i === 2 ? a.code : this.coerce(a, type)).join(', ')})`;
     // WebGPU framebuffer Y points downward, GLSL/Shadertoy framebuffer Y upward.

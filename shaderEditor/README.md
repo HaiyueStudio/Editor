@@ -6,7 +6,7 @@
 
 ## 启动
 
-在 Editor 仓库根目录（Node.js 22+）：
+在 Editor 仓库根目录（Shader Editor 的转换编译器需要 Node.js 24.12+；浏览器使用时不需要安装 Node）：
 
 ```sh
 npm install
@@ -29,7 +29,7 @@ npm run release:artifact:check
 
 ## 创作与保存
 
-- Gallery 包含六个可编辑示例：Aurora ribbons、Liquid chrome、Neon passage、Afterglow、Key light、Sliding city。
+- Gallery 包含七个可编辑示例：Aurora ribbons、Liquid chrome、Neon passage、Afterglow、Key light、Sliding city、Minefield。
   缩略图在进入 Gallery 时通过真实 Haiyue GPU 渲染生成，直接加载编辑页后返回也会生成。
   生成中或失败时显示状态占位；单个示例失败不会阻塞其他预览，重试只补齐缺失的截图。
   页面切换复用正在进行的任务和已成功的截图。打开示例会创建独立副本。
@@ -531,3 +531,35 @@ R 重新打乱并清零步数，按住空格临时显示完整原图。完成后
 
 打乱从已完成棋盘开始执行合法移动，保证可解，并避免非零打乱步数直接回到完成状态。
 运行、重置时间、改变画布渲染尺寸或重新打开工程会重建棋盘；工程保存的是代码与参数，不包含当前游戏进度。
+
+## Minefield 扫雷示例
+
+Gallery 中打开 Minefield。左键翻格，Shift＋左键切换旗标；也可按 F 切换插旗模式后直接点击。R 重新开局。键盘操作只在画布获得焦点时生效，长按和拖动不会重复操作。失败显示地雷、踩中位置与错误旗标，胜利显示 CLEARED。
+
+Common 的 `MINE_ROWS` / `MINE_COLUMNS` 设置行列数（各 2–20），`MINE_COUNT` 设置精确雷数（自动限制在 1 至总格数减一），`MINE_SEED` 控制初始随机局面。默认 9×9、10 颗雷，支持矩形盘面，修改参数后运行即可。
+
+Buffer A 的 iChannel0 绑定自身反馈，iChannel1 为键盘。每格用一个 RGBA 像素保存雷、周围雷数和翻开/旗标状态，另有两个像素记录游戏阶段、首击、输入边沿、局号和计数。Image 读取 A 并用 MSDF 绘制数字和提示。所有布雷及游戏逻辑均在 Shader 内执行，读取状态使用 `textureLoad`，不受线性过滤影响。
+
+首个有效翻格才布雷，保证首击安全；雷数允许时保护该格及周围八格。按照随机键排名选择地雷，保证精确数量。空白区域按八邻域逐帧展开，遇到数字和旗标停止，保持预览播放即可自动完成。胜负和计数汇总最多延迟一帧。暂停时可用单步观察状态传播。
+
+R 使用下一局种子并清空状态；重新运行、重置时间、改变渲染尺寸或重新打开工程会重新开局。工程保存代码与参数，不保存当前游戏进度。
+
+## WGSL → GLSL / Shadertoy 导出
+
+作品工具栏的「导出 GLSL」打开带语法高亮的只读预览。可选择 Image、Buffer A–D 或 Sound，复制代码、下载当前 .glsl，或下载包含全部已启用页签和通道清单的 JSON。当前选中的禁用页签也可单独导出。转换读取打开窗口时的源码快照，不保存作品或修改任何语言草稿。
+
+WGSL 使用 [Naga 的 WebAssembly 编译器](https://github.com/kekkon-nexus/naga-wasm) 解析、校验类型并生成 GLSL ES 3.00，再适配 Shadertoy 的入口及内置量。支持数组、结构体、矩阵、循环、分支、位转换和常用纹理采样；编译器按需加载并随应用本地打包。Image/Buffer 导出 mainImage(out vec4, in vec2)，Sound 导出 vec2 mainSound(int, float)。
+
+Common 已合并到每个渲染页签，Shadertoy 的 Common 页保持为空；无需再复制 Common。若页签当前使用 GLSL，且 Common 同样为 GLSL 或为空，直接导出原始源码以保留宏和注释。混合语言时读取当前启用的 Common 草稿，并按实际运行规则组合后转换。
+
+通道仍需手动配置同样的图片、视频、Keyboard 或 Buffer。素材内容不会上传到 Shadertoy，也不包含在导出清单中；可用 .hyshader 另外备份。使用 Linear 过滤、Repeat 寻址和基础 mip 层；状态反馈 Buffer 使用浮点格式。导出层处理 raw textureSample/textureLoad 的纵向坐标，并补偿 dpdy 的屏幕方向，channelN 和 Cubemap 维持原有采样约定。不同设备的浮点精度与外部素材仍可能造成画面差异。
+
+目标是 Shader Lab 的 mainImage/mainSound 作者源码；自定义资源绑定、存储缓冲区、独立 vertex/compute 入口、GLSL 扩展、带 offset 的采样和 textureGather 返回明确诊断，不输出不完整代码。WGSL 错误包含 Common/Pass 归属和源文件行列。
+
+API / IPC 提供只读操作 shader.wgsl.translate({code, pass?}) 与 shader.shadertoy.export({pass?})。省略 export 的 pass 返回全工程，指定 pass 返回单个页签的 code、diagnostics、warnings 和 channels。Common 自动链接。也可调用 window.shaderEditor.translateWgsl(code, {entryPoint, common, channels}) 或 window.shaderEditor.exportShadertoy()。
+
+为支持导出后重新导入，GLSL 转换补齐 lessThan/lessThanEqual/greaterThan/greaterThanEqual/equal/notEqual、floatBitsToInt/floatBitsToUint/intBitsToFloat/uintBitsToFloat 和 roundEven。test/wgsl-browser.mjs 使用独立的 WebGL2 编译与绘制管线检查所有 Gallery/教程 Pass，并验证 WGSL → GLSL → WGSL 的 GPU 像素结果、纹理方向、Sound 和导出界面。
+
+## Local time 时钟示例
+
+Gallery 的第八个示例以距离场绘制表壳、60 个刻度、12 个数字、三根指针和七段 HH:MM:SS 数字窗，无需纹理或字体图片。iDate.w 驱动本地真实时间；暂停渲染时画面冻结，恢复后显示当前时间。Common 的 CLOCK_OFFSET_HOURS 设置相对本地时间的时差，CLOCK_24_HOUR 切换数字窗的 12/24 小时制，CLOCK_STEPPED_SECONDS 控制平滑秒针或跳秒。CLOCK_DEMO_SECONDS 为负值时读取时钟；非负值可固定当天秒数用于学习和验证，时差跨午夜会正确回绕。首页使用固定 10:08:30 的同一 Shader 生成缩略图，打开作品时恢复真实时间，避免重复生成的预览不一致。

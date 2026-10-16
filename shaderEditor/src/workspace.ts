@@ -6,6 +6,7 @@ import { uploadVideo, uploadImage, uploadCubemap, type FaceUpload } from './text
 import { projectTranslationOptions, refreshProjectGlsl } from './glslProject.js';
 import { languageOf, sourceOf, defaultGlsl } from './sourceLanguage.js';
 import { translateGlsl } from './glsl.js';
+import { exportShadertoy, exportShadertoyPass, translateProjectWgsl } from './shadertoyExport.js';
 import { CompileError, type ShaderRuntime, type PreparedShader } from './runtime.js';
 
 export class ShaderDocument implements EditorDocumentAdapter<ShaderProject> {
@@ -164,6 +165,14 @@ export class ShaderWorkspace {
     register('project.export', empty, 'read', () => new TextEncoder().encode(JSON.stringify(this.document.serialize(), null, 2)), bytes => json(this.platform.resources.put(bytes)));
     register('project.open', { type: 'object', properties: { resourceId: short }, required: ['resourceId'] }, 'write', p => parseProject(new TextDecoder('utf-8', { fatal: true }).decode(this.platform.resources.read(p.resourceId as string))), p => { this.open(p); return { projectId: p.id, revision: this.document.revision }; });
     const glslPass = { type: 'string', enum: ['common', 'sound', ...PASS_IDS] } as const;
+    register('wgsl.translate', { type: 'object', properties: { code, pass: { type: 'string', enum: ['sound', ...PASS_IDS] } }, required: ['code'] }, 'read', p => {
+      const project = this.document.serialize(), id = (p.pass ?? 'image') as RenderPassId;
+      return translateProjectWgsl(project, p.code as string, id);
+    }, result => json(result));
+    register('shadertoy.export', { type: 'object', properties: { pass: { type: 'string', enum: ['sound', ...PASS_IDS] } } }, 'read', async p => {
+      const project = this.document.serialize();
+      return p.pass ? exportShadertoyPass(project, p.pass as RenderPassId) : exportShadertoy(project);
+    }, result => json(result));
     register('glsl.translate', { type: 'object', properties: { code, pass: glslPass }, required: ['code'] }, 'read', p => translateGlsl(p.code as string,
       p.pass ? projectTranslationOptions(this.document.state as ShaderProject, p.pass as CodeId) : this.document.state.commonGlsl === undefined || languageOf(this.document.state, 'common') !== 'glsl' ? {} : { common: this.document.state.commonGlsl }), result => json(result));
     register('glsl.apply', { type: 'object', properties: { code, pass: glslPass }, required: ['code', 'pass'] }, 'write', p => p,
