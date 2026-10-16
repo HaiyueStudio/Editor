@@ -7,10 +7,7 @@ and shared app packaging pipeline.
 Editor consumes Engine and UI through package exports. AI providers, Agent loops, and DeepSeek Harness belong
 only in the separate AIStudio repository.
 
-The [Shader Editor](shaderEditor/README.md) is a Shadertoy-style WGSL playground with a local Gallery,
-Image + Buffer A–D passes, four image/framebuffer inputs per pass, feedback rendering, GLSL subset import,
-and Haiyue Canvas / 3D material previews with OrbitControl. It shares the Editor automation API and
-Electron JSON-RPC bridge. Run `npm run build:foundations` once, then `npm run preview:shader`.
+ShaderLab now lives in the standalone `HaiyueStudio/ShaderLab` repository. Its `web/` workspace contains the Gallery, editor, tutorials and desktop app; `mobile/` contains the NativeScript iOS/Android app. Build and run it from that repository with `npm ci` and `npm run preview`. Export existing browser works as `.hyshader` files to move them to another origin or device.
 
 The [Image Editor](imageEditor/README.md) includes a browser workspace with PNG/JPEG import, layered
 documents, history, and local project recovery. P2 adds brush/eraser editing, rectangular selections,

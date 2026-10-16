@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "rootDir": "..", "outDir": "web", "declaration": false, "sourceMap": false },
-  "include": ["src/main.ts", "src/**/*.d.ts", "../node_modules/@haiyue/ui/src/**/*"]
-}
